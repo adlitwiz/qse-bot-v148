@@ -151,6 +151,7 @@ def select(results, tickers, led):
                     why = _muted(led, r["symbol"], s["pola"], s["arah"])
                 if why:
                     tolak(why)
+                    s["saring"] = why
                     continue
                 s["fee_r"] = fee_r
             else:
@@ -163,9 +164,11 @@ def select(results, tickers, led):
     for r, s in cand:
         if FP["on"] and nd[s["arah"]] >= FP["max_same_dir"]:
             tolak("batas sinyal searah")
+            s["saring"] = "batas sinyal searah"
             continue
         if len(out) >= MAX_SIGNALS:
             tolak("batas jumlah pesan")
+            s["saring"] = "batas jumlah pesan"
             continue
         nd[s["arah"]] += 1
         out.append((r, s))
