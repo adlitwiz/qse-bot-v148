@@ -100,12 +100,18 @@ def main():
         if tag:
             baru.append(TG.sinyal(r, s, tag, FP["risk_usdt"]))
     n30, wr30, net30 = FX.stats(led)
-    nA = sum(1 for r in results if r["rapor"] == "A")
-    nB = sum(1 for r in results if r["rapor"] == "B")
-    nG = sum(1 for r in results if r["golden"])
+    symA = [r["symbol"] for r in results if r["rapor"] == "A"]
+    symB = [r["symbol"] for r in results if r["rapor"] == "B"]
+    symG = [r["symbol"] for r in results if r["golden"]]
     head = (f"<b>QSE v148 Bot</b> | {run_t}\n"
-            f"Dipindai {len(results)} koin | rapor A {nA} | rapor B {nB} | golden {nG}\n"
+            f"Dipindai {len(results)} koin | rapor A {len(symA)} | rapor B {len(symB)} | golden {len(symG)}\n"
             f"Sinyal baru {len(baru)} | aktif dipantau {len(led['open'])}")
+    if symA:
+        head += "\nRapor A: " + ", ".join(TG.e(s) for s in symA)
+    if symB:
+        head += "\nRapor B: " + ", ".join(TG.e(s) for s in symB)
+    if symG:
+        head += "\nGolden: " + ", ".join(TG.e(s) for s in symG)
     if drop:
         head += "\nDisaring fix profit: " + ", ".join(f"{k} {v}" for k, v in sorted(drop.items(), key=lambda x: -x[1]))
     head += f"\nHasil live 30 hari: {n30} trade | WR {wr30:.0f}% | {net30:+.1f}R"
