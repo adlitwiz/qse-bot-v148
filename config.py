@@ -55,4 +55,7 @@ FP = dict(
     mute_days=_env("QSE_MUTE_DAYS", 5, float),
     pat_min_trades=_env("QSE_PAT_MIN", 4, int),            # pola live dibuang bila rugi setelah n trade
     risk_usdt=_env("QSE_RISK_USDT", 0, float),             # isi untuk hitung lot, 0 = tidak tampil
+    market_atr=_env("QSE_MARKET_ATR", 0.25, float),        # harga sejauh ini dari entry = MARKET
+    limit_max_atr=_env("QSE_LIMIT_MAX_ATR", 1.5, float),   # gap maksimal untuk LIMIT, lebih jauh = dibuang
+    kirim_stop=_env("QSE_KIRIM_STOP", 0, int) == 1,        # 1 = breakout yang belum tembus dikirim sebagai STOP
 )

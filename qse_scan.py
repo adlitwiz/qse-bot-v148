@@ -151,7 +151,16 @@ def process(sym, df, df1h, dfD, dfW, btc, tick):
         pz = int(round(min(99, 100 * math.exp(-0.28 * abs(c - e) / max(a, tick))))) if not np.isnan(e) else 0
         wr = float(wrA[j])
         rr1 = abs(t1 - e) / risk
+        tersentuh = sl_kena = tp1_kena = False
+        if vlSt[k] == 1 and not np.isnan(e):
+            a0 = int(vlBar[k]) + 1
+            if a0 <= L:
+                hh, ll = v["high"][a0:L + 1], v["low"][a0:L + 1]
+                tersentuh = bool((ll <= e).any()) if d else bool((hh >= e).any())
+                sl_kena = bool((ll <= sl).any()) if d else bool((hh >= sl).any())
+                tp1_kena = bool((hh >= t1).any()) if d else bool((ll <= t1).any())
         saran.append(dict(
+            tersentuh=tersentuh, sl_kena=sl_kena, tp1_kena=tp1_kena, close_now=float(c),
             slot=k + 1, idx=ik, pola=R.NM[ik], alasan_pola=R.NRA[ik], arah="LONG" if d else "SHORT",
             status=int(vlSt[k]), sudah_masuk=bool(vlSt[k] == 2), eksekusi=bool(okE(k)), alasan=alasan(k),
             mutu="A" if gr == 1 else "B" if gr == 2 else "C", golden=(k == gIdx), zona_emas=ik in FIB_IDX,

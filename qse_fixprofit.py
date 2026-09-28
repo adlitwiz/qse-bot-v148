@@ -55,7 +55,7 @@ def update(led, sym, df):
                     led["open"].pop(key, None)
                     ev.append(("BATAL", it))
                     break
-                if it["order"] == "CONDITIONAL STOP":
+                if it["order"] in ("CONDITIONAL STOP", "STOP"):
                     kena = cl[i] > e if L else cl[i] < e
                 else:
                     kena = lo[i] <= e if L else hi[i] >= e
@@ -115,6 +115,36 @@ def _muted(led, sym, pola, arah):
     return ""
 
 
+def _order_live(r, s):
+    """Ubah saran jadi order yang bisa dipasang sekarang: MARKET bila harga di entry, LIMIT bila masih ada gap.
+    Return alasan buang, atau '' bila layak."""
+    c, a, e = r["close"], r["atr"], s["entry"]
+    L = s["arah"] == "LONG"
+    if s["tersentuh"]:
+        if s["sl_kena"]:
+            return "SL sudah tersentuh"
+        if s["tp1_kena"]:
+            return "TP1 sudah tercapai"
+    gap = (c - e) if L else (e - c)
+    if abs(c - e) <= FP["market_atr"] * a:
+        if (L and c <= s["sl"]) or ((not L) and c >= s["sl"]):
+            return "harga sudah lewat SL"
+        risk = abs(c - s["sl"])
+        s.update(order="MARKET", entry=c, jarak_atr=0.0, peluang=99,
+                 rr1=abs(s["tp1"] - c) / risk, rr2=abs(s["tp2"] - c) / risk)
+        s["ev"] = s["wr"] / 100 * s["rr1"] - (1 - s["wr"] / 100)
+        return ""
+    if gap > 0:
+        if gap > FP["limit_max_atr"] * a:
+            return "harga sudah jauh dari entry"
+        s["order"] = "LIMIT"
+        return ""
+    if s["breakout"] and FP["kirim_stop"]:
+        s["order"] = "STOP"
+        return ""
+    return "menunggu harga tembus entry" if s["breakout"] else "harga sudah lewat entry"
+
+
 def select(results, tickers, led):
     """Pilih sinyal yang dikirim. Return (dikirim, jumlah disaring, alasan_saring)."""
     cand, drop = [], {}
@@ -127,7 +157,12 @@ def select(results, tickers, led):
             continue
         tk = tickers.get(r["symbol"], {})
         for s in r["saran"]:
-            if not s["eksekusi"] or s["sudah_masuk"]:
+            if not s["eksekusi"] or s["sudah_masuk"] or s["mutu"] not in ("A", "B"):
+                continue
+            why = _order_live(r, s)
+            if why:
+                tolak(why)
+                s["buang"] = why
                 continue
             if FP["on"]:
                 risk = max(abs(s["entry"] - s["sl"]), r["tick"])

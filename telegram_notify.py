@@ -58,10 +58,10 @@ def sinyal(r, s, tag, risk_usdt=0.0):
     head = ("GOLDEN MOMENT | " if s["golden"] else "") + f"{r['symbol']} {s['arah']}"
     lab = f"Rapor robot {r['rapor']} | Mutu pola {s['mutu']} | EKSEKUSI" + (" | Zona emas" if s["zona_emas"] else "")
     rows = [
-        f"<b>{e(head)}</b>" + (f"  [{tag}]" if tag else ""),
+        f"➡️ <b>{e(head)}</b>" + (f"  [{tag}]" if tag else ""),
         e(lab),
         f"Pola: {e(s['pola'])} ({e(s['alasan_pola'])})",
-        f"Order: {e(s['order'])} | Saran {s['slot']}",
+        f"Order: {e(s['order'])} | Saran {s['slot']}" + (" | entry pernah tersentuh" if s.get("tersentuh") else ""),
         f"Entry: <code>{fp(s['entry'], t)}</code>",
         f"SL: <code>{fp(s['sl'], t)}</code>",
         f"TP1: <code>{fp(s['tp1'], t)}</code> (+{s['rr1']:.2f}R, tutup separuh)",
