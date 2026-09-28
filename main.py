@@ -106,12 +106,11 @@ def main():
     head = (f"<b>QSE v148 Bot</b> | {run_t}\n"
             f"Dipindai {len(results)} koin | rapor A {len(symA)} | rapor B {len(symB)} | golden {len(symG)}\n"
             f"Sinyal baru {len(baru)} | aktif dipantau {len(led['open'])}")
-    if symA:
-        head += "\nRapor A: " + ", ".join(TG.e(s) for s in symA)
-    if symB:
-        head += "\nRapor B: " + ", ".join(TG.e(s) for s in symB)
-    if symG:
-        head += "\nGolden: " + ", ".join(TG.e(s) for s in symG)
+    for judul, daftar in (("Rapor A", symA), ("Rapor B", symB), ("Golden", symG)):
+        if daftar:
+            head += f"\n\n<b>{judul} ({len(daftar)})</b>\n" + "\n".join(f"➡️ {TG.e(x)}" for x in daftar)
+    if symA or symB or symG:
+        head += "\n"
     if drop:
         head += "\nDisaring fix profit: " + ", ".join(f"{k} {v}" for k, v in sorted(drop.items(), key=lambda x: -x[1]))
     head += f"\nHasil live 30 hari: {n30} trade | WR {wr30:.0f}% | {net30:+.1f}R"
@@ -119,7 +118,7 @@ def main():
     blocks += baru
     pantau = _pantau(results)
     if pantau:
-        blocks.append(pantau)
+        blocks += pantau
     if events:
         blocks.append("<b>Update sinyal sebelumnya</b>\n" + "\n".join(TG.hasil(ev, it, syms) for ev, it in events))
     if baru or events or SEND_EMPTY:
@@ -143,7 +142,7 @@ def _pantau(results, maks=25):
         s = next((x for x in ss if x["eksekusi"]), ss[0])
         rows.append((r, s))
     if not rows:
-        return ""
+        return []
     rows.sort(key=lambda x: (not x[1]["eksekusi"], x[0]["rapor"] != "A", x[1]["mutu"] != "A", -x[1]["peluang"]))
     out = ["<b>Pantauan rapor A/B dengan saran entry</b>"]
     for r, s in rows[:maks]:
@@ -156,12 +155,14 @@ def _pantau(results, maks=25):
         if s["golden"]:
             vonis = "GOLDEN MOMENT, " + vonis
         t = r["tick"]
-        out.append(f"{TG.e(r['symbol'])} {s['arah']} | rapor {r['rapor']} {r['trd']}trd WR{r['wr']:.0f}% | "
-                   f"{TG.e(s['pola'])} | {TG.e(vonis)} | {TG.e(s['order'])} E {TG.fp(s['entry'], t)} "
-                   f"SL {TG.fp(s['sl'], t)} TP1 {TG.fp(s['tp1'], t)} TP2 {TG.fp(s['tp2'], t)}")
+        out.append(f"➡️ <b>{TG.e(r['symbol'])} {s['arah']}</b> | rapor {r['rapor']} {r['trd']}trd WR{r['wr']:.0f}%\n"
+                   f"Pola: {TG.e(s['pola'])}\n"
+                   f"Status: {TG.e(vonis)}\n"
+                   f"{TG.e(s['order'])} | Entry {TG.fp(s['entry'], t)}\n"
+                   f"SL {TG.fp(s['sl'], t)} | TP1 {TG.fp(s['tp1'], t)} | TP2 {TG.fp(s['tp2'], t)}")
     if len(rows) > maks:
         out.append(f"dan {len(rows) - maks} koin lain di screening_terbaru.csv")
-    return "\n".join(out)
+    return out
 
 
 def _dump(results):
