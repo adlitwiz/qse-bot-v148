@@ -126,30 +126,36 @@ def main():
 
 
 def _pantau(results, maks=25):
-    """Daftar koin rapor A/B beserta vonisnya, supaya nama koin selalu terlihat."""
-    rs = [r for r in results if r["rapor"] in ("A", "B")]
-    rs.sort(key=lambda r: (r["rapor"] != "A", -r["net_r"]))
-    if not rs:
-        return ""
-    rows = ["<b>Pantauan rapor A/B</b>"]
-    for r in rs[:maks]:
-        s = next((x for x in r["saran"] if x["eksekusi"]), r["saran"][0] if r["saran"] else None)
-        dasar = f"{TG.e(r['symbol'])} | rapor {r['rapor']} {r['trd']}trd WR{r['wr']:.0f}% PF{r['pf']:.2f}"
-        if s is None:
-            rows.append(dasar + " | belum ada saran")
+    """Koin rapor A/B yang punya saran bernilai A/B dan entry jelas."""
+    rows = []
+    for r in results:
+        if r["rapor"] not in ("A", "B"):
             continue
+        ss = [x for x in r["saran"] if x["mutu"] in ("A", "B") and x["entry"] == x["entry"] and x["entry"] > 0]
+        if not ss:
+            continue
+        s = next((x for x in ss if x["eksekusi"]), ss[0])
+        rows.append((r, s))
+    if not rows:
+        return ""
+    rows.sort(key=lambda x: (not x[1]["eksekusi"], x[0]["rapor"] != "A", x[1]["mutu"] != "A", -x[1]["peluang"]))
+    out = ["<b>Pantauan rapor A/B dengan saran entry</b>"]
+    for r, s in rows[:maks]:
         if s["sudah_masuk"]:
             vonis = "posisi robot AKTIF"
         elif s["eksekusi"]:
-            vonis = "EKSEKUSI" + (", disaring: " + s["saring"] if s.get("saring") else ", terkirim")
+            vonis = s["mutu"] + " EKSEKUSI" + (", disaring: " + s["saring"] if s.get("saring") else "")
         else:
             vonis = "TAHAN, " + s["alasan"]
         if s["golden"]:
             vonis = "GOLDEN MOMENT, " + vonis
-        rows.append(f"{dasar} | {s['arah']} {TG.e(s['pola'])} | {TG.e(vonis)} | E {TG.fp(s['entry'], r['tick'])}")
-    if len(rs) > maks:
-        rows.append(f"dan {len(rs) - maks} koin lain di screening_terbaru.csv")
-    return "\n".join(rows)
+        t = r["tick"]
+        out.append(f"{TG.e(r['symbol'])} {s['arah']} | rapor {r['rapor']} {r['trd']}trd WR{r['wr']:.0f}% | "
+                   f"{TG.e(s['pola'])} | {TG.e(vonis)} | {TG.e(s['order'])} E {TG.fp(s['entry'], t)} "
+                   f"SL {TG.fp(s['sl'], t)} TP1 {TG.fp(s['tp1'], t)} TP2 {TG.fp(s['tp2'], t)}")
+    if len(rows) > maks:
+        out.append(f"dan {len(rows) - maks} koin lain di screening_terbaru.csv")
+    return "\n".join(out)
 
 
 def _dump(results):

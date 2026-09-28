@@ -10,9 +10,9 @@ def _env(k, d, cast=str):
 # ===== DATA =====
 BYBIT_URL = _env("BYBIT_URL", "https://api.bybit.com")
 TV_BARS = _env("QSE_TV_BARS", 5000, int)          # jumlah bar chart TradingView (akun gratis 5000)
-H1_BARS = _env("QSE_H1_BARS", 5000, int)          # bar 1H untuk bias m60, 0 = ambil penuh
+H1_BARS = _env("QSE_H1_BARS", 0, int)             # bar 1H untuk bias m60, 0 = penuh sepanjang chart 4H
 H1_INTRABAR = _env("QSE_H1_INTRABAR", "first")    # nilai 1H yang dipakai per candle 4H: first / last
-REQ_PER_SEC = _env("QSE_REQ_PER_SEC", 20, float)
+REQ_PER_SEC = _env("QSE_REQ_PER_SEC", 40, float)
 FETCH_THREADS = _env("QSE_FETCH_THREADS", 8, int)
 PROC_WORKERS = _env("QSE_WORKERS", 0, int)        # 0 = semua core CPU
 ONLY_SYMBOLS = [s for s in _env("QSE_SYMBOLS", "").replace(" ", "").split(",") if s]

@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 import qse_ta as T
 from qse_ta import sh, nz, na, NAN
-from config import P, H1_INTRABAR
+import config
+from config import P
 import qse_rules as R
 
 TF_MS = 4 * 3600 * 1000
@@ -33,7 +34,7 @@ def _map_1h(ts4, df1h):
         return np.full(len(ts4), NAN)
     val = _core_t(df1h)
     hts = df1h.index.values.astype("datetime64[ms]").astype(np.int64)
-    off = 0 if H1_INTRABAR == "first" else 3 * 3600 * 1000
+    off = 0 if config.H1_INTRABAR == "first" else 3 * 3600 * 1000
     s = pd.Series(val, index=hts)
     return s.reindex(ts4 + off).values
 
