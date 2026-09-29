@@ -39,7 +39,20 @@ def _map_1h(ts4, df1h):
     return s.reindex(ts4 + off).values
 
 
+_BTC_MEMO = {}
+
+
 def _btc_fc(btc):
+    """Hasil sama untuk semua koin, jadi dihitung sekali per proses."""
+    key = (len(btc), str(btc.index[0]), str(btc.index[-1]), float(btc["close"].iloc[-1]))
+    if key not in _BTC_MEMO:
+        if len(_BTC_MEMO) >= 4:
+            _BTC_MEMO.pop(next(iter(_BTC_MEMO)))
+        _BTC_MEMO[key] = _btc_fc_calc(btc)
+    return _BTC_MEMO[key]
+
+
+def _btc_fc_calc(btc):
     c, h, l = (btc[k].values.astype(float) for k in ("close", "high", "low"))
     a, b = T.ema(c, 20), T.ema(c, 50)
     st = np.where((c > a) & (a > b), 1.0, np.where((c < a) & (a < b), -1.0, 0.0))
@@ -612,6 +625,7 @@ def build(df, df1h, dfD, dfW, btc, symbol, mintick, tf="240", df4=None, btc_tf=N
         # untuk vonis & pesan
         bProb=bProb, btcUp=btcUp, btcDn=btcDn, btcMom=btcMom, btcKuat=btcKuat, helpL=helpL, helpS=helpS,
         confL=confL, confS=confS, rwBlock=rwBlock, suicL=suicL, suicS=suicS, kScL=kScL, kScS=kScS,
+        tUp=tUp, tDn=tDn, upLeg=upLeg, gzTop=gzTop, gzBot=gzBot, gpTop=gpTop, gpBot=gpBot, swH=swH, swL=swL,
         inGZ=inGZ, inGP=inGP, ema20=ema20, brkUp=brkUp, brkDn=brkDn, adx=adxV, rsi=rsiV, rvol=rvol,
         hurst=hurst, rSq=rSq, atrPc=atrPc, biasCt=biasCtA, m60=m60, m240=m240, mDy=mDy, mWk=mWk,
     )

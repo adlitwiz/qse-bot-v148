@@ -15,8 +15,8 @@ H1_INTRABAR = _env("QSE_H1_INTRABAR", "first")    # nilai 1H yang dipakai per ca
 REQ_PER_SEC = _env("QSE_REQ_PER_SEC", 40, float)
 FETCH_THREADS = _env("QSE_FETCH_THREADS", 8, int)
 PROC_WORKERS = _env("QSE_WORKERS", 0, int)        # 0 = semua core CPU
-TFS = [t for t in _env("QSE_TF", "240,60").replace(" ", "").split(",") if t in ("240", "60")]
-SCAN_MIN_TURNOVER = _env("QSE_SCAN_MIN_TURNOVER", 500000, float)  # koin di bawah ini tidak dihitung, 0 = semua
+TFS = [t for t in _env("QSE_TF", "240").replace(" ", "").split(",") if t in ("240", "60")]
+SCAN_MIN_TURNOVER = _env("QSE_SCAN_MIN_TURNOVER", 0, float)  # isi angka untuk melewati koin sepi, 0 = semua koin
 MAX_MENIT = _env("QSE_MAX_MENIT", 45, float)                     # batas waktu satu run
 ONLY_SYMBOLS = [s for s in _env("QSE_SYMBOLS", "").replace(" ", "").split(",") if s]
 STATE_DIR = _env("QSE_STATE_DIR", os.path.expanduser("~/qse_state"))
@@ -63,4 +63,5 @@ FP = dict(
     min_fill=_env("QSE_MIN_FILL", 60, float),              # peluang LIMIT tersentuh dalam limit_hours, persen
     limit_hours=_env("QSE_LIMIT_HOURS", 24, float),        # LIMIT belum terisi sesudah ini = dibatalkan
     kirim_stop=_env("QSE_KIRIM_STOP", 0, int) == 1,        # 1 = breakout yang belum tembus dikirim sebagai STOP
+    lev_cap=_env("QSE_LEV_CAP", 10, int),                  # batas atas saran leverage
 )

@@ -41,7 +41,7 @@ def main(args):
         tf, args = args[0], args[1:]
     syms = [s.upper() for s in args] or ["BTCUSDT"]
     ticks = B.get_symbols()
-    H4, H1 = 4 * 3600000, 3600000
+    H4 = 4 * 3600000
     b4 = B.get_klines("BTCUSDT", "240", config.TV_BARS, closed_only=False)
     b1 = B.get_klines("BTCUSDT", "60", config.TV_BARS)
     for sym in syms:

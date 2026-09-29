@@ -77,17 +77,20 @@ def lowest(x, n):
     return pd.Series(f64(x)).rolling(n, min_periods=n).min().values
 
 
-def _rec(x, n, alpha):
-    x = f64(x)
-    out = np.full(len(x), NAN)
-    valid = np.where(~np.isnan(x))[0]
-    if len(valid) < n:
-        return out
-    s0 = valid[0]
+try:
+    from numba import njit as _njit
+except Exception:
+    def _njit(*a, **k):
+        return a[0] if a and callable(a[0]) else (lambda f: f)
+
+
+@_njit(cache=True)
+def _rec_core(x, n, alpha):
+    out = np.full(len(x), np.nan)
     run = 0
     seed_i = -1
-    for i in range(s0, len(x)):
-        if np.isnan(x[i]):
+    for i in range(len(x)):
+        if x[i] != x[i]:
             run = 0
             continue
         run += 1
@@ -96,14 +99,21 @@ def _rec(x, n, alpha):
             break
     if seed_i < 0:
         return out
-    prev = np.mean(x[seed_i - n + 1:seed_i + 1])
+    prev = 0.0
+    for k in range(seed_i - n + 1, seed_i + 1):
+        prev += x[k]
+    prev /= n
     out[seed_i] = prev
     for i in range(seed_i + 1, len(x)):
-        if np.isnan(x[i]):
+        if x[i] != x[i]:
             continue
         prev = alpha * x[i] + (1 - alpha) * prev
         out[i] = prev
     return out
+
+
+def _rec(x, n, alpha):
+    return _rec_core(np.ascontiguousarray(f64(x)), int(n), float(alpha))
 
 
 def ema(x, n):

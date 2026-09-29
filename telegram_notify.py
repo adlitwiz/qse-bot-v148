@@ -89,3 +89,30 @@ def hasil(ev, it, tick_map):
         txt = arti[ev]
     r = f" ({it['result_r']:+.2f}R)" if ev in ("TP2", "SL", "BE") and "result_r" in it else ""
     return f"<b>{e(it['sym'])} {it['arah']}</b> TF {tf} | {e(it['pola'])} | {e(txt)}{r} | Entry {fp(it['entry'], t)}"
+
+
+def ambil_perintah(offset, token=None, chat_id=None):
+    """Baca perintah /batal, /status, /bantuan dari grup. Return (daftar (perintah, argumen), offset baru)."""
+    token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = str(chat_id or os.environ.get("TELEGRAM_CHAT_ID") or "")
+    if not token or not chat_id:
+        return [], offset
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
+                         params={"offset": offset, "timeout": 0, "allowed_updates": '["message"]'}, timeout=20)
+        data = r.json().get("result", [])
+    except Exception as ex:
+        print("[WARN] getUpdates", ex)
+        return [], offset
+    out = []
+    for u in data:
+        offset = max(offset, u["update_id"] + 1)
+        m = u.get("message") or {}
+        if str(m.get("chat", {}).get("id")) != chat_id:
+            continue
+        txt = (m.get("text") or "").strip()
+        if not txt.startswith("/"):
+            continue
+        parts = txt.split()
+        out.append((parts[0].split("@")[0].lower(), [p.upper() for p in parts[1:]]))
+    return out, offset

@@ -30,15 +30,17 @@ def grade(wb, ex, pf):
     return 3
 
 
+GRID = np.round(np.arange(0, 3.01, 0.1), 2)
+
+
 def fill_prob(v, L, gap, isL, H):
     """Peluang harga menyentuh entry LIMIT dalam H candle ke depan, dari riwayat koin ini
-    dengan kondisi BTC dan volume yang mirip dengan sekarang. gap dalam ATR."""
-    if gap <= 0:
-        return 100.0
+    dengan kondisi BTC dan volume yang mirip dengan sekarang. gap dalam ATR.
+    Return (peluang untuk gap ini, tabel peluang untuk gap 0 sampai 3 ATR per 0.1)."""
     h, l, c, a = v["high"], v["low"], v["close"], v["atr"]
     n = L + 1
     if n < H + 50:
-        return 0.0
+        return (100.0 if gap <= 0 else 0.0), [100.0] + [0.0] * (len(GRID) - 1)
     from numpy.lib.stride_tricks import sliding_window_view as swv
     if isL:
         fut = swv(l[:n], H).min(axis=1)
@@ -61,8 +63,32 @@ def fill_prob(v, L, gap, isL, H):
     if sel.sum() < 60:
         sel = ok
     if sel.sum() == 0:
-        return 0.0
-    return float((x[sel] >= gap).mean() * 100)
+        return (100.0 if gap <= 0 else 0.0), [100.0] + [0.0] * (len(GRID) - 1)
+    xs = x[sel]
+    tab = [float((xs >= g).mean() * 100) if g > 0 else 100.0 for g in GRID]
+    p = 100.0 if gap <= 0 else float((xs >= gap).mean() * 100)
+    return p, tab
+
+
+def arah_prob(v, L, isL, Hn=1):
+    """Peluang candle ke-Hn berikutnya tutup searah sinyal, dari riwayat koin ini
+    pada tren koin dan kondisi BTC yang sama dengan sekarang. Return (persen, jumlah sampel)."""
+    c = v["close"]
+    n = L + 1
+    if n < Hn + 100:
+        return 50.0, 0
+    ok = (c[Hn:n] > c[:n - Hn]) if isL else (c[Hn:n] < c[:n - Hn])
+    m = len(ok)
+    lo = max(0, m - 1500)
+    ok = ok[lo:]
+    tr = np.where(v["tUp"], 1, np.where(v["tDn"], -1, 0))
+    bs = np.where(v["btcUp"], 1, np.where(v["btcDn"], -1, 0))
+    sel = (tr[lo:m] == tr[L]) & (bs[lo:m] == bs[L])
+    if sel.sum() < 60:
+        sel = tr[lo:m] == tr[L]
+    if sel.sum() < 60:
+        sel = np.ones(len(ok), bool)
+    return float(ok[sel].mean() * 100), int(sel.sum())
 
 
 def btc_now(btc4, t_now, sym):
@@ -207,7 +233,9 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         wr = float(wrA[j])
         rr1 = abs(t1 - e) / risk
         gap = ((c - e) if d else (e - c)) / a if a > 0 and not np.isnan(e) else 0.0
-        p_isi = fill_prob(v, L, gap, d, max(1, int(lim_h * 3600000 // TF_MS)))
+        p_isi, p_tab = fill_prob(v, L, gap, d, max(1, int(lim_h * 3600000 // TF_MS)))
+        p_isi4, p_tab4 = fill_prob(v, L, gap, d, max(1, int(4 * 3600000 // TF_MS)))
+        p_arah, n_arah = arah_prob(v, L, d, max(1, int(4 * 3600000 // TF_MS)))
         tersentuh = sl_kena = tp1_kena = False
         if vlSt[k] == 1 and not np.isnan(e):
             a0 = int(vlBar[k]) + 1
@@ -217,7 +245,7 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
                 sl_kena = bool((ll <= sl).any()) if d else bool((hh >= sl).any())
                 tp1_kena = bool((hh >= t1).any()) if d else bool((ll <= t1).any())
         saran.append(dict(
-            p_isi=p_isi, tersentuh=tersentuh, sl_kena=sl_kena, tp1_kena=tp1_kena, close_now=float(c),
+            p_isi=p_isi, p_tab=p_tab, p_isi4=p_isi4, p_tab4=p_tab4, p_arah=p_arah, n_arah=n_arah, tersentuh=tersentuh, sl_kena=sl_kena, tp1_kena=tp1_kena, close_now=float(c),
             slot=k + 1, idx=ik, pola=R.NM[ik], alasan_pola=R.NRA[ik], arah="LONG" if d else "SHORT",
             status=int(vlSt[k]), sudah_masuk=bool(vlSt[k] == 2), eksekusi=bool(okE(k)), alasan=alasan(k),
             mutu="A" if gr == 1 else "B" if gr == 2 else "C", golden=(k == gIdx), zona_emas=ik in FIB_IDX,
@@ -227,9 +255,21 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
             ev=wr / 100 * rr1 - (1 - wr / 100), dur=float(durA[j] / durN[j]) if durN[j] > 0 else 0.0,
             breakout=bool(BRK[ik]), anti=(d != biasLg), lolos=bool(pvA[j]),
         ))
+    up_leg = bool(v["upLeg"][L])
+    in_gp, in_gz = bool(v["inGP"][L]), bool(v["inGZ"][L])
+    pasar = dict(
+        arah="LONG" if biasLg else "SHORT", leg="naik" if up_leg else "turun", in_gp=in_gp, in_gz=in_gz,
+        zona_searah=bool((in_gp or in_gz) and (up_leg == biasLg)),
+        gp=(float(v["gpBot"][L]), float(v["gpTop"][L])), gz=(float(v["gzBot"][L]), float(v["gzTop"][L])),
+        batal=float(v["swL"][L] if biasLg else v["swH"][L]), bentuk=bool(bentuk(biasLg)),
+        btc_ok=bool(btcOkL if biasLg else btcOkS),
+        btc_selaras=bool((bProb >= 55 and btcOkL) if biasLg else (bProb <= 45 and btcOkS)),
+        adx=float(v["adx"][L]) if not np.isnan(v["adx"][L]) else 0.0,
+    )
     rg = ["TREND NAIK", "TREND TURUN", "SIDEWAYS", "VOLATILE"][int(v["rgIdx"][L])]
     btcTxt = bn["txt"] if bn else "BTC 4J " + ("NAIK" if v["btcUp"][L] else "TURUN" if v["btcDn"][L] else "SIDEWAYS")
     return dict(
+        pasar=pasar, izin=("LONG dan SHORT" if btcOkL and btcOkS else "LONG saja" if btcOkL else "SHORT saja" if btcOkS else "tidak ada"),
         symbol=sym, tf=tf, tf_ms=TF_MS, time=int(ts[L]), close=float(c), atr=float(a), tick=tick, rapor=nilT, trd=totT,
         wr=wrT, pf=pfT, net_r=float(vlRes), bias="LONG" if biasLg else "SHORT", regime=rg, bProb=bProb,
         btc=btcTxt, golden=gIdx + 1 if gIdx >= 0 else 0, saran=saran, candle=n, mulai=mu,

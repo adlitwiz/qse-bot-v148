@@ -142,28 +142,48 @@ def _muted(led, sym, pola, arah):
     return ""
 
 
+def _p_live(s, gap_atr, kunci="p_tab", awal="p_isi"):
+    tab = s.get(kunci)
+    if not tab:
+        return s[awal]
+    grid = [i / 10 for i in range(len(tab))]
+    if gap_atr <= 0:
+        return 100.0
+    if gap_atr >= grid[-1]:
+        return tab[-1]
+    k = int(gap_atr * 10)
+    w = gap_atr * 10 - k
+    return tab[k] * (1 - w) + tab[k + 1] * w
+
+
 def _order_live(r, s):
-    """Ubah saran jadi order yang bisa dipasang sekarang: MARKET bila harga di entry, LIMIT bila masih ada gap.
-    Return alasan buang, atau '' bila layak."""
-    c, a, e = r["close"], r["atr"], s["entry"]
+    """Ubah saran jadi order yang bisa dipasang sekarang, memakai harga live saat pesan dibuat.
+    MARKET bila harga di entry, LIMIT bila masih ada gap dan peluang terisi cukup. Return alasan buang atau ''."""
+    c = r.get("live") or r["close"]
+    a, e = r["atr"], s["entry"]
     L = s["arah"] == "LONG"
     if s["tersentuh"]:
         if s["sl_kena"]:
             return "SL sudah tersentuh"
         if s["tp1_kena"]:
             return "TP1 sudah tercapai"
+    if (L and c <= s["sl"]) or ((not L) and c >= s["sl"]):
+        return "harga sudah lewat SL"
+    if (L and c >= s["tp1"]) or ((not L) and c <= s["tp1"]):
+        return "harga sudah lewat TP1"
     gap = (c - e) if L else (e - c)
     if abs(c - e) <= FP["market_atr"] * a:
-        if (L and c <= s["sl"]) or ((not L) and c >= s["sl"]):
-            return "harga sudah lewat SL"
         risk = abs(c - s["sl"])
-        s.update(order="MARKET", entry=c, jarak_atr=0.0, peluang=99,
+        s.update(order="MARKET", entry=c, jarak_atr=0.0, peluang=99, p_isi=100.0, p_isi4=100.0,
                  rr1=abs(s["tp1"] - c) / risk, rr2=abs(s["tp2"] - c) / risk)
         s["ev"] = s["wr"] / 100 * s["rr1"] - (1 - s["wr"] / 100)
         return ""
     if gap > 0:
         if gap > FP["limit_max_atr"] * a:
             return "harga sudah jauh dari entry"
+        s["p_isi"] = _p_live(s, gap / a if a > 0 else 99)
+        s["p_isi4"] = _p_live(s, gap / a if a > 0 else 99, "p_tab4", "p_isi4")
+        s["jarak_atr"] = gap / a if a > 0 else 99
         if s["p_isi"] < FP["min_fill"]:
             return "limit kejauhan, peluang terisi %d%%" % round(s["p_isi"])
         s["order"] = "LIMIT"
