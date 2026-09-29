@@ -66,7 +66,9 @@ def _btc_fc(btc):
     return pd.DataFrame(d, index=btc.index.values.astype("datetime64[ms]").astype(np.int64))
 
 
-def build(df, df1h, dfD, dfW, btc, symbol, mintick):
+def build(df, df1h, dfD, dfW, btc, symbol, mintick, tf="240", df4=None, btc_tf=None):
+    """tf 240: chart 4 jam. tf 60: chart 1 jam (df = 1H, df4 = 4H termasuk candle berjalan, btc = BTC 4H
+    termasuk candle berjalan, btc_tf = BTC 1H)."""
     p = P
     ts = df.index.values.astype("datetime64[ms]").astype(np.int64)
     o, h, l, c, vol = (df[k].values.astype(float) for k in ("open", "high", "low", "close", "volume"))
@@ -206,13 +208,21 @@ def build(df, df1h, dfD, dfW, btc, symbol, mintick):
     btcOkS = (not gate) | (not btcAlt) | ~(btcUp & btcMom)
     btcOkL = np.broadcast_to(btcOkL, (n,)).copy()
     btcOkS = np.broadcast_to(btcOkS, (n,)).copy()
-    crsC = bf["crsC"].values
+    if tf == "60" and btc_tf is not None:
+        bts = btc_tf.index.values.astype("datetime64[ms]").astype(np.int64)
+        crsC = pd.Series(btc_tf["close"].values.astype(float), index=bts).reindex(ts, method="ffill").values
+    else:
+        crsC = bf["crsC"].values
     crsR = nz(c / np.maximum(crsC, mintick), 1.0)
     crsE = T.ema(crsR, 20)
     crsUp = (not p["useCRS"]) | (crsR > crsE)
     crsDn = (not p["useCRS"]) | (crsR < crsE)
-    m60 = _map_1h(ts, df1h)
-    m240 = _core_t(df)
+    if tf == "60":
+        m60 = _core_t(df)
+        m240 = _map_prev_period(ts, df4)
+    else:
+        m60 = _map_1h(ts, df1h)
+        m240 = _core_t(df)
     mDy = _map_prev_period(ts, dfD)
     mWk = _map_prev_period(ts, dfW)
     htfBull = (m60 >= 0) & (m240 >= 0) & ((m60 == 1) | (m240 == 1))

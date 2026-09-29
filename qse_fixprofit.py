@@ -7,7 +7,6 @@ from config import FP, RAPOR_OK, STATE_DIR, MAX_SIGNALS
 
 LEDGER = os.path.join(STATE_DIR, "ledger.json")
 TF_MS = 4 * 3600 * 1000
-EXP_BARS = 60
 
 
 def load():
@@ -34,7 +33,7 @@ def _close(led, key, it, res, why, ts):
 
 
 def update(led, sym, df):
-    """Cek sinyal lama koin ini dengan candle 4H yang sudah tutup. Return daftar event hasil."""
+    """Cek sinyal koin ini dengan candle 1H yang sudah tutup. Return daftar event."""
     ev = []
     ts = df.index.values.astype("datetime64[ms]").astype("int64")
     hi, lo, cl = df["high"].values, df["low"].values, df["close"].values
@@ -44,15 +43,16 @@ def update(led, sym, df):
         e, sl, t1, t2 = it["entry"], it["sl"], it["tp1"], it["tp2"]
         risk = max(abs(e - sl), 1e-12)
         r1, r2 = abs(t1 - e) / risk, abs(t2 - e) / risk
+        start = it.get("start_ts", it["sent_ts"] + TF_MS)
+        exp = it.get("exp_ts", start + FP["limit_hours"] * 3600000)
         for i in range(len(ts)):
-            if ts[i] <= it["last_ts"]:
+            if ts[i] < start or ts[i] <= it["last_ts"]:
                 continue
             it["last_ts"] = int(ts[i])
             if it["status"] == "MENUNGGU":
-                if (ts[i] - it["sent_ts"]) / TF_MS > EXP_BARS:
-                    it.update(status="BATAL", why="kadaluarsa", closed_ts=int(ts[i]), result_r=0.0)
-                    led["closed"].append(it)
-                    led["open"].pop(key, None)
+                if ts[i] >= exp:
+                    _close(led, key, it, 0.0, "tidak terisi %g jam" % FP["limit_hours"], int(ts[i]))
+                    it["status"] = "BATAL"
                     ev.append(("BATAL", it))
                     break
                 if it["order"] in ("CONDITIONAL STOP", "STOP"):
@@ -90,6 +90,33 @@ def update(led, sym, df):
                         _close(led, key, it, 0.5 * r1 + 0.5 * r2, "TP2", int(ts[i]))
                         ev.append(("TP2", it))
                         break
+    return ev
+
+
+def recheck(led, res_map, tfs_now):
+    """Batalkan LIMIT yang belum terisi bila vonis robot berubah atau peluang terisi turun."""
+    ev = []
+    for key in list(led["open"].keys()):
+        it = led["open"][key]
+        tf = it.get("tf", "240")
+        if it["status"] != "MENUNGGU" or tf not in tfs_now:
+            continue
+        r = res_map.get((it["sym"], tf))
+        if r is None:
+            continue
+        same = [s for s in r["saran"] if s["pola"] == it["pola"] and s["arah"] == it["arah"]]
+        ok = [s for s in same if s["eksekusi"] and not s["sudah_masuk"]]
+        why = ""
+        if r["rapor"] not in RAPOR_OK:
+            why = "rapor turun ke %s" % r["rapor"]
+        elif not ok:
+            why = "vonis berubah: " + (same[0]["alasan"] if same else "saran hilang")
+        elif ok[0]["p_isi"] < FP["min_fill"] * 0.8:
+            why = "peluang terisi turun ke %d%%" % round(ok[0]["p_isi"])
+        if why:
+            _close(led, key, it, 0.0, why, r["time"])
+            it["status"] = "BATAL"
+            ev.append(("BATAL", it))
     return ev
 
 
@@ -137,6 +164,8 @@ def _order_live(r, s):
     if gap > 0:
         if gap > FP["limit_max_atr"] * a:
             return "harga sudah jauh dari entry"
+        if s["p_isi"] < FP["min_fill"]:
+            return "limit kejauhan, peluang terisi %d%%" % round(s["p_isi"])
         s["order"] = "LIMIT"
         return ""
     if s["breakout"] and FP["kirim_stop"]:
@@ -179,7 +208,7 @@ def select(results, tickers, led):
                 elif tk and s["arah"] == "SHORT" and tk["funding"] < -FP["max_funding"]:
                     why = "funding terlalu negatif"
                 elif s["rr1"] - fee_r < FP["min_tp1_net_r"]:
-                    why = "TP1 habis dimakan fee"
+                    why = "TP1 terlalu dekat"
                 elif s["ev"] <= 0:
                     why = "ekspektasi pola negatif"
                 else:
@@ -191,8 +220,8 @@ def select(results, tickers, led):
                 s["fee_r"] = fee_r
             else:
                 s["fee_r"] = 0.0
-            tier = 3 if s["golden"] else 2 if r["rapor"] == "A" else 1
-            s["prio"] = (tier, s["mutu"] == "A", s["zona_emas"], s["peluang"], s["net_r"])
+            s["prio"] = (s["golden"], r["rapor"] == "A", s["mutu"] == "A", s["order"] == "MARKET",
+                         r["tf"] == "240", s["p_isi"], s["net_r"])
             cand.append((r, s))
     cand.sort(key=lambda x: x[1]["prio"], reverse=True)
     out, nd = [], {"LONG": 0, "SHORT": 0}
@@ -211,15 +240,18 @@ def select(results, tickers, led):
 
 
 def register(led, r, s):
-    """Catat sinyal. Return 'BARU', 'UPDATE', atau '' bila sama persis dengan yang sudah dikirim."""
-    key = "%s|%s|%s" % (r["symbol"], s["pola"], s["arah"])
+    """Catat sinyal. Return 'BARU', 'UPDATE', atau '' bila sama dengan yang sudah dikirim."""
+    key = "%s|%s|%s|%s" % (r["symbol"], r["tf"], s["pola"], s["arah"])
     old = led["open"].get(key)
     if old and old["status"] != "MENUNGGU":
         return ""
     if old and abs(old["entry"] - s["entry"]) <= r["atr"] * 0.3 and abs(old["sl"] - s["sl"]) <= r["atr"] * 0.3:
         return ""
-    led["open"][key] = dict(sym=r["symbol"], pola=s["pola"], arah=s["arah"], entry=s["entry"], sl=s["sl"],
-                            tp1=s["tp1"], tp2=s["tp2"], order=s["order"], sent_ts=r["time"], last_ts=r["time"],
-                            status="TERISI" if s["order"] == "MARKET" else "MENUNGGU", golden=s["golden"],
-                            rapor=r["rapor"], fill_ts=r["time"] if s["order"] == "MARKET" else 0)
+    start = r["time"] + r["tf_ms"]
+    mk = s["order"] == "MARKET"
+    led["open"][key] = dict(sym=r["symbol"], tf=r["tf"], pola=s["pola"], arah=s["arah"], entry=s["entry"],
+                            sl=s["sl"], tp1=s["tp1"], tp2=s["tp2"], order=s["order"], sent_ts=r["time"],
+                            start_ts=start, last_ts=start - 1, exp_ts=start + int(FP["limit_hours"] * 3600000),
+                            status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r["rapor"],
+                            fill_ts=start if mk else 0, p_isi=s["p_isi"])
     return "UPDATE" if old else "BARU"

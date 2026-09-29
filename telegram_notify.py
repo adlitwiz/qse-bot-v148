@@ -80,7 +80,12 @@ def sinyal(r, s, tag, risk_usdt=0.0):
 
 def hasil(ev, it, tick_map):
     t = tick_map.get(it["sym"], 0.0001)
-    arti = {"TERISI": "ORDER TERISI", "TP1": "KENA TP1, tutup separuh, SL ke entry", "TP2": "KENA TP2, selesai",
-            "SL": "KENA SL -1R", "BE": "keluar di entry setelah TP1", "BATAL": "BATAL, 60 candle tidak tersentuh"}[ev]
-    r = f" ({it['result_r']:+.2f}R)" if "result_r" in it and ev in ("TP2", "SL", "BE") else ""
-    return f"{e(it['sym'])} {it['arah']} {e(it['pola'])}: {arti}{r} | E {fp(it['entry'], t)}"
+    tf = "1J" if it.get("tf") == "60" else "4J"
+    arti = {"TERISI": "ORDER TERISI", "TP1": "KENA TP1, tutup separuh, SL geser ke entry", "TP2": "KENA TP2, selesai",
+            "SL": "KENA SL", "BE": "keluar di entry setelah TP1"}
+    if ev == "BATAL":
+        txt = f"BATALKAN {it['order']}, {it.get('why', '')}"
+    else:
+        txt = arti[ev]
+    r = f" ({it['result_r']:+.2f}R)" if ev in ("TP2", "SL", "BE") and "result_r" in it else ""
+    return f"<b>{e(it['sym'])} {it['arah']}</b> TF {tf} | {e(it['pola'])} | {e(txt)}{r} | Entry {fp(it['entry'], t)}"

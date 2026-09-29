@@ -13,4 +13,4 @@ if [ "$(cat "$STATE/.req" 2>/dev/null || true)" != "$H" ]; then
   "$VENV/bin/pip" install -q -r requirements.txt
   echo "$H" > "$STATE/.req"
 fi
-exec flock -n "$STATE/.lock" "$VENV/bin/python" main.py
+exec flock -w 3000 "$STATE/.lock" "$VENV/bin/python" main.py "$@"

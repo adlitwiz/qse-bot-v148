@@ -4,13 +4,15 @@ import threading
 import requests
 import numpy as np
 import pandas as pd
-from config import BYBIT_URL, REQ_PER_SEC
+import os
+from config import BYBIT_URL, REQ_PER_SEC, STATE_DIR
 
 _S = requests.Session()
 _S.headers.update({"User-Agent": "qse-bot/148"})
 _lock = threading.Lock()
 _last = [0.0]
 IV_MS = {"240": 4 * 3600000, "60": 3600000, "D": 86400000, "W": 7 * 86400000}
+CACHE = os.path.join(STATE_DIR, "cache")
 
 
 def _get(path, params, tries=5):
@@ -75,13 +77,9 @@ def get_tickers():
     return t
 
 
-def get_klines(symbol, interval="240", bars=5000, closed_only=True):
-    """Ambil `bars` candle terakhir. closed_only buang candle yang belum tutup."""
-    iv = IV_MS[interval]
-    now = int(time.time() * 1000)
+def _raw(symbol, interval, bars):
     rows, end = [], None
-    need = bars + 1
-    while len(rows) < need:
+    while len(rows) < bars:
         p = {"category": "linear", "symbol": symbol, "interval": interval, "limit": 1000}
         if end is not None:
             p["end"] = end
@@ -89,18 +87,51 @@ def get_klines(symbol, interval="240", bars=5000, closed_only=True):
         if not lst:
             break
         rows.extend(lst)
-        oldest = int(lst[-1][0])
-        end = oldest - 1
+        end = int(lst[-1][0]) - 1
         if len(lst) < 1000:
             break
     if not rows:
-        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"], dtype=float)
     a = np.array([[float(x) for x in r[:6]] for r in rows])
     df = pd.DataFrame(a[:, 1:6], columns=["open", "high", "low", "close", "volume"], index=a[:, 0].astype(np.int64))
-    df = df[~df.index.duplicated()].sort_index()
+    return df[~df.index.duplicated()].sort_index()
+
+
+def get_klines(symbol, interval="240", bars=5000, closed_only=True, cache=True):
+    """`bars` candle terakhir. Riwayat disimpan di disk, tiap run hanya ambil 1 halaman terbaru.
+    closed_only=False menyertakan candle yang sedang berjalan (dibutuhkan pemetaan TF lebih tinggi)."""
+    iv = IV_MS[interval]
+    now = int(time.time() * 1000)
+    path = os.path.join(CACHE, f"{symbol}_{interval}.pkl")
+    old = None
+    if cache and os.path.exists(path):
+        try:
+            old = pd.read_pickle(path)
+        except Exception:
+            old = None
+    full = False
+    if old is not None and (len(old) >= bars or old.attrs.get("habis", False)):
+        new = _raw(symbol, interval, 1000)
+        if len(new) and new.index.min() <= old.index.max():
+            df = pd.concat([old[old.index < new.index.min()], new])
+            full = old.attrs.get("habis", False)
+        else:
+            df = _raw(symbol, interval, bars + 2)
+            full = len(df) < bars + 2
+    else:
+        df = _raw(symbol, interval, bars + 2)
+        full = len(df) < bars + 2
+    keep = max(bars + 50, len(old) if old is not None else 0)
+    df = df.iloc[-keep:]
+    df.attrs["habis"] = bool(full)
+    if cache and len(df):
+        os.makedirs(CACHE, exist_ok=True)
+        df.to_pickle(path + ".tmp")
+        os.replace(path + ".tmp", path)
     if closed_only:
         df = df[df.index + iv <= now]
     if bars and len(df) > bars:
         df = df.iloc[-bars:]
+    df = df.copy()
     df.index = pd.to_datetime(df.index, unit="ms", utc=True)
     return df

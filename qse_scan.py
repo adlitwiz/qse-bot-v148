@@ -6,7 +6,7 @@ import qse_engine as E
 import qse_rules as R
 from config import P
 
-TF_MS = F.TF_MS
+TFMS = {"240": 4 * 3600 * 1000, "60": 3600 * 1000}
 TPV = np.array([0.8 if P["useTpX"] else 1.2, 1.4, 1.8, 2.4, 3.2])
 PARR = E.params_array(P)
 BRK = np.array(R.BRK, dtype=np.bool_)
@@ -14,7 +14,7 @@ FAM = np.array(R.FAM, dtype=np.int64)
 FIB_IDX = set(list(range(8)) + [30, 31])
 
 
-def mulai_uji(ts):
+def mulai_uji(ts, TF_MS):
     last_bar_time = int(ts[-1]) + TF_MS          # bar realtime yang sedang berjalan di TradingView
     ujiW = 3000 * TF_MS
     tgl = math.floor(last_bar_time / (ujiW / 2)) * (ujiW / 2) - ujiW
@@ -30,11 +30,47 @@ def grade(wb, ex, pf):
     return 3
 
 
-def process(sym, df, df1h, dfD, dfW, btc, tick):
-    v = F.build(df, df1h, dfD, dfW, btc, sym, tick)
+def fill_prob(v, L, gap, isL, H):
+    """Peluang harga menyentuh entry LIMIT dalam H candle ke depan, dari riwayat koin ini
+    dengan kondisi BTC dan volume yang mirip dengan sekarang. gap dalam ATR."""
+    if gap <= 0:
+        return 100.0
+    h, l, c, a = v["high"], v["low"], v["close"], v["atr"]
+    n = L + 1
+    if n < H + 50:
+        return 0.0
+    from numpy.lib.stride_tricks import sliding_window_view as swv
+    if isL:
+        fut = swv(l[:n], H).min(axis=1)
+        x = (c[:n - H] - fut[1:n - H + 1]) / a[:n - H]
+    else:
+        fut = swv(h[:n], H).max(axis=1)
+        x = (fut[1:n - H + 1] - c[:n - H]) / a[:n - H]
+    m = len(x)
+    lo = max(0, m - 1500)
+    x = x[lo:]
+    bst = np.where(v["btcUp"][lo:m], 1, np.where(v["btcDn"][lo:m], -1, 0))
+    now_b = 1 if v["btcUp"][L] else -1 if v["btcDn"][L] else 0
+    rv = v["rvol"][lo:m]
+    rvn = v["rvol"][L]
+    bucket = lambda r: np.where(r < 0.8, 0, np.where(r < 1.5, 1, 2))
+    ok = ~np.isnan(x)
+    sel = ok & (bst == now_b) & (bucket(rv) == bucket(np.array([rvn]))[0])
+    if sel.sum() < 60:
+        sel = ok & (bst == now_b)
+    if sel.sum() < 60:
+        sel = ok
+    if sel.sum() == 0:
+        return 0.0
+    return float((x[sel] >= gap).mean() * 100)
+
+
+def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None, lim_h=24):
+    TF_MS = TFMS[tf]
+    v = F.build(df, df1h, dfD, dfW, btc, sym, tick, tf, df4, btc_tf)
     ts = v["ts"]
     n = len(ts)
-    mu = mulai_uji(ts)
+    mu = mulai_uji(ts, TF_MS)
     barNo = (ts // TF_MS).astype(np.int64)
     res = E.run(mu, v["close"], v["high"], v["low"], v["atr"], v["cLa"], v["cSa"], v["kOKL"], v["kOKS"],
                 v["okL"], v["okS"], v["g0L"], v["g0S"], v["mktOk"], v["slLv"], v["slSv"], v["rgIdx"],
@@ -151,6 +187,8 @@ def process(sym, df, df1h, dfD, dfW, btc, tick):
         pz = int(round(min(99, 100 * math.exp(-0.28 * abs(c - e) / max(a, tick))))) if not np.isnan(e) else 0
         wr = float(wrA[j])
         rr1 = abs(t1 - e) / risk
+        gap = ((c - e) if d else (e - c)) / a if a > 0 and not np.isnan(e) else 0.0
+        p_isi = fill_prob(v, L, gap, d, max(1, int(lim_h * 3600000 // TF_MS)))
         tersentuh = sl_kena = tp1_kena = False
         if vlSt[k] == 1 and not np.isnan(e):
             a0 = int(vlBar[k]) + 1
@@ -160,7 +198,7 @@ def process(sym, df, df1h, dfD, dfW, btc, tick):
                 sl_kena = bool((ll <= sl).any()) if d else bool((hh >= sl).any())
                 tp1_kena = bool((hh >= t1).any()) if d else bool((ll <= t1).any())
         saran.append(dict(
-            tersentuh=tersentuh, sl_kena=sl_kena, tp1_kena=tp1_kena, close_now=float(c),
+            p_isi=p_isi, tersentuh=tersentuh, sl_kena=sl_kena, tp1_kena=tp1_kena, close_now=float(c),
             slot=k + 1, idx=ik, pola=R.NM[ik], alasan_pola=R.NRA[ik], arah="LONG" if d else "SHORT",
             status=int(vlSt[k]), sudah_masuk=bool(vlSt[k] == 2), eksekusi=bool(okE(k)), alasan=alasan(k),
             mutu="A" if gr == 1 else "B" if gr == 2 else "C", golden=(k == gIdx), zona_emas=ik in FIB_IDX,
@@ -173,7 +211,7 @@ def process(sym, df, df1h, dfD, dfW, btc, tick):
     rg = ["TREND NAIK", "TREND TURUN", "SIDEWAYS", "VOLATILE"][int(v["rgIdx"][L])]
     btcTxt = "BTC 4J " + ("NAIK" if v["btcUp"][L] else "TURUN" if v["btcDn"][L] else "SIDEWAYS")
     return dict(
-        symbol=sym, time=int(ts[L]), close=float(c), atr=float(a), tick=tick, rapor=nilT, trd=totT,
+        symbol=sym, tf=tf, tf_ms=TF_MS, time=int(ts[L]), close=float(c), atr=float(a), tick=tick, rapor=nilT, trd=totT,
         wr=wrT, pf=pfT, net_r=float(vlRes), bias="LONG" if biasLg else "SHORT", regime=rg, bProb=bProb,
         btc=btcTxt, golden=gIdx + 1 if gIdx >= 0 else 0, saran=saran, candle=n, mulai=mu,
         lolos=int(sum(1 for i in range(90) if pvA[i] or pvA[i + 90])), feed="FEED RESMI BYBIT:%s.P" % sym,
