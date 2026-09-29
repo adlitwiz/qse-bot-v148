@@ -54,7 +54,7 @@ def main(args):
         if tf == "60":
             h1 = B.get_klines(sym, "60", config.TV_BARS - 1)
             print(f"\n{sym}  BYBIT:{sym}.P  TF 1 jam  candle {len(h1)}")
-            _cetak(qse_scan.process(sym, h1, None, dD, dW, b4, ticks[sym], "60", d4, b1))
+            _cetak(qse_scan.process(sym, h1, None, dD, dW, b4, ticks[sym], "60", d4, b1, btc_live=b4))
             continue
         df = _cut(d4, H4).iloc[-(config.TV_BARS - 1):]
         h1 = B.get_klines(sym, "60", len(df) * 4 + 400)
@@ -65,7 +65,7 @@ def main(args):
                 config.H1_INTRABAR = mode
                 hh = h1 if bars == 0 else h1.iloc[-(bars - 1):]
                 print(f" QSE_H1_BARS={bars} QSE_H1_INTRABAR={mode}")
-                _cetak(qse_scan.process(sym, df, hh, dD, dW, btc, ticks[sym]))
+                _cetak(qse_scan.process(sym, df, hh, dD, dW, btc, ticks[sym], btc_live=b4))
 
 
 if __name__ == "__main__":

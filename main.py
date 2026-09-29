@@ -42,13 +42,13 @@ def _work(sym, tick, pk, tfs):
                 if len(df) < MIN_BARS:
                     continue
                 out.append(qse_scan.process(sym, df, pk["h1c"], pk["d"], pk["w"], _BTC["h4c"], tick, "240",
-                                            lim_h=FP["limit_hours"]))
+                                            lim_h=FP["limit_hours"], btc_live=_BTC["h4"]))
             else:
                 df = pk["h1c"].iloc[-(TV_BARS - 1):]
                 if len(df) < MIN_BARS:
                     continue
                 out.append(qse_scan.process(sym, df, None, pk["d"], pk["w"], _BTC["h4"], tick, "60", pk["h4"],
-                                            _BTC["h1c"], lim_h=FP["limit_hours"]))
+                                            _BTC["h1c"], lim_h=FP["limit_hours"], btc_live=_BTC["h4"]))
         except Exception:
             err = traceback.format_exc(limit=3)
     return out, err

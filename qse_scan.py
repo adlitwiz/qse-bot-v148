@@ -65,7 +65,23 @@ def fill_prob(v, L, gap, isL, H):
     return float((x[sel] >= gap).mean() * 100)
 
 
-def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None, lim_h=24):
+def btc_now(btc4, t_now, sym):
+    """Gerbang BTC seperti di candle berjalan TradingView: pakai candle BTC 4J yang baru tutup."""
+    bf = F._btc_fc(btc4)
+    pos = np.searchsorted(bf.index.values, t_now, side="right") - 1
+    if pos < 0:
+        return None
+    b = bf.iloc[pos]
+    up = b.bC > b.bE20 > b.bE50
+    dn = b.bC < b.bE20 < b.bE50
+    mom = b.bC > b.bC1
+    buka = (not P["btcGate"]) or ("BTC" in sym)
+    return dict(okL=bool(buka or not (dn and not mom)), okS=bool(buka or not (up and mom)),
+                prob=float(b.bProb) if b.bProb == b.bProb else 50.0,
+                txt="BTC 4J " + ("NAIK" if up else "TURUN" if dn else "SIDEWAYS"))
+
+
+def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None, lim_h=24, btc_live=None):
     TF_MS = TFMS[tf]
     v = F.build(df, df1h, dfD, dfW, btc, sym, tick, tf, df4, btc_tf)
     ts = v["ts"]
@@ -92,6 +108,9 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         else "C" if (wrT >= 45 and pfT >= 1.0) else "D buruk"
     bProb = float(v["bProb"][L]) if not np.isnan(v["bProb"][L]) else 50.0
     btcOkL, btcOkS = bool(v["btcOkL"][L]), bool(v["btcOkS"][L])
+    bn = btc_now(btc_live, int(ts[L]) + TF_MS, sym) if btc_live is not None else None
+    if bn:
+        btcOkL, btcOkS, bProb = bn["okL"], bn["okS"], bn["prob"]
     trapU, trapD = bool(v["trapU"][L]), bool(v["trapD"][L])
     doneB = P["doneB"]
 
@@ -209,7 +228,7 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
             breakout=bool(BRK[ik]), anti=(d != biasLg), lolos=bool(pvA[j]),
         ))
     rg = ["TREND NAIK", "TREND TURUN", "SIDEWAYS", "VOLATILE"][int(v["rgIdx"][L])]
-    btcTxt = "BTC 4J " + ("NAIK" if v["btcUp"][L] else "TURUN" if v["btcDn"][L] else "SIDEWAYS")
+    btcTxt = bn["txt"] if bn else "BTC 4J " + ("NAIK" if v["btcUp"][L] else "TURUN" if v["btcDn"][L] else "SIDEWAYS")
     return dict(
         symbol=sym, tf=tf, tf_ms=TF_MS, time=int(ts[L]), close=float(c), atr=float(a), tick=tick, rapor=nilT, trd=totT,
         wr=wrT, pf=pfT, net_r=float(vlRes), bias="LONG" if biasLg else "SHORT", regime=rg, bProb=bProb,
