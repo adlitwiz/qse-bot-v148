@@ -19,6 +19,8 @@ warnings.filterwarnings("ignore")
 
 import bybit_fetch as B
 import qse_fixprofit as FX
+import qse_perintah as QP
+import qse_saya as SY
 import telegram_notify as TG
 
 MIN_BARS = 300
@@ -41,8 +43,11 @@ def _work(sym, tick, pk, tfs):
                 df = pk["h4c"]
                 if len(df) < MIN_BARS:
                     continue
+                h4 = pk["h4"]
+                live = h4.iloc[-TV_BARS:] if len(h4) > len(df) and _ms(h4.index[-1]) + H4 > time.time() * 1000 else None
                 out.append(qse_scan.process(sym, df, pk["h1c"], pk["d"], pk["w"], _BTC["h4c"], tick, "240",
-                                            lim_h=FP["limit_hours"], btc_live=_BTC["h4"]))
+                                            lim_h=FP["limit_hours"], btc_live=_BTC["h4"], df_live=live,
+                                            h1_live=pk.get("h1")))
             else:
                 df = pk["h1c"].iloc[-(TV_BARS - 1):]
                 if len(df) < MIN_BARS:
@@ -79,7 +84,7 @@ def fetch(sym, run4):
         h4 = B.get_klines(sym, "240", 1600, closed_only=False)
         n1 = TV_BARS
     h1 = B.get_klines(sym, "60", max(n1, TV_BARS), closed_only=False)
-    return dict(h4=h4, h4c=_split(h4, H4).iloc[-(TV_BARS - 1):], h1c=_split(h1, 3600000),
+    return dict(h4=h4, h4c=_split(h4, H4).iloc[-(TV_BARS - 1):], h1c=_split(h1, 3600000), h1=h1,
                 d=B.get_klines(sym, "D", 1500, closed_only=False), w=B.get_klines(sym, "W", 400, closed_only=False))
 
 
@@ -94,46 +99,46 @@ def _st_load():
         return {}
 
 
-def _st_save(st):
-    with open(STATE + ".tmp", "w") as f:
-        json.dump(st, f)
-    os.replace(STATE + ".tmp", STATE)
+def _st_update(upd):
+    """Ubah sebagian state dengan kunci file, aman dipakai bersamaan dengan qse_listener.py."""
+    import fcntl
+    with open(STATE + ".lock", "a") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        st = _st_load()
+        st.update(upd)
+        with open(STATE + ".tmp", "w") as f:
+            json.dump(st, f)
+        os.replace(STATE + ".tmp", STATE)
+
+
+def _listener_hidup():
+    try:
+        return time.time() - os.path.getmtime(os.path.join(STATE_DIR, "listener.alive")) < 180
+    except OSError:
+        return False
 
 
 def perintah():
-    """Proses perintah Telegram: /batal KOIN, /status, /bantuan."""
+    """Cadangan bila qse_listener.py tidak aktif: proses perintah Telegram saat bot jalan."""
+    if _listener_hidup():
+        return
     st = _st_load()
     cmds, off = TG.ambil_perintah(st.get("tg_offset", 0))
     if off != st.get("tg_offset", 0):
-        st["tg_offset"] = off
-        _st_save(st)
-    if not cmds:
+        _st_update({"tg_offset": off})
+    if cmds:
+        print("Perintah diproses:", QP.proses(cmds, dari_main=True))
+
+
+def trade_saya():
+    """Pantau trade kamu (/entry). Aman walau listener juga jalan, tiap candle hanya diproses sekali."""
+    try:
+        pesan = SY.pantau()
+    except Exception as ex:
+        print("[WARN] pantau trade kamu:", ex)
         return
-    led = FX.load()
-    balas = []
-    for c, args in cmds:
-        if c == "/batal" and args:
-            for a in args:
-                sym = a if a.endswith("USDT") else a + "USDT"
-                keys = [k for k, v in led["open"].items() if v["sym"] == sym]
-                for k in keys:
-                    it = led["open"].pop(k)
-                    it.update(status="BATAL", why="batal manual", result_r=0.0,
-                              closed_ts=int(time.time() * 1000))
-                    led["closed"].append(it)
-                balas.append(f"➡️ {TG.e(sym)}: {len(keys)} order dihapus dari catatan" if keys
-                             else f"➡️ {TG.e(sym)}: tidak ada order terbuka")
-        elif c == "/status":
-            n30, wr30, net30 = FX.stats(led)
-            balas.append(_ringkas_open(led) + f"\nLive 30 hari: {n30} trade | WR {wr30:.0f}% | {net30:+.1f}R")
-        elif c in ("/bantuan", "/help", "/start"):
-            balas.append("Perintah QSE Bot:\n/batal KOIN = hapus order koin itu dari catatan, contoh /batal DOT\n"
-                         "/status = daftar order terbuka dan hasil live\n"
-                         "Perintah diproses di run berikutnya, paling lama 1 jam.")
-    FX.save(led)
-    if balas:
-        TG.send(["<b>QSE v148 | BALASAN PERINTAH</b>\n" + "\n".join(balas)])
-        print("Perintah diproses:", len(cmds))
+    if pesan:
+        TG.send(["<b>QSE v148 | TRADE KAMU</b>\n" + "\n".join(pesan)])
 
 
 def main():
@@ -148,9 +153,7 @@ def main():
         if tfs:
             scan(now, run4, tfs)
             if run4:
-                st = _st_load()
-                st["scan4"] = tutup4
-                _st_save(st)
+                _st_update({"scan4": tutup4})
         else:
             pantau(now)
     except SystemExit:
@@ -164,7 +167,9 @@ def main():
 
 def pantau(now):
     """Run tiap jam di antara candle 4J: hanya cek order terbuka (terisi, TP1, TP2, SL, batal waktu)."""
+    trade_saya()
     led = FX.load()
+    FX.antrian_terapkan(led)
     syms = sorted({v["sym"] for v in led["open"].values()})
     if not syms:
         print("Tidak ada order terbuka, selesai.")
@@ -176,6 +181,7 @@ def pantau(now):
             events += [(ev, dict(it)) for ev, it in FX.update(led, s, B.get_klines(s, "60", 300))]
         except Exception as ex:
             print(f"[ERROR] pantau {s}: {ex}")
+    FX.antrian_terapkan(led)
     FX.save(led)
     if not events:
         print(f"Pantau {len(syms)} order, tidak ada perubahan.")
@@ -189,14 +195,7 @@ def pantau(now):
 
 
 def _ringkas_open(led):
-    op = list(led["open"].values())
-    if not op:
-        return "Order terbuka: tidak ada."
-    rows = [f"<b>Order terbuka ({len(op)})</b>"]
-    for it in op:
-        st = {"MENUNGGU": "menunggu terisi", "TERISI": "posisi jalan", "TP1": "TP1 kena, SL di entry"}.get(it["status"], it["status"])
-        rows.append(f"➡️ {TG.e(it['sym'])} {it['arah']} | {TG.e(it['pola'])} | {st}")
-    return "\n".join(rows)
+    return TG.ringkas_open(led)
 
 
 def scan(now, run4, tfs):
@@ -219,6 +218,7 @@ def scan(now, run4, tfs):
     btc = dict(h4=b4, h4c=_split(b4, H4).iloc[-(TV_BARS - 1):], h1c=b1)
     _init(btc)
     led = FX.load()
+    FX.antrian_terapkan(led)
     results, events, fail, basi = [], [], 0, 0
     exp4 = (int(time.time() * 1000) // H4) * H4 - H4
     workers = PROC_WORKERS or os.cpu_count() or 1
@@ -273,6 +273,14 @@ def scan(now, run4, tfs):
     if basi:
         print(f"[INFO] {basi} koin dilewati karena candle terakhir tidak lengkap")
     res_map = {(r["symbol"], r["tf"]): r for r in results}
+    trade_saya()
+    try:
+        waspada = SY.cek_4j(res_map)
+    except Exception as ex:
+        print("[WARN] cek trade kamu:", ex)
+        waspada = []
+    if waspada:
+        TG.send(["<b>QSE v148 | PERINGATAN TRADE KAMU</b>\n" + "\n".join(waspada)])
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, tfs)]
     for r in results:
         r["tk"] = tickers.get(r["symbol"])
@@ -292,6 +300,7 @@ def scan(now, run4, tfs):
         TG.send(blocks)
         for b in blocks:
             print(b, "\n")
+    FX.antrian_terapkan(led)
     FX.save(led)
     _dump(results)
     print(f"Selesai {time.time() - t0:.0f}s | hasil {len(results)} | gagal {fail}")
@@ -414,21 +423,21 @@ def _blok(no, r, s, status, led=None):
     return "\n".join(rows)
 
 
-def _rekap(led, now, hari=1, judul="REKAP KEMARIN"):
+def _rekap(led, now, hari=1, judul="REKAP KEMARIN", why_ok=("SL", "BE", "TP2")):
     b = int(dt.datetime(now.year, now.month, now.day, tzinfo=dt.timezone.utc).timestamp() * 1000)
     a = b - hari * 86400000
-    cl = [c for c in led["closed"] if c.get("why") in ("SL", "BE", "TP2") and a <= c.get("closed_ts", 0) < b]
+    cl = [c for c in led["closed"] if c.get("why") in why_ok and a <= c.get("closed_ts", 0) < b]
     if not cl:
         return f"<b>{judul}</b>\nTidak ada trade yang selesai."
     net = sum(c["result_r"] for c in cl)
     win = sum(1 for c in cl if c["result_r"] > 0)
     rows = [f"<b>{judul}</b> | {len(cl)} trade | WR {win / len(cl) * 100:.0f}% | {net:+.2f}R"]
     if hari == 1:
-        rows += [f"➡️ {TG.e(c['sym'])} {c['arah']} | {TG.e(c['pola'])} | {c['why']} {c['result_r']:+.2f}R" for c in cl]
+        rows += [f"➡️ {TG.e(c['sym'])} {c['arah']} | {TG.e(c.get('pola', c.get('order', 'manual')))} | {c['why']} {c['result_r']:+.2f}R" for c in cl]
     else:
         per = {}
         for c in cl:
-            k = c["pola"]
+            k = c.get("pola", "manual")
             per.setdefault(k, [0, 0.0])
             per[k][0] += 1
             per[k][1] += c["result_r"]
@@ -478,12 +487,19 @@ def _pantauan(rs, sig, kode):
             ("MOMEN EMAS: rapor A, BTC selaras, bentuk pasar searah", momen, False),
             ("ZONA EMAS: harga di golden pocket atau golden zone searah bias", zona, True),
             ("A+: rapor A, min 20 trade, WR 65, PF 1.8", aplus, False)]
+    nL = sum(1 for r in pool if r["pasar"]["arah"] == "LONG")
+    nOk = sum(1 for r in pool if r["pasar"]["btc_ok"])
+    nZ = sum(1 for r in pool if r["pasar"]["zona_searah"])
     out = [f"<b>3. PANTAUAN MANUAL TF {kode} (di luar sinyal valid)</b>\n"
            "Pasar rapor A/B yang tidak ada di bagian 1. Ujung tiap baris = status saran di DASBOR. "
-           "Entry manual hanya bila harga masuk zona dan candle konfirmasi searah."]
+           "Entry manual hanya bila harga masuk zona dan candle konfirmasi searah.\n"
+           f"Bias koin: LONG {nL}, SHORT {len(pool) - nL} | diizinkan BTC {nOk} | di zona emas {nZ}"]
     for judul, xs, zn in grup:
         if xs:
             out.append(f"<b>{judul} ({len(xs)})</b>\n" + "\n".join(baris(r, zn) for r in xs[:12]))
+    if not any(xs for _, xs, _ in grup):
+        out.append("Kategori LENGKAP, MOMEN EMAS, ZONA EMAS, dan A+ kosong di candle ini. "
+                   "Biasanya karena arah bias koin ditahan BTC atau harga belum masuk zona.")
     rA = [r["symbol"] for r in pool if r["rapor"] == "A"]
     rB = [r["symbol"] for r in pool if r["rapor"] == "B"]
     if rA or rB:
@@ -543,6 +559,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     tutup_dt = dt.datetime.fromtimestamp(tutup / 1000, dt.timezone.utc) if tutup else now
     if tf == "240" and tutup_dt.hour == 0:
         out.append(_rekap(led, tutup_dt))
+        out.append(_rekap(SY.lihat(), tutup_dt, 1, "REKAP TRADE KAMU KEMARIN", ("SL", "BE", "TP2", "TUTUP")))
         if tutup_dt.weekday() == 0:
             out.append(_rekap(led, tutup_dt, 7, "REKAP 7 HARI"))
     if sig:
@@ -565,8 +582,9 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         rows += [f"➡️ {TG.e(r['symbol'])} {s['arah']} | {TG.e(s['pola'])} | {TG.e(s['saring'])}" for r, s in tahan[:10]]
         rows += [f"➡️ {TG.e(r['symbol'])} {s['arah']} | {TG.e(s['pola'])} | {TG.e(s['buang'])}" for r, s in buang[:15]]
         out.append("\n".join(rows))
-    n30, wr30, net30 = FX.stats(led)
-    out.append(f"Live 30 hari: {n30} trade | WR {wr30:.0f}% | {net30:+.1f}R")
+    sig_cl = [c for c in led["closed"] if c.get("why") in ("SL", "BE", "TP2")]
+    out.append("WR sinyal robot: " + SY.ringkas(sig_cl, ("SL", "BE", "TP2")) +
+               "\nWR trade kamu: " + SY.ringkas(SY.lihat()["closed"]))
     return out
 
 

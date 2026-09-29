@@ -107,24 +107,79 @@ def btc_now(btc4, t_now, sym):
                 txt="BTC 4J " + ("NAIK" if up else "TURUN" if dn else "SIDEWAYS"))
 
 
-def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None, lim_h=24, btc_live=None):
+def _zona(v, R, rkId, rkDr, sJ):
+    """Zona entry, SL, TP dan tipe order di candle berjalan, sama seperti f_zone Pine yang dihitung ulang tiap tick."""
+    a, c, d1 = v["atr"][R], v["close"][R], v["d1"][R]
+    zLv, zSL, zTP, zT2 = (np.zeros(5) for _ in range(4))
+    oTy = np.zeros(5, np.int64)
+    for k in range(5):
+        ik, isL = int(rkId[k]), bool(rkDr[k])
+        if ik < 0:
+            continue
+        lv = v["lvL"][R, ik] if isL else v["lvS"][R, ik]
+        base = v["sw8L"][R] - a * P["slBuf"] if isL else v["sw8H"][R] + a * P["slBuf"]
+        wSL = lv - v["wkBL"][R] if isL else lv + v["wkBS"][R]
+        ref = E._nmin(base, wSL) if isL else E._nmax(base, wSL)
+        rr = E._nmin(E._nmax(abs(lv - ref), a * P["slMinA"]), a * P["slMaxA"])
+        sl = lv - rr if isL else lv + rr
+        bO = lv + a * 8 if isL else lv - a * 8
+        for q in range(7):
+            vv = v["obU"][R, q] if isL else v["obD"][R, q]
+            if isL and lv + a * 0.4 < vv < bO:
+                bO = vv
+            if (not isL) and bO < vv < lv - a * 0.4:
+                bO = vv
+        tv, cm = TPV[sJ[ik]], v["capMove"][R]
+        if isL:
+            tpC = E._nmin(E._nmin(lv + rr * tv, bO - a * 0.25), lv + cm * P["tpReach"] * a)
+            tp = E._nmax(tpC, lv + rr * P["minRR"])
+            t1c = E._nmax(E._nmin(lv + rr * P["tp1Mul"], E._nmin(bO - a * 0.25, lv + cm * P["tp1Rch"] * a)), lv + rr * 0.45)
+            tp1 = E._nmin(t1c, tp)
+        else:
+            tpC = E._nmax(E._nmax(lv - rr * tv, bO + a * 0.25), lv - cm * P["tpReach"] * a)
+            tp = E._nmin(tpC, lv - rr * P["minRR"])
+            t1c = E._nmin(E._nmax(lv - rr * P["tp1Mul"], E._nmax(bO + a * 0.25, lv - cm * P["tp1Rch"] * a)), lv - rr * 0.45)
+            tp1 = E._nmax(t1c, tp)
+        zLv[k], zSL[k], zTP[k], zT2[k] = lv, sl, tp1, tp
+        oTy[k] = E._ordty(bool(BRK[ik]), abs(c - lv) / a, bool((lv > c and d1 > 0) or (lv < c and d1 < 0)),
+                          P["maxFar"], P["mktTol"])
+    return zLv, zSL, zTP, zT2, oTy
+
+
+def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None, lim_h=24, btc_live=None,
+            df_live=None, h1_live=None):
+    """df = candle tutup. df_live = candle tutup + 1 candle berjalan (opsional). Dengan df_live, vonis, entry,
+    SL, TP dihitung seperti panel DASBOR di candle berjalan. Mesin tetap hanya memakai candle tutup."""
     TF_MS = TFMS[tf]
-    v = F.build(df, df1h, dfD, dfW, btc, sym, tick, tf, df4, btc_tf)
-    ts = v["ts"]
-    n = len(ts)
+    live = (df_live is not None and tf == "240" and len(df_live) == len(df) + 1
+            and df_live.index[-2] == df.index[-1])
+    if live:
+        v = F.build(df_live, h1_live if h1_live is not None else df1h, dfD, dfW,
+                    btc_live if btc_live is not None else btc, sym, tick, tf, df4, btc_tf)
+    else:
+        v = F.build(df, df1h, dfD, dfW, btc, sym, tick, tf, df4, btc_tf)
+    n = len(v["ts"]) - (1 if live else 0)
+    ts = v["ts"][:n]
+    RT = n if live else n - 1
     mu = mulai_uji(ts, TF_MS)
     barNo = (ts // TF_MS).astype(np.int64)
-    res = E.run(mu, v["close"], v["high"], v["low"], v["atr"], v["cLa"], v["cSa"], v["kOKL"], v["kOKS"],
-                v["okL"], v["okS"], v["g0L"], v["g0S"], v["mktOk"], v["slLv"], v["slSv"], v["rgIdx"],
-                v["trending"], v["ranging"], v["pPr"], barNo, v["biasLg"], v["lvL"], v["lvS"], v["sw8L"],
-                v["sw8H"], v["wkBL"], v["wkBS"], v["obU"], v["obD"], v["capMove"], v["d1"], v["btcOkL"],
-                v["btcOkS"], v["isSpk"], v["trapU"], v["trapD"], BRK, FAM, TPV, PARR, float(tick))
+    w = {k: v[k][:n] for k in ("close", "high", "low", "atr", "cLa", "cSa", "kOKL", "kOKS", "okL", "okS", "g0L",
+                                "g0S", "mktOk", "slLv", "slSv", "rgIdx", "trending", "ranging", "pPr", "biasLg", "lvL",
+                                "lvS", "sw8L", "sw8H", "wkBL", "wkBS", "obU", "obD", "capMove", "d1", "btcOkL", "btcOkS",
+                                "isSpk", "trapU", "trapD")}
+    res = E.run(mu, w["close"], w["high"], w["low"], w["atr"], w["cLa"], w["cSa"], w["kOKL"], w["kOKS"],
+                w["okL"], w["okS"], w["g0L"], w["g0S"], w["mktOk"], w["slLv"], w["slSv"], w["rgIdx"],
+                w["trending"], w["ranging"], w["pPr"], barNo, w["biasLg"], w["lvL"], w["lvS"], w["sw8L"],
+                w["sw8H"], w["wkBL"], w["wkBS"], w["obU"], w["obD"], w["capMove"], w["d1"], w["btcOkL"],
+                w["btcOkS"], w["isSpk"], w["trapU"], w["trapD"], BRK, FAM, TPV, PARR, float(tick))
     (rkId, rkDr, vlSt, vlId, vlDir, vlE, vlS, vlP, vlP2, vlTy, vlBar, vlDb, vlTc, vlMae, vlDn, vlLs, vlLsR,
      vlCnt, vlRes, s1A, sSc, sJ, sWb, sNn, sEx, sPF, wnA, lsA, ntA, pfA, wrA, bnA, pvA, hafL, hafS,
      zLv, zSL, zTP, zT2, oTy, durA, durN, lg) = res
 
     L = n - 1
-    c, lo, hi, a = v["close"][L], v["low"][L], v["high"][L], v["atr"][L]
+    if live:
+        zLv, zSL, zTP, zT2, oTy = _zona(v, RT, rkId, rkDr, sJ)
+    c, lo, hi, a = v["close"][RT], v["low"][RT], v["high"][RT], v["atr"][RT]
     biasLg = bool(v["biasLg"][L])
     totT = int(vlCnt[2] + vlCnt[3])
     lsT = int(vlCnt[3])
@@ -137,11 +192,12 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
     bn = btc_now(btc_live, int(ts[L]) + TF_MS, sym) if btc_live is not None else None
     if bn:
         btcOkL, btcOkS, bProb = bn["okL"], bn["okS"], bn["prob"]
-    trapU, trapD = bool(v["trapU"][L]), bool(v["trapD"][L])
+    trapU, trapD = bool(v["trapU"][RT]), bool(v["trapD"][RT])
     doneB = P["doneB"]
 
     def hold(k):
-        return vlSt[k] != 0 or L - vlDb[k] < doneB
+        # TradingView menilai panel di bar_index candle berjalan (L + 1)
+        return vlSt[k] != 0 or (L + 1) - vlDb[k] < doneB
 
     def sId(k):
         return int(vlId[k]) if (hold(k) and vlId[k] >= 0) else int(rkId[k])
@@ -191,8 +247,8 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
 
     def bentuk(d):
         if d:
-            return v["helpL"][L] >= 6 and v["confL"][L] >= 4 and v["d1"][L] > 0 and not v["rwBlock"][L] and not v["suicS"][L]
-        return v["helpS"][L] >= 6 and v["confS"][L] >= 4 and v["d1"][L] < 0 and not v["rwBlock"][L] and not v["suicL"][L]
+            return v["helpL"][RT] >= 6 and v["confL"][RT] >= 4 and v["d1"][RT] > 0 and not v["rwBlock"][RT] and not v["suicS"][RT]
+        return v["helpS"][RT] >= 6 and v["confS"][RT] >= 4 and v["d1"][RT] < 0 and not v["rwBlock"][RT] and not v["suicL"][RT]
 
     def dval(k, arr, zarr):
         return float(arr[k]) if hold(k) else float(zarr[k])
@@ -255,18 +311,18 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
             ev=wr / 100 * rr1 - (1 - wr / 100), dur=float(durA[j] / durN[j]) if durN[j] > 0 else 0.0,
             breakout=bool(BRK[ik]), anti=(d != biasLg), lolos=bool(pvA[j]),
         ))
-    up_leg = bool(v["upLeg"][L])
-    in_gp, in_gz = bool(v["inGP"][L]), bool(v["inGZ"][L])
+    up_leg = bool(v["upLeg"][RT])
+    in_gp, in_gz = bool(v["inGP"][RT]), bool(v["inGZ"][RT])
     pasar = dict(
         arah="LONG" if biasLg else "SHORT", leg="naik" if up_leg else "turun", in_gp=in_gp, in_gz=in_gz,
         zona_searah=bool((in_gp or in_gz) and (up_leg == biasLg)),
-        gp=(float(v["gpBot"][L]), float(v["gpTop"][L])), gz=(float(v["gzBot"][L]), float(v["gzTop"][L])),
-        batal=float(v["swL"][L] if biasLg else v["swH"][L]), bentuk=bool(bentuk(biasLg)),
+        gp=(float(v["gpBot"][RT]), float(v["gpTop"][RT])), gz=(float(v["gzBot"][RT]), float(v["gzTop"][RT])),
+        batal=float(v["swL"][RT] if biasLg else v["swH"][RT]), bentuk=bool(bentuk(biasLg)),
         btc_ok=bool(btcOkL if biasLg else btcOkS),
         btc_selaras=bool((bProb >= 55 and btcOkL) if biasLg else (bProb <= 45 and btcOkS)),
-        adx=float(v["adx"][L]) if not np.isnan(v["adx"][L]) else 0.0,
+        adx=float(v["adx"][RT]) if not np.isnan(v["adx"][RT]) else 0.0,
     )
-    rg = ["TREND NAIK", "TREND TURUN", "SIDEWAYS", "VOLATILE"][int(v["rgIdx"][L])]
+    rg = ["TREND NAIK", "TREND TURUN", "SIDEWAYS", "VOLATILE"][int(v["rgIdx"][RT])]
     btcTxt = bn["txt"] if bn else "BTC 4J " + ("NAIK" if v["btcUp"][L] else "TURUN" if v["btcDn"][L] else "SIDEWAYS")
     return dict(
         pasar=pasar, izin=("LONG dan SHORT" if btcOkL and btcOkS else "LONG saja" if btcOkL else "SHORT saja" if btcOkS else "tidak ada"),

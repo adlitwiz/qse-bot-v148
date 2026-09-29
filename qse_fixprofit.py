@@ -1,11 +1,13 @@
 """QSE v148 - FIX PROFIT: saringan tambahan di atas vonis DASBOR + buku catatan sinyal live yang belajar dari hasil nyata.
 Engine tidak diubah. Lapisan ini hanya memutuskan sinyal mana yang layak dikirim."""
+import fcntl
 import json
 import os
 import time
 from config import FP, RAPOR_OK, STATE_DIR, MAX_SIGNALS
 
 LEDGER = os.path.join(STATE_DIR, "ledger.json")
+ANTRIAN = os.path.join(STATE_DIR, "batal_antrian.json")
 TF_MS = 4 * 3600 * 1000
 
 
@@ -293,3 +295,45 @@ def register(led, r, s):
                             status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r["rapor"],
                             fill_ts=start if mk else 0, p_isi=s["p_isi"])
     return "UPDATE" if old else "BARU"
+
+
+def batal_manual(led, sym):
+    """Hapus semua order koin ini dari catatan (tidak dihitung di hasil live). Return jumlah order."""
+    keys = [k for k, v in led["open"].items() if v["sym"] == sym]
+    for k in keys:
+        it = led["open"].pop(k)
+        it.update(status="BATAL", why="batal manual", result_r=0.0, closed_ts=int(time.time() * 1000))
+        led["closed"].append(it)
+    return len(keys)
+
+
+def _antrian(fn):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(ANTRIAN + ".lock", "a") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            with open(ANTRIAN) as f:
+                data = json.load(f)
+        except Exception:
+            data = []
+        data, hasil = fn(data)
+        with open(ANTRIAN + ".tmp", "w") as f:
+            json.dump(data, f)
+        os.replace(ANTRIAN + ".tmp", ANTRIAN)
+        return hasil
+
+
+def antrian_tambah(sym):
+    return _antrian(lambda d: (d + [{"sym": sym, "ts": int(time.time() * 1000)}], None))
+
+
+def antrian_lihat():
+    return _antrian(lambda d: (d, [x["sym"] for x in d]))
+
+
+def antrian_terapkan(led):
+    """Terapkan /batal yang masuk saat bot sedang scan. Dipanggil sebelum ledger disimpan."""
+    syms = _antrian(lambda d: ([], [x["sym"] for x in d]))
+    for s in syms:
+        batal_manual(led, s)
+    return syms

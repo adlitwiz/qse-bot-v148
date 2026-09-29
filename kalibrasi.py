@@ -65,7 +65,8 @@ def main(args):
                 config.H1_INTRABAR = mode
                 hh = h1 if bars == 0 else h1.iloc[-(bars - 1):]
                 print(f" QSE_H1_BARS={bars} QSE_H1_INTRABAR={mode}")
-                _cetak(qse_scan.process(sym, df, hh, dD, dW, btc, ticks[sym], btc_live=b4))
+                live = d4.iloc[-config.TV_BARS:] if len(d4) > len(df) else None
+                _cetak(qse_scan.process(sym, df, hh, dD, dW, btc, ticks[sym], btc_live=b4, df_live=live))
 
 
 if __name__ == "__main__":

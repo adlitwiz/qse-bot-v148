@@ -116,3 +116,20 @@ def ambil_perintah(offset, token=None, chat_id=None):
         parts = txt.split()
         out.append((parts[0].split("@")[0].lower(), [p.upper() for p in parts[1:]]))
     return out, offset
+
+
+def ringkas_open(led):
+    op = list(led["open"].values())
+    if not op:
+        return "Order terbuka: tidak ada."
+    rows = [f"<b>Order terbuka ({len(op)})</b>"]
+    for it in op:
+        st = {"MENUNGGU": "menunggu terisi", "TERISI": "posisi jalan", "TP1": "TP1 kena, SL di entry"}.get(it["status"], it["status"])
+        rows.append(f"➡️ {e(it['sym'])} {it['arah']} | {e(it['pola'])} | {st}")
+    return "\n".join(rows)
+
+
+BANTUAN = ("Perintah QSE Bot:\n"
+           "/batal KOIN = hapus order koin itu dari catatan, contoh /batal DOT\n"
+           "/status = daftar order terbuka dan hasil live\n"
+           "/bantuan = daftar perintah ini")
