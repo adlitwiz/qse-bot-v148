@@ -13,4 +13,5 @@ if [ "$(cat "$STATE/.req" 2>/dev/null || true)" != "$H" ]; then
   "$VENV/bin/pip" install -q -r requirements.txt
   echo "$H" > "$STATE/.req"
 fi
-exec flock -w 3000 "$STATE/.lock" "$VENV/bin/python" main.py "$@"
+"$VENV/bin/python" -c "import numba" 2>/dev/null || "$VENV/bin/pip" install -q numba
+exec flock -w 600 "$STATE/.lock" "$VENV/bin/python" main.py "$@"

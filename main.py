@@ -10,7 +10,8 @@ import traceback
 import warnings
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
 
-from config import STATE_DIR, TV_BARS, H1_BARS, FETCH_THREADS, PROC_WORKERS, ONLY_SYMBOLS, FP, TFS
+from config import (STATE_DIR, TV_BARS, H1_BARS, FETCH_THREADS, PROC_WORKERS, ONLY_SYMBOLS, FP, TFS,
+                    SCAN_MIN_TURNOVER, MAX_MENIT)
 
 os.makedirs(STATE_DIR, exist_ok=True)
 os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(STATE_DIR, "numba_cache"))
@@ -53,6 +54,13 @@ def _work(sym, tick, pk, tfs):
     return out, err
 
 
+def _open_syms():
+    try:
+        return {v["sym"] for v in FX.load()["open"].values()}
+    except Exception:
+        return set()
+
+
 def _split(df, iv_ms):
     now = int(time.time() * 1000)
     ts = df.index.values.astype("datetime64[ms]").astype("int64")
@@ -80,41 +88,61 @@ def main():
     if not tfs:
         print("Bukan jadwal TF yang aktif, selesai.")
         return
+    import qse_engine
+    if not qse_engine.NUMBA_OK:
+        print("[PERINGATAN] numba tidak terpasang, engine jalan sekitar 50x lebih lambat. "
+              "Jalankan: $HOME/qse_state/venv/bin/pip install numba")
     syms = B.get_symbols()
+    tickers = B.get_tickers()
     if ONLY_SYMBOLS:
         syms = {s: syms[s] for s in ONLY_SYMBOLS if s in syms}
-    tickers = B.get_tickers()
-    print(f"Simbol {len(syms)} | TF {tfs}")
+    elif SCAN_MIN_TURNOVER > 0 and tickers:
+        syms = {s: t for s, t in syms.items()
+                if tickers.get(s, {}).get("turnover", 0) >= SCAN_MIN_TURNOVER or s in _open_syms()}
+    order = sorted(syms, key=lambda s: -tickers.get(s, {}).get("turnover", 0))
+    print(f"Simbol dihitung {len(order)} | TF {tfs}")
     b4 = B.get_klines("BTCUSDT", "240", TV_BARS, closed_only=False)
     b1 = B.get_klines("BTCUSDT", "60", TV_BARS, closed_only=True)
     btc = dict(h4=b4, h4c=_split(b4, H4).iloc[-(TV_BARS - 1):], h1c=b1)
+    _init(btc)
     led = FX.load()
     results, events, fail = [], [], 0
     workers = PROC_WORKERS or os.cpu_count() or 1
-    with ProcessPoolExecutor(max_workers=workers, initializer=_init, initargs=(btc,)) as pool, \
-            ThreadPoolExecutor(max_workers=FETCH_THREADS) as net:
-        fn = {net.submit(fetch, s, run4): s for s in syms}
-        fc = {}
-        for i, f in enumerate(as_completed(fn), 1):
-            s = fn[f]
-            try:
-                pk = f.result()
-            except Exception as ex:
-                fail += 1
-                print(f"[ERROR] ambil {s}: {ex}")
-                if "403" in str(ex):
-                    sys.exit(1)
-                continue
-            events += [(ev, dict(it)) for ev, it in FX.update(led, s, pk["h1c"])]
-            fc[pool.submit(_work, s, syms[s], pk, tfs)] = s
-            if i % 100 == 0:
-                print(f"  data {i}/{len(syms)} | {time.time() - t0:.0f}s")
-        for f in as_completed(fc):
-            out, err = f.result()
-            if err:
-                fail += 1
-                print(f"[ERROR] {fc[f]}\n{err}")
-            results += out
+    pool = ProcessPoolExecutor(max_workers=workers, initializer=_init, initargs=(btc,)) if workers > 1 else None
+    batas = t0 + MAX_MENIT * 60
+    CH = 24
+    chunks = [order[i:i + CH] for i in range(0, len(order), CH)]
+    with ThreadPoolExecutor(max_workers=FETCH_THREADS) as net:
+        nxt = [(s, net.submit(fetch, s, run4)) for s in chunks[0]] if chunks else []
+        for ci in range(len(chunks)):
+            cur = nxt
+            nxt = [(s, net.submit(fetch, s, run4)) for s in chunks[ci + 1]] \
+                if ci + 1 < len(chunks) and time.time() < batas else []
+            jobs = []
+            for s, f in cur:
+                try:
+                    pk = f.result()
+                except Exception as ex:
+                    fail += 1
+                    print(f"[ERROR] ambil {s}: {ex}")
+                    if "403" in str(ex):
+                        sys.exit(1)
+                    continue
+                events += [(ev, dict(it)) for ev, it in FX.update(led, s, pk["h1c"])]
+                jobs.append((s, pool.submit(_work, s, syms[s], pk, tfs) if pool else _work(s, syms[s], pk, tfs)))
+            for s, j in jobs:
+                out, err = j.result() if pool else j
+                if err:
+                    fail += 1
+                    print(f"[ERROR] {s}\n{err}")
+                results += out
+            print(f"  {min((ci + 1) * CH, len(order))}/{len(order)} koin | {time.time() - t0:.0f}s")
+            if not nxt:
+                if ci + 1 < len(chunks):
+                    print(f"[INFO] batas {MAX_MENIT:g} menit tercapai, sisa koin dilewati run ini.")
+                break
+    if pool:
+        pool.shutdown()
 
     res_map = {(r["symbol"], r["tf"]): r for r in results}
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, tfs)]

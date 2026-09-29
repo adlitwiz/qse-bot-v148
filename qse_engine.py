@@ -4,7 +4,9 @@ import numpy as np
 
 try:
     from numba import njit
-except Exception:  # fallback tanpa numba, hasil sama, lebih lambat
+    NUMBA_OK = True
+except Exception:  # fallback tanpa numba, hasil sama, sekitar 50x lebih lambat
+    NUMBA_OK = False
     def njit(*a, **k):
         if a and callable(a[0]):
             return a[0]

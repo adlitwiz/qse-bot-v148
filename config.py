@@ -16,6 +16,8 @@ REQ_PER_SEC = _env("QSE_REQ_PER_SEC", 40, float)
 FETCH_THREADS = _env("QSE_FETCH_THREADS", 8, int)
 PROC_WORKERS = _env("QSE_WORKERS", 0, int)        # 0 = semua core CPU
 TFS = [t for t in _env("QSE_TF", "240,60").replace(" ", "").split(",") if t in ("240", "60")]
+SCAN_MIN_TURNOVER = _env("QSE_SCAN_MIN_TURNOVER", 500000, float)  # koin di bawah ini tidak dihitung, 0 = semua
+MAX_MENIT = _env("QSE_MAX_MENIT", 45, float)                     # batas waktu satu run
 ONLY_SYMBOLS = [s for s in _env("QSE_SYMBOLS", "").replace(" ", "").split(",") if s]
 STATE_DIR = _env("QSE_STATE_DIR", os.path.expanduser("~/qse_state"))
 
