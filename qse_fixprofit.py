@@ -224,8 +224,11 @@ def select(results, tickers, led):
                          r["tf"] == "240", s["p_isi"], s["net_r"])
             cand.append((r, s))
     cand.sort(key=lambda x: x[1]["prio"], reverse=True)
-    out, nd = [], {"LONG": 0, "SHORT": 0}
+    out, nd, dipakai = [], {"LONG": 0, "SHORT": 0}, set()
     for r, s in cand:
+        if (r["symbol"], r["tf"]) in dipakai:
+            s["kalah"] = True          # satu koin satu sinyal per TF, ambil saran terbaik
+            continue
         if FP["on"] and nd[s["arah"]] >= FP["max_same_dir"]:
             tolak("batas sinyal searah")
             s["saring"] = "batas sinyal searah"
@@ -235,8 +238,23 @@ def select(results, tickers, led):
             s["saring"] = "batas jumlah pesan"
             continue
         nd[s["arah"]] += 1
+        dipakai.add((r["symbol"], r["tf"]))
         out.append((r, s))
     return out, drop
+
+
+def ganti(led, sel):
+    """Batalkan LIMIT lama di koin dan TF yang sama bila saran terbaiknya sekarang berbeda."""
+    ev = []
+    pilih = {(r["symbol"], r["tf"]): (s["pola"], s["arah"]) for r, s in sel}
+    for key in list(led["open"].keys()):
+        it = led["open"][key]
+        k = (it["sym"], it.get("tf", "240"))
+        if it["status"] == "MENUNGGU" and k in pilih and pilih[k] != (it["pola"], it["arah"]):
+            _close(led, key, it, 0.0, "diganti saran lebih baik: " + pilih[k][0], it["last_ts"])
+            it["status"] = "BATAL"
+            ev.append(("BATAL", it))
+    return ev
 
 
 def register(led, r, s):

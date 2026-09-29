@@ -147,6 +147,7 @@ def main():
     res_map = {(r["symbol"], r["tf"]): r for r in results}
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, tfs)]
     sel, drop = FX.select(results, tickers, led)
+    events += [(ev, dict(it)) for ev, it in FX.ganti(led, sel)]
     tag_of = {id(s): (FX.register(led, r, s) or "sudah dikirim") for r, s in sel}
     n_baru = sum(1 for t in tag_of.values() if t != "sudah dikirim")
     for tf in tfs:
