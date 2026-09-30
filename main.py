@@ -11,7 +11,7 @@ import warnings
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 from config import (STATE_DIR, TV_BARS, H1_BARS, FETCH_THREADS, PROC_WORKERS, ONLY_SYMBOLS, FP, TFS,
-                    SCAN_MIN_TURNOVER, MAX_MENIT)
+                    SCAN_MIN_TURNOVER, MAX_MENIT, CEK_JAM, ALARM_KONF, RAPOR_OK)
 
 os.makedirs(STATE_DIR, exist_ok=True)
 os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(STATE_DIR, "numba_cache"))
@@ -21,6 +21,7 @@ import bybit_fetch as B
 import qse_fixprofit as FX
 import qse_perintah as QP
 import qse_saya as SY
+import qse_skill as SK
 import telegram_notify as TG
 
 MIN_BARS = 300
@@ -156,6 +157,8 @@ def main():
                 _st_update({"scan4": tutup4})
         else:
             pantau(now)
+            if CEK_JAM and "240" in TFS:
+                cek_cepat(now)
     except SystemExit:
         raise
     except Exception as ex:
@@ -163,6 +166,110 @@ def main():
         TG.send([f"<b>QSE v148 | BOT GAGAL JALAN</b>\n{TG.e(type(ex).__name__)}: {TG.e(str(ex)[:300])}\n"
                  f"Cek log di tab Actions GitHub."])
         raise
+
+
+def cek_cepat(now):
+    """Tiap jam di tengah candle 4J: nilai ulang koin rapor A/B (dan koin yang punya order menunggu) memakai
+    candle 4J yang sedang berjalan, persis seperti panel DASBOR. Kirim hanya sinyal baru, entry yang bergeser,
+    pembatalan, dan alarm zona emas. Rapor dan pilihan pola tetap dari candle tutup, jadi kualitas tidak berubah."""
+    t0 = time.time()
+    path = os.path.join(STATE_DIR, "screening_terbaru.json")
+    try:
+        with open(path) as f:
+            lama = json.load(f)
+    except Exception:
+        print("Belum ada hasil scan 4 jam, cek per jam dilewati.")
+        return
+    led = FX.load()
+    FX.antrian_terapkan(led)
+    target = {r["symbol"] for r in lama if r.get("tf", "240") == "240" and r["rapor"] in RAPOR_OK}
+    target |= {v["sym"] for v in led["open"].values() if v["status"] == "MENUNGGU" and v.get("tf", "240") == "240"}
+    if not target:
+        return
+    syms = B.get_symbols()
+    tickers = B.get_tickers()
+    target = [s for s in target if s in syms]
+    b4 = B.get_klines("BTCUSDT", "240", TV_BARS, closed_only=False)
+    b1 = B.get_klines("BTCUSDT", "60", TV_BARS, closed_only=True)
+    _init(dict(h4=b4, h4c=_split(b4, H4).iloc[-(TV_BARS - 1):], h1c=b1))
+    results, events = [], []
+    with ThreadPoolExecutor(max_workers=FETCH_THREADS) as net:
+        for s, f in [(s, net.submit(fetch, s, True)) for s in target]:
+            try:
+                pk = f.result()
+            except Exception as ex:
+                print(f"[ERROR] ambil {s}: {ex}")
+                continue
+            events += [(ev, dict(it)) for ev, it in FX.update(led, s, pk["h1c"])]
+            out, err = _work(s, syms[s], pk, ["240"])
+            if err:
+                print(f"[ERROR] {s}\n{err}")
+            results += out
+    for r in results:
+        r["tk"] = tickers.get(r["symbol"])
+        lp = (tickers.get(r["symbol"]) or {}).get("last", 0)
+        if lp > 0:
+            r["live"] = lp
+    res_map = {(r["symbol"], r["tf"]): r for r in results}
+    events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, ["240"])]
+    sel, _ = FX.select(results, tickers, led)
+    for r, x in sel:
+        x["skor"] = _skor(r, x, None)
+    sel.sort(key=lambda z: (z[1]["golden"], z[1]["skor"]), reverse=True)
+    jalan = {(it["sym"], it.get("tf", "240")) for it in led["open"].values() if it["status"] in ("TERISI", "TP1")}
+    sel = [(r, x) for r, x in sel if (r["symbol"], r["tf"]) not in jalan]
+    events += [(ev, dict(it)) for ev, it in FX.ganti(led, sel)]
+    tag_of = {id(x): (FX.register(led, r, x) or "sudah dikirim") for r, x in sel}
+    baru = [(r, x) for r, x in sel if tag_of[id(x)] in ("BARU", "UPDATE")]
+    # alarm zona emas untuk trading manual, sekali per koin per candle 4J
+    st = _st_load()
+    sudah = st.get("alarm_zona", {})
+    tutup = int(time.time() * 1000) // H4 * H4
+    alarm = []
+    ada = {r["symbol"] for r, _ in sel}
+    for r in results:
+        p = r.get("pasar") or {}
+        if r["symbol"] in ada or r["rapor"] not in ("A", "B") or not p.get("zona_searah") or not p.get("btc_ok"):
+            continue
+        n_k = SK.konfirmasi(r.get("skill"), p["arah"])[0]
+        if n_k >= ALARM_KONF and sudah.get(r["symbol"]) != tutup:
+            sudah[r["symbol"]] = tutup
+            lo, hi = p["gp"] if p.get("in_gp") else p["gz"]
+            alarm.append(f"➡️ <b>{TG.e(r['symbol'])} {p['arah']}</b> | rapor {r['rapor']} | harga masuk "
+                         f"{'golden pocket' if p.get('in_gp') else 'golden zone'} {TG.fp(min(lo, hi), r['tick'])}-"
+                         f"{TG.fp(max(lo, hi), r['tick'])} | konf {n_k}/8 | batal {TG.fp(p['batal'], r['tick'])} | "
+                         f"{TG.e(_status_dasbor(r))}")
+    _st_update({"alarm_zona": {k: v for k, v in sudah.items() if v >= tutup - H4}})
+    FX.antrian_terapkan(led)
+    FX.save(led)
+    # perbarui hasil scan untuk /cek tanpa menghapus koin lain
+    peta = {(r["symbol"], r["tf"]): r for r in results}
+    lama = [peta.pop((r["symbol"], r.get("tf", "240")), r) for r in lama] + list(peta.values())
+    with open(path, "w") as f:
+        json.dump(lama, f, default=float)
+    if not (baru or events or alarm):
+        print(f"Cek per jam {len(results)} koin, tidak ada perubahan. {time.time() - t0:.0f}s")
+        return
+    jam = now.astimezone(WIB).strftime("%d/%m %H:%M WIB")
+    blocks = [f"<b>QSE v148 | CEK PER JAM TF 4J</b> | {jam}\n"
+              f"Candle 4J berjalan dinilai ulang untuk {len(results)} koin rapor A/B"]
+    if baru:
+        blocks.append(f"<b>SINYAL BARU DI TENGAH CANDLE ({len(baru)})</b>")
+        for i, (r, x) in enumerate(baru, 1):
+            st_ = f"{x['mutu']} EKSEKUSI, " + ("SINYAL BARU" if tag_of[id(x)] == "BARU" else "ENTRY DIPERBARUI")
+            if x.get("tersentuh"):
+                st_ += ", entry pernah tersentuh"
+            blocks.append(_blok(i, r, x, st_, led))
+    if events:
+        blocks.append("<b>UPDATE ORDER</b>\n" + "\n".join("➡️ " + TG.hasil(ev, it, syms) for ev, it in events))
+    if alarm:
+        blocks.append("<b>ALARM ZONA EMAS UNTUK ENTRY MANUAL</b>\n"
+                      "Harga baru masuk zona emas di koin rapor A/B dengan konfirmasi skill tinggi. "
+                      "Cek chart dan tunggu candle konfirmasi searah.\n" + "\n".join(alarm))
+    TG.send(blocks)
+    for b in blocks:
+        print(b, "\n")
+    print(f"Cek per jam selesai {time.time() - t0:.0f}s")
 
 
 def pantau(now):
@@ -279,8 +386,9 @@ def scan(now, run4, tfs):
     except Exception as ex:
         print("[WARN] cek trade kamu:", ex)
         waspada = []
+    waspada += FX.peringatan(led, res_map)
     if waspada:
-        TG.send(["<b>QSE v148 | PERINGATAN TRADE KAMU</b>\n" + "\n".join(waspada)])
+        TG.send(["<b>QSE v148 | PERINGATAN POSISI</b>\n" + "\n".join(waspada)])
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, tfs)]
     for r in results:
         r["tk"] = tickers.get(r["symbol"])
@@ -401,6 +509,8 @@ def _blok(no, r, s, status, led=None):
         rows.append(f"Peluang terisi: 4 jam {s.get('p_isi4', 0):.0f}% | 24 jam {s['p_isi']:.0f}%")
     if s.get("dur", 0) > 0:
         rows.append(f"Estimasi sampai hasil: sekitar {s['dur']:.0f} candle ({s['dur'] * jam_c:.0f} jam)")
+    if r.get("skill"):
+        rows.append(SK.ringkas(r["skill"], s["arah"], lambda x: TG.fp(x, t)))
     tk = r.get("tk")
     if tk:
         rows.append(f"Pasar: volume 24j {_uang(tk['turnover'])} USDT | funding {tk['funding'] * 100:+.4f}% | "
@@ -468,7 +578,7 @@ def _pantauan(rs, sig, kode):
     ada = {r["symbol"] for r, _ in sig}
     pool = [r for r in rs if r["rapor"] in ("A", "B") and r["symbol"] not in ada and r.get("pasar")
             and (not r.get("tk") or r["tk"]["turnover"] >= FP["min_turnover"])]
-    pool.sort(key=lambda r: (r["rapor"] != "A", -r["wr"], -r["pf"]))
+    pool.sort(key=lambda r: (r["rapor"] != "A", -SK.konfirmasi(r.get("skill"), r["pasar"]["arah"])[0], -r["wr"], -r["pf"]))
 
     def baris(r, zona=False):
         p, t = r["pasar"], r["tick"]
@@ -477,7 +587,8 @@ def _pantauan(rs, sig, kode):
             lo, hi = p["gp"] if p["in_gp"] else p["gz"]
             z = f" | {'GP' if p['in_gp'] else 'GZ'} {TG.fp(min(lo, hi), t)}-{TG.fp(max(lo, hi), t)}"
         return (f"➡️ {TG.e(r['symbol'])} {p['arah']} | rapor {r['rapor']} {r['trd']}trd WR{r['wr']:.0f}% PF{r['pf']:.2f}"
-                f"{z} | batal {TG.fp(p['batal'], t)} | ADX {p['adx']:.0f} | {TG.e(_status_dasbor(r))}")
+                f"{z} | batal {TG.fp(p['batal'], t)} | ADX {p['adx']:.0f} | konf {SK.konfirmasi(r.get('skill'), p['arah'])[0]}/8"
+                f" | {TG.e(_status_dasbor(r))}")
 
     zona = [r for r in pool if r["pasar"]["zona_searah"] and r["pasar"]["btc_ok"]]
     momen = [r for r in pool if r["rapor"] == "A" and r["pasar"]["btc_selaras"] and r["pasar"]["bentuk"]]

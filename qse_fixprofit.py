@@ -337,3 +337,33 @@ def antrian_terapkan(led):
     for s in syms:
         batal_manual(led, s)
     return syms
+
+
+def peringatan(led, res_map):
+    """Posisi sinyal robot yang sudah jalan: kabari sekali bila BTC, bias, atau robot berbalik melawan."""
+    pesan = []
+    for it in led["open"].values():
+        if it["status"] not in ("TERISI", "TP1"):
+            continue
+        r = res_map.get((it["sym"], it.get("tf", "240")))
+        if not r:
+            continue
+        arah = it["arah"]
+        kasus = []
+        izin = r.get("izin", "LONG dan SHORT")
+        if izin != "LONG dan SHORT" and not izin.startswith(arah):
+            kasus.append(("btc", f"BTC 4J berbalik melawan {arah}"))
+        ps = r.get("pasar", {})
+        if ps.get("arah") and ps["arah"] != arah:
+            kasus.append(("bias", f"bias robot berbalik ke {ps['arah']}"))
+        if any(s["eksekusi"] and s["arah"] != arah and not s["sudah_masuk"] for s in r["saran"]):
+            kasus.append(("lawan", "robot memberi EKSEKUSI arah sebaliknya"))
+        al = it.setdefault("alert", [])
+        aktif = {k for k, _ in kasus}
+        it["alert"] = [a for a in al if a in aktif]
+        for k, txt in kasus:
+            if k not in it["alert"]:
+                it["alert"].append(k)
+                pesan.append(f"➡️ {it['sym']} {arah} sinyal robot {it['pola']} | {txt}. "
+                             f"Pertimbangkan kunci profit atau geser SL ke entry. Jangan buka arah sebaliknya di koin ini.")
+    return pesan

@@ -12,10 +12,14 @@ from config import STATE_DIR
 LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 BANTUAN = ("<b>Perintah QSE Bot</b>\n"
-           "/entry long limit AUSDT 1.022 = catat trade kamu. Tambahan opsional: sl 0.99 tp1 1.05 tp2 1.08. "
-           "Tanpa harga dianggap MARKET di harga sekarang\n"
-           "/cek AUSDT = konsultasi robot sebelum entry. Bisa ditambah arah dan harga: /cek AUSDT long 1.022\n"
-           "/tutup AUSDT 1.050 = catat keluar lebih awal dari trade kamu, harga opsional\n"
+           "/entry long market AUSDT = catat entry MARKET di harga sekarang\n"
+           "/entry long market AUSDT 1.022 = catat entry MARKET di harga 1.022\n"
+           "/entry long limit AUSDT 1.022 = catat order LIMIT yang menunggu terisi\n"
+           "/entry long limit AUSDT 1.022 terisi 02:00 = lupa catat, order sudah terisi jam 02:00 WIB. "
+           "Bisa juga terisi 29/09 23:10, atau terisi saja kalau baru saja terisi\n"
+           "Tambahan opsional di semua /entry: sl 0.99 tp1 1.05 tp2 1.08\n"
+           "/cek AUSDT = konsultasi robot sebelum entry, bisa ditambah arah dan harga: /cek AUSDT long 1.022\n"
+           "/tutup AUSDT 1.050 = catat keluar lebih awal, harga opsional\n"
            "/batal AUSDT = batalkan order yang belum terisi dan hapus sinyal robot koin itu dari catatan\n"
            "/status = order terbuka, trade kamu, dan WR hari ini, 7 hari, 30 hari\n"
            "/bantuan = daftar perintah ini")
@@ -118,7 +122,7 @@ def proses(cmds, dari_main=False):
     """Jalankan daftar (perintah, argumen), kirim balasan ke Telegram. Return jumlah dibalas."""
     n = 0
     for cmd, args in cmds:
-        args = [x for x in (re.sub(r"[^A-Z0-9.,]", "", a.upper()) for a in args) if x]
+        args = [x for x in (re.sub(r"[^A-Z0-9.,:/]", "", a.upper()) for a in args) if x]
         try:
             isi = balas(cmd, args, dari_main)
         except Exception as ex:

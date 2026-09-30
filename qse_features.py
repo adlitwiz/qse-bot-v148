@@ -617,7 +617,7 @@ def build(df, df1h, dfD, dfW, btc, symbol, mintick, tf="240", df4=None, btc_tf=N
     pPr = np.minimum(0.72, np.maximum(0.35, 0.42 + confMax * 0.035 + np.where(hurst > hurstT, 0.05, 0)))
 
     out = dict(
-        ts=ts, open=o, high=h, low=l, close=c, atr=atrV, cLa=cLa, cSa=cSa, lvL=lvL, lvS=lvS,
+        ts=ts, open=o, high=h, low=l, close=c, volume=vol, atr=atrV, cLa=cLa, cSa=cSa, lvL=lvL, lvS=lvS,
         kOKL=kOKL, kOKS=kOKS, okL=okL, okS=okS, g0L=g0L, g0S=g0S, mktOk=mktOk, slLv=slLv, slSv=slSv,
         rgIdx=rgIdx.astype(np.int64), trending=trending, ranging=ranging, pPr=pPr, biasLg=biasLg,
         sw8L=sw8L, sw8H=sw8H, wkBL=wkBL, wkBS=wkBS, obU=obU, obD=obD, capMove=capMove, d1=d1,
