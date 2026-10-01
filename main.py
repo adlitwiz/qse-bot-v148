@@ -385,6 +385,32 @@ def _siklus_saran(results, sel, cad, led, tickers, ctx, maks=3):
     return cand[:sisa]
 
 
+def _alasan_cad(rs, ctx):
+    if not QU.aktif("cadangan"):
+        return "Tidak ada: jalur ini dimatikan uji mundur karena hasil 6 bulannya jelek."
+    if ctx and (ctx["tahan"] or ctx["jeda"]):
+        return "Tidak ada: sinyal baru sedang ditahan (jeda berita atau pasar bergejolak)."
+    z = [r for r in rs if r["rapor"] in ("A", "B") and (r.get("pasar") or {}).get("zona_searah")
+         and r["pasar"].get("btc_ok")]
+    if not z:
+        return "Tidak ada: belum ada koin rapor A/B di zona emas yang diizinkan BTC."
+    best = max(SK.konfirmasi(r.get("skill"), r["pasar"]["arah"])[0] for r in z)
+    return (f"Tidak ada: {len(z)} koin di zona emas, konfirmasi skill tertinggi {best}/8, "
+            f"butuh minimal 6/8. Koinnya ada di bagian 3 untuk analisa manual.")
+
+
+def _alasan_sik(rs, ctx):
+    if not QU.aktif("siklus"):
+        return "Tidak ada: jalur ini dimatikan uji mundur karena hasil 6 bulannya jelek."
+    if ctx and (ctx["tahan"] or ctx["jeda"]):
+        return "Tidak ada: sinyal baru sedang ditahan (jeda berita atau pasar bergejolak)."
+    n = sum(1 for r in rs if ((r.get("siklus") or {}).get("saran")))
+    if n:
+        return f"Tidak ada: {n} kandidat pola kembar tertahan aliran dana, likuiditas, atau posisi kamu."
+    return ("Tidak ada: belum ada pola kembar yang teruji dan searah dengan arah 4J, 1D, aliran dana, dan BTC. "
+            "Syaratnya ketat, jadi jalur ini jarang muncul.")
+
+
 def _blok_sik(no, r, x, tag, led):
     t, sk = r["tick"], r["siklus"]
     pk, fl = sk["pola"], sk["aliran"]
@@ -1029,14 +1055,12 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         if s.get("tersentuh"):
             st += ", entry pernah tersentuh"
         out.append(_blok(i, r, s, st, led))
-    if cad:
-        out.append(f"{GARIS}\n🟡 <b>1B. SARAN CADANGAN ({len(cad)})</b>\n"
-                   "Dari zona emas dan skill tambahan.")
-        out += [_blok_cad(i, r, x, tg, led) for i, (r, x, tg) in enumerate(cad, 1)]
-    if sik:
-        out.append(f"{GARIS}\n🔵 <b>1C. SARAN SIKLUS ({len(sik)})</b>\n"
-                   "Dari pola kembar dan siklus pasar.")
-        out += [_blok_sik(i, r, x, tg, led) for i, (r, x, tg) in enumerate(sik, 1)]
+    out.append(f"{GARIS}\n🟡 <b>1B. SARAN CADANGAN ({len(cad)})</b>\n" +
+               ("Dari zona emas dan skill tambahan." if cad else _alasan_cad(rs, ctx)))
+    out += [_blok_cad(i, r, x, tg, led) for i, (r, x, tg) in enumerate(cad, 1)]
+    out.append(f"{GARIS}\n🔵 <b>1C. SARAN SIKLUS ({len(sik)})</b>\n" +
+               ("Dari pola kembar dan siklus pasar." if sik else _alasan_sik(rs, ctx)))
+    out += [_blok_sik(i, r, x, tg, led) for i, (r, x, tg) in enumerate(sik, 1)]
     if ev:
         out.append(f"{GARIS}\n❌ <b>2. SARAN DIBATALKAN ({len(ev)})</b>\n" + "\n".join(TG.hasil(e, it, syms) for e, it in ev))
     out += _pantauan(rs, sig + [(r, x) for r, x, _ in cad] + [(r, x) for r, x, _ in sik], kode)
