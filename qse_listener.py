@@ -59,7 +59,7 @@ def main():
             try:
                 pesan = SY.pantau()
                 if pesan:
-                    TG.send(["<b>QSE v148 | TRADE KAMU</b>\n" + "\n".join(pesan)])
+                    TG.send(["👤 <b>QSE v148 | TRADE KAMU</b>\n\n" + "\n".join(pesan)])
             except Exception as ex:
                 print("[WARN] pantau", ex)
         off = _st().get("tg_offset", 0)

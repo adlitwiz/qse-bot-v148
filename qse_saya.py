@@ -60,6 +60,15 @@ def harga_live(sym):
         return 0.0
 
 
+def harga_semua():
+    try:
+        r = requests.get(BYBIT_URL + "/v5/market/tickers", params={"category": "linear"}, timeout=15)
+        return {x["symbol"]: float(x["lastPrice"]) for x in r.json().get("result", {}).get("list", [])
+                if x.get("lastPrice")}
+    except Exception:
+        return {}
+
+
 def _kline(sym, iv, limit=1000):
     try:
         r = requests.get(BYBIT_URL + "/v5/market/kline",
@@ -278,6 +287,11 @@ def parse_entry(args):
             jam = a
         elif "/" in a:
             tgl = a
+        elif a in ("LEV", "LEVERAGE") and i + 1 < len(args) and _angka(args[i + 1].rstrip("X")) is not None:
+            kv["LEV"] = _angka(args[i + 1].rstrip("X"))
+            i += 1
+        elif a.endswith("X") and len(a) > 1 and _angka(a[:-1]) is not None:
+            kv["LEV"] = _angka(a[:-1])
         elif a in ("SL", "TP", "TP1", "TP2") and i + 1 < len(args) and _angka(args[i + 1]) is not None:
             kv["TP1" if a == "TP" else a] = _angka(args[i + 1])
             i += 1
@@ -352,7 +366,7 @@ def entry(args):
                               tp2=tp2, atr=a_now, tick=t, sumber=sumber, nilai=label,
                               created_ts=isi_ts or now, last_ts=isi_ts or now,
                               status="TERISI" if isi_ts is not None else "MENUNGGU",
-                              fill_ts=isi_ts or 0, alert=[])
+                              fill_ts=isi_ts or 0, alert=[], lev=kv.get("LEV"))
         return d["seq"]
     ubah(simpan)
     fee_r = 2 * FEE / 100 * harga / risk
@@ -485,8 +499,9 @@ def pantau():
                 if px and jauh > 2.5 and "jauh" not in it["alert"]:
                     it["alert"].append("jauh")
                     ev.append(("INFO", f"LIMIT kejauhan, harga sudah {jauh:.1f} ATR dari entry. Peluang terisi hari ini kecil."))
+            ik = {"TERISI": "📥", "TP1": "💰", "TP2": "🏆", "SL": "🛑", "BE": "⚖️", "INFO": "⚠️"}
             for e, txt in ev:
-                pesan.append(f"➡️ <b>{it['sym']} {it['arah']}</b> | {txt} | entry {fp(it['entry'], it['tick'])}")
+                pesan.append(f"{ik.get(e, '•')} <b>{it['sym']} {it['arah']}</b>\n↳ {txt} | entry {fp(it['entry'], it['tick'])}")
             if it["status"] == "SELESAI":
                 d["closed"].append(d["open"].pop(k))
         return pesan
@@ -521,7 +536,7 @@ def cek_4j(res_map):
                     it["alert"].append(k)
                     saran = ("Kalau posisi sudah jalan, pertimbangkan kunci profit atau perketat SL."
                              if it["status"] != "MENUNGGU" else "Order belum terisi, pertimbangkan batal.")
-                    pesan.append(f"➡️ <b>{it['sym']} {arah}</b> | {txt}. {saran}")
+                    pesan.append(f"⚠️ <b>{it['sym']} {arah}</b>\n↳ {txt}. {saran}")
         return pesan
     return ubah(f)
 
@@ -544,14 +559,74 @@ def ringkas(closed, why_ok=("SL", "BE", "TP2", "TUTUP")):
     return " | ".join(rows)
 
 
-def status_saya():
-    d = _load()
-    rows = [f"<b>Trade kamu terbuka ({len(d['open'])})</b>"]
-    nm = {"MENUNGGU": "menunggu terisi", "TERISI": "posisi jalan", "TP1": "sudah TP1, SL di entry"}
-    for i, it in enumerate(d["open"].values(), 1):
-        rows.append(f"➡️ {i}. {it['sym']} {it['arah']} {it['order']} | entry {fp(it['entry'], it['tick'])} | "
-                    f"{nm.get(it['status'], it['status'])} | nilai robot {it['nilai']}")
-    if not d["open"]:
-        rows.append("Tidak ada.")
-    rows.append("WR trade kamu: " + ringkas(d["closed"]))
+def ringkas_rapi(judul, closed, why_ok=("SL", "BE", "TP2", "TUTUP")):
+    rows = [f"<b>{judul}</b>"]
+    for nama, a in _periode():
+        cl = [c for c in closed if c.get("why") in why_ok and c.get("closed_ts", 0) >= a]
+        n = len(cl)
+        w = sum(1 for c in cl if c["result_r"] > 0)
+        net = sum(c["result_r"] for c in cl)
+        rows.append(f"{nama.capitalize()}: {n} trade | WR {w / n * 100 if n else 0:.0f}% | {net:+.2f}R")
     return "\n".join(rows)
+
+
+def floating(it, px):
+    """Untung atau rugi berjalan. Return dict persen harga, R, ROE (bila leverage dicatat), atau None."""
+    if not px or it["status"] not in ("TERISI", "TP1"):
+        return None
+    L = it["arah"] == "LONG"
+    e, sl, t1 = it["entry"], it["sl"], it["tp1"]
+    risk = max(abs(e - sl), 1e-12)
+    pct_now = ((px - e) if L else (e - px)) / e * 100
+    r_now = ((px - e) if L else (e - px)) / risk
+    if it["status"] == "TP1":
+        pct = 0.5 * abs(t1 - e) / e * 100 + 0.5 * pct_now
+        r = 0.5 * abs(t1 - e) / risk + 0.5 * r_now
+    else:
+        pct, r = pct_now, r_now
+    lev = it.get("lev")
+    return dict(pct=pct, r=r, roe=pct * lev if lev else None, lev=lev)
+
+
+NM_POS = {"MENUNGGU": "menunggu terisi", "TERISI": "posisi jalan", "TP1": "sudah TP1, SL di entry"}
+
+
+def blok_posisi(no, it, px, judul_extra=""):
+    t = it.get("tick") or tick_of(None, it["entry"])
+    ik = "🟢" if it["arah"] == "LONG" else "🔴"
+    rows = [f"{ik} <b>{no}. {it['sym']} {it['arah']} {it.get('order', '')}</b>{judul_extra}",
+            f"Status: {NM_POS.get(it['status'], it['status'])}",
+            f"Entry {fp(it['entry'], t)} | harga sekarang {fp(px, t) if px else '-'}"]
+    fl = floating(it, px)
+    if fl:
+        tanda = "🟩 Floating UNTUNG" if fl["r"] >= 0 else "🟥 Floating RUGI"
+        teks = f"{tanda}: {fl['pct']:+.2f}% | {fl['r']:+.2f}R"
+        if fl["roe"] is not None:
+            teks += f" | ROE {fl['roe']:+.1f}% di {fl['lev']:g}x"
+        rows.append(teks)
+    elif it["status"] == "MENUNGGU" and px:
+        jarak = abs(px - it["entry"]) / it["entry"] * 100
+        rows.append(f"Jarak harga ke entry: {jarak:.2f}%")
+    if it["status"] == "TP1":
+        rows.append(f"SL sudah di entry {fp(it['entry'], t)} | TP2 {fp(it['tp2'], t)}")
+    else:
+        rows.append(f"SL {fp(it['sl'], t)} | TP1 {fp(it['tp1'], t)} | TP2 {fp(it['tp2'], t)}")
+    return "\n".join(rows)
+
+
+def status_saya(harga=None):
+    d = _load()
+    harga = harga if harga is not None else harga_semua()
+    op = list(d["open"].values())
+    blok = [f"━━━━━━━━━━━━━━━━\n👤 <b>TRADE KAMU ({len(op)})</b>"]
+    if not op:
+        blok.append("Tidak ada trade terbuka.")
+    tot = 0.0
+    for i, it in enumerate(op, 1):
+        blok.append(blok_posisi(i, it, harga.get(it["sym"], 0.0), f" | nilai robot {it['nilai']}"))
+        fl = floating(it, harga.get(it["sym"], 0.0))
+        tot += fl["r"] if fl else 0.0
+    if any(floating(it, harga.get(it["sym"], 0.0)) for it in op):
+        blok.append(f"{'🟩' if tot >= 0 else '🟥'} Total floating trade kamu: {tot:+.2f}R")
+    blok.append(ringkas_rapi("📈 WR TRADE KAMU", d["closed"]))
+    return "\n\n".join(blok)

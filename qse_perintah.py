@@ -17,7 +17,7 @@ BANTUAN = ("<b>Perintah QSE Bot</b>\n"
            "/entry long limit AUSDT 1.022 = catat order LIMIT yang menunggu terisi\n"
            "/entry long limit AUSDT 1.022 terisi 02:00 = lupa catat, order sudah terisi jam 02:00 WIB. "
            "Bisa juga terisi 29/09 23:10, atau terisi saja kalau baru saja terisi\n"
-           "Tambahan opsional di semua /entry: sl 0.99 tp1 1.05 tp2 1.08\n"
+           "Tambahan opsional di semua /entry: sl 0.99 tp1 1.05 tp2 1.08 lev 10\n"
            "/cek AUSDT = konsultasi robot sebelum entry, bisa ditambah arah dan harga: /cek AUSDT long 1.022\n"
            "/tutup AUSDT 1.050 = catat keluar lebih awal, harga opsional\n"
            "/batal AUSDT = batalkan order yang belum terisi dan hapus sinyal robot koin itu dari catatan\n"
@@ -98,21 +98,30 @@ def balas(cmd, args, dari_main=False):
         if not dari_main:
             for s in FX.antrian_lihat():
                 FX.batal_manual(led, s)
-        sig_all = [c for c in led["closed"] if c.get("why") in ("SL", "BE", "TP2")]
+        sig_all = [c for c in led["closed"] if c.get("why") in ("SL", "BE", "TP2") and not c.get("cadangan")]
+        cad_all = [c for c in led["closed"] if c.get("why") in ("SL", "BE", "TP2") and c.get("cadangan")]
         try:
             with open(os.path.join(STATE_DIR, "state.json")) as f:
                 s4 = json.load(f).get("scan4")
         except Exception:
             s4 = None
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
-        return "\n".join([
-            "<b>Sinyal robot</b>",
-            TG.ringkas_open(led),
-            "WR sinyal robot: " + SY.ringkas(sig_all, ("SL", "BE", "TP2")),
-            "",
-            SY.status_saya(),
-            "",
-            f"Scan 4 jam terakhir: candle tutup {akhir} WIB"])
+        harga = SY.harga_semua()
+        blok = ["📊 <b>QSE v148 | STATUS</b>\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB"]
+        sig_open = list(led["open"].values())
+        blok.append(f"━━━━━━━━━━━━━━━━\n🤖 <b>SINYAL ROBOT DIPANTAU ({len(sig_open)})</b>" + ("" if sig_open else "\nTidak ada."))
+        tot = 0.0
+        for i, it in enumerate(sig_open, 1):
+            label = " | CADANGAN" if it.get("cadangan") else f" | {it['pola']}"
+            blok.append(SY.blok_posisi(i, it, harga.get(it["sym"], 0.0), label))
+            fl = SY.floating(it, harga.get(it["sym"], 0.0))
+            tot += fl["r"] if fl else 0.0
+        if any(SY.floating(it, harga.get(it["sym"], 0.0)) for it in sig_open):
+            blok.append(f"{'🟩' if tot >= 0 else '🟥'} Total floating sinyal robot: {tot:+.2f}R")
+        blok.append(SY.status_saya(harga))
+        blok.append(SY.ringkas_rapi("📈 WR SINYAL ROBOT", sig_all, ("SL", "BE", "TP2")))
+        blok.append(SY.ringkas_rapi("WR SARAN CADANGAN", cad_all, ("SL", "BE", "TP2")))
+        return "\n\n".join(blok)
     if cmd in ("/bantuan", "/help", "/start"):
         return BANTUAN
     return ""
@@ -128,6 +137,8 @@ def proses(cmds, dari_main=False):
         except Exception as ex:
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
-            TG.send([f"<b>QSE v148 | {cmd.upper()[1:]}</b>\n{isi}"])
+            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/batal": "❌", "/bantuan": "❓", "/help": "❓", "/start": "❓"}
+            isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"
+            TG.send(isi.split("\n\n"))
             n += 1
     return n

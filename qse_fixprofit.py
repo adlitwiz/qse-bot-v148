@@ -106,6 +106,22 @@ def recheck(led, res_map, tfs_now):
         r = res_map.get((it["sym"], tf))
         if r is None:
             continue
+        if it.get("cadangan"):
+            p = r.get("pasar") or {}
+            why = ""
+            if r["rapor"] not in ("A", "B"):
+                why = "rapor turun ke %s" % r["rapor"]
+            elif p.get("arah") != it["arah"]:
+                why = "bias robot berbalik ke %s" % p.get("arah")
+            elif not p.get("btc_ok"):
+                why = "BTC 4J melawan"
+            elif not p.get("zona_searah") and abs((r.get("live") or r["close"]) - it["entry"]) > 1.5 * r["atr"]:
+                why = "harga keluar dari zona emas"
+            if why:
+                _close(led, key, it, 0.0, why, r["time"])
+                it["status"] = "BATAL"
+                ev.append(("BATAL", it))
+            continue
         same = [s for s in r["saran"] if s["pola"] == it["pola"] and s["arah"] == it["arah"]]
         ok = [s for s in same if s["eksekusi"] and not s["sudah_masuk"]]
         why = ""
@@ -293,7 +309,7 @@ def register(led, r, s):
                             sl=s["sl"], tp1=s["tp1"], tp2=s["tp2"], order=s["order"], sent_ts=r["time"],
                             start_ts=start, last_ts=start - 1, exp_ts=start + int(FP["limit_hours"] * 3600000),
                             status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r["rapor"],
-                            fill_ts=start if mk else 0, p_isi=s["p_isi"])
+                            fill_ts=start if mk else 0, p_isi=s["p_isi"], cadangan=bool(s.get("cadangan")))
     return "UPDATE" if old else "BARU"
 
 
@@ -364,6 +380,6 @@ def peringatan(led, res_map):
         for k, txt in kasus:
             if k not in it["alert"]:
                 it["alert"].append(k)
-                pesan.append(f"➡️ {it['sym']} {arah} sinyal robot {it['pola']} | {txt}. "
+                pesan.append(f"⚠️ <b>{it['sym']} {arah}</b> sinyal robot {it['pola']}\n↳ {txt}. "
                              f"Pertimbangkan kunci profit atau geser SL ke entry. Jangan buka arah sebaliknya di koin ini.")
     return pesan
