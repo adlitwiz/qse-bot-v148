@@ -84,9 +84,10 @@ def hasil(ev, it, tick_map):
     ikon = {"TERISI": "📥", "TP1": "💰", "TP2": "🏆", "SL": "🛑", "BE": "⚖️", "BATAL": "❌"}.get(ev, "•")
     arti = {"TERISI": "ORDER TERISI", "TP1": "KENA TP1, tutup separuh, SL geser ke entry", "TP2": "KENA TP2, selesai",
             "SL": "KENA SL", "BE": "keluar di entry setelah TP1"}
-    txt = f"BATALKAN {it['order']}, {it.get('why', '')}" if ev == "BATAL" else arti[ev]
+    txt = (f"saran dibatalkan: {it.get('why', '')}. Kalau LIMIT-nya sudah kamu pasang, batalkan juga"
+           if ev == "BATAL" else arti[ev])
     r = f" ({it['result_r']:+.2f}R)" if ev in ("TP2", "SL", "BE") and "result_r" in it else ""
-    cad = " | CADANGAN" if it.get("cadangan") else ""
+    cad = " | CADANGAN" if it.get("cadangan") else " | SIKLUS" if it.get("siklus") else ""
     return (f"{ikon} <b>{e(it['sym'])} {it['arah']}</b> TF {tf}{cad} | {e(it['pola'])}\n"
             f"↳ {e(txt)}{r} | entry {fp(it['entry'], t)}")
 

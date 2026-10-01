@@ -16,6 +16,7 @@ if os.path.exists(ENV):
 
 import qse_perintah as QP           # noqa: E402
 import qse_saya as SY               # noqa: E402
+import qse_alarm as AL              # noqa: E402
 import telegram_notify as TG        # noqa: E402
 
 STATE = os.path.join(STATE_DIR, "state.json")
@@ -62,6 +63,12 @@ def main():
                     TG.send(["👤 <b>QSE v148 | TRADE KAMU</b>\n\n" + "\n".join(pesan)])
             except Exception as ex:
                 print("[WARN] pantau", ex)
+            try:
+                kena = AL.cek()
+                if kena:
+                    TG.send(["🔔 <b>QSE v148 | ALARM HARGA</b>\n\n" + "\n\n".join(kena)])
+            except Exception as ex:
+                print("[WARN] alarm", ex)
         off = _st().get("tg_offset", 0)
         try:
             r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",

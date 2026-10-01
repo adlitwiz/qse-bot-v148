@@ -106,6 +106,13 @@ def recheck(led, res_map, tfs_now):
         r = res_map.get((it["sym"], tf))
         if r is None:
             continue
+        if it.get("siklus"):
+            sk = (r.get("siklus") or {}).get("saran")
+            if not sk or sk["arah"] != it["arah"]:
+                _close(led, key, it, 0.0, "pola kembar tidak lagi searah", r["time"])
+                it["status"] = "BATAL"
+                ev.append(("BATAL", it))
+            continue
         if it.get("cadangan"):
             p = r.get("pasar") or {}
             why = ""
@@ -309,7 +316,8 @@ def register(led, r, s):
                             sl=s["sl"], tp1=s["tp1"], tp2=s["tp2"], order=s["order"], sent_ts=r["time"],
                             start_ts=start, last_ts=start - 1, exp_ts=start + int(FP["limit_hours"] * 3600000),
                             status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r["rapor"],
-                            fill_ts=start if mk else 0, p_isi=s["p_isi"], cadangan=bool(s.get("cadangan")))
+                            fill_ts=start if mk else 0, p_isi=s["p_isi"], cadangan=bool(s.get("cadangan")),
+                            siklus=bool(s.get("siklus")))
     return "UPDATE" if old else "BARU"
 
 

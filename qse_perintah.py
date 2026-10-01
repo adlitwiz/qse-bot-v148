@@ -6,22 +6,35 @@ import re
 import time
 import qse_fixprofit as FX
 import qse_saya as SY
+import qse_alarm as AL
 import telegram_notify as TG
 from config import STATE_DIR
 
 LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
-BANTUAN = ("<b>Perintah QSE Bot</b>\n"
-           "/entry long market AUSDT = catat entry MARKET di harga sekarang\n"
-           "/entry long market AUSDT 1.022 = catat entry MARKET di harga 1.022\n"
-           "/entry long limit AUSDT 1.022 = catat order LIMIT yang menunggu terisi\n"
-           "/entry long limit AUSDT 1.022 terisi 02:00 = lupa catat, order sudah terisi jam 02:00 WIB. "
-           "Bisa juga terisi 29/09 23:10, atau terisi saja kalau baru saja terisi\n"
-           "Tambahan opsional di semua /entry: sl 0.99 tp1 1.05 tp2 1.08 lev 10\n"
-           "/cek AUSDT = konsultasi robot sebelum entry, bisa ditambah arah dan harga: /cek AUSDT long 1.022\n"
-           "/tutup AUSDT 1.050 = catat keluar lebih awal, harga opsional\n"
-           "/batal AUSDT = batalkan order yang belum terisi dan hapus sinyal robot koin itu dari catatan\n"
-           "/status = order terbuka, trade kamu, dan WR hari ini, 7 hari, 30 hari\n"
+BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
+           "<b>Catat entry</b>\n"
+           "/entry long market AUSDT = entry MARKET di harga sekarang\n"
+           "/entry long limit AUSDT 1.022 = order LIMIT yang menunggu terisi\n"
+           "/entry long limit AUSDT 1.022 terisi 02:00 = lupa catat, sudah terisi jam 02:00 WIB\n"
+           "Tambahan opsional: sl 0.99 tp1 1.05 tp2 1.08 lev 10\n\n"
+           "<b>Kelola posisi</b>\n"
+           "/tp AUSDT 30% = ambil profit 30% posisi di harga sekarang (bisa 50% atau 100%)\n"
+           "/sl AUSDT 50% = cut loss 50% posisi di harga sekarang\n"
+           "/tp AUSDT 50% 1.050 = sama, tapi di harga yang kamu tulis\n"
+           "/ubah AUSDT sl 0.99 tp1 1.05 tp2 1.08 = ubah level SL atau TP\n"
+           "/ubah AUSDT sl entry = geser SL ke titik impas\n"
+           "/tutup AUSDT = tutup semua sisa posisi di harga sekarang\n"
+           "/batal AUSDT = batalkan order yang belum terisi\n\n"
+           "<b>Alarm harga</b>\n"
+           "/alert BTC 60000 = kabari saat harga menyentuh 60000, bisa ditambah catatan\n"
+           "/alert = daftar alarm aktif\n"
+           "/alert hapus BTC atau /alert hapus semua = hapus alarm\n\n"
+           "<b>Info</b>\n"
+           "/cek AUSDT = konsultasi robot sebelum entry\n"
+           "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
+           "/uji = hasil uji mundur 6 bulan saran cadangan dan saran siklus\n"
+           "/status = trade kamu, floating, dan WR\n"
            "/bantuan = daftar perintah ini")
 
 
@@ -76,6 +89,19 @@ def balas(cmd, args, dari_main=False):
         return SY.konsultasi(sym, arah, harga)
     if cmd == "/tutup":
         return SY.tutup(args)
+    if cmd == "/tp":
+        return SY.tutup(args, "ambil profit")
+    if cmd == "/sl":
+        return SY.tutup(args, "cut loss")
+    if cmd == "/ubah":
+        return SY.ubah_level(args)
+    if cmd in ("/alert", "/alarm"):
+        return AL.perintah(args)
+    if cmd == "/evaluasi":
+        return SY.evaluasi()
+    if cmd == "/uji":
+        import qse_uji as QU
+        return QU.ringkas()
     if cmd == "/batal":
         if not args:
             return "Format: /batal AUSDT"
@@ -86,7 +112,7 @@ def balas(cmd, args, dari_main=False):
             n_saya, jalan = SY.batal(sym)
             bag = []
             if n_sig:
-                bag.append(f"{n_sig} sinyal robot dihapus dari catatan" + (" (tercatat permanen setelah scan selesai)" if antri else ""))
+                bag.append(f"{n_sig} saran robot dihapus dari daftar pantau" + (" (tercatat permanen setelah scan selesai)" if antri else ""))
             if n_saya:
                 bag.append(f"{n_saya} order kamu yang belum terisi dibatalkan")
             if jalan:
@@ -94,34 +120,13 @@ def balas(cmd, args, dari_main=False):
             rows.append(f"➡️ {sym}: " + ("; ".join(bag) if bag else "tidak ada order terbuka"))
         return "\n".join(rows)
     if cmd == "/status":
-        led = FX.load()
-        if not dari_main:
-            for s in FX.antrian_lihat():
-                FX.batal_manual(led, s)
-        sig_all = [c for c in led["closed"] if c.get("why") in ("SL", "BE", "TP2") and not c.get("cadangan")]
-        cad_all = [c for c in led["closed"] if c.get("why") in ("SL", "BE", "TP2") and c.get("cadangan")]
         try:
             with open(os.path.join(STATE_DIR, "state.json")) as f:
                 s4 = json.load(f).get("scan4")
         except Exception:
             s4 = None
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
-        harga = SY.harga_semua()
-        blok = ["📊 <b>QSE v148 | STATUS</b>\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB"]
-        sig_open = list(led["open"].values())
-        blok.append(f"━━━━━━━━━━━━━━━━\n🤖 <b>SINYAL ROBOT DIPANTAU ({len(sig_open)})</b>" + ("" if sig_open else "\nTidak ada."))
-        tot = 0.0
-        for i, it in enumerate(sig_open, 1):
-            label = " | CADANGAN" if it.get("cadangan") else f" | {it['pola']}"
-            blok.append(SY.blok_posisi(i, it, harga.get(it["sym"], 0.0), label))
-            fl = SY.floating(it, harga.get(it["sym"], 0.0))
-            tot += fl["r"] if fl else 0.0
-        if any(SY.floating(it, harga.get(it["sym"], 0.0)) for it in sig_open):
-            blok.append(f"{'🟩' if tot >= 0 else '🟥'} Total floating sinyal robot: {tot:+.2f}R")
-        blok.append(SY.status_saya(harga))
-        blok.append(SY.ringkas_rapi("📈 WR SINYAL ROBOT", sig_all, ("SL", "BE", "TP2")))
-        blok.append(SY.ringkas_rapi("WR SARAN CADANGAN", cad_all, ("SL", "BE", "TP2")))
-        return "\n\n".join(blok)
+        return "📊 <b>QSE v148 | STATUS</b>\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
     if cmd in ("/bantuan", "/help", "/start"):
         return BANTUAN
     return ""
@@ -131,13 +136,15 @@ def proses(cmds, dari_main=False):
     """Jalankan daftar (perintah, argumen), kirim balasan ke Telegram. Return jumlah dibalas."""
     n = 0
     for cmd, args in cmds:
-        args = [x for x in (re.sub(r"[^A-Z0-9.,:/]", "", a.upper()) for a in args) if x]
+        args = [x for x in (re.sub(r"[^A-Z0-9.,:/%]", "", a.upper()) for a in args) if x]
         try:
             isi = balas(cmd, args, dari_main)
         except Exception as ex:
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
-            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/batal": "❌", "/bantuan": "❓", "/help": "❓", "/start": "❓"}
+            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
+                    "/uji": "🧪",
+                    "/bantuan": "❓", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"
             TG.send(isi.split("\n\n"))
             n += 1

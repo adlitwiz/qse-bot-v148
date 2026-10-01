@@ -5,6 +5,7 @@ import qse_features as F
 import qse_engine as E
 import qse_rules as R
 import qse_skill as SK
+import qse_siklus as SIK
 from config import P
 
 TFMS = {"240": 4 * 3600 * 1000, "60": 3600 * 1000}
@@ -330,5 +331,6 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         symbol=sym, tf=tf, tf_ms=TF_MS, time=int(ts[L]), close=float(c), atr=float(a), tick=tick, rapor=nilT, trd=totT,
         wr=wrT, pf=pfT, net_r=float(vlRes), bias="LONG" if biasLg else "SHORT", regime=rg, bProb=bProb,
         btc=btcTxt, golden=gIdx + 1 if gIdx >= 0 else 0, saran=saran, candle=n, mulai=mu, skill=SK.analisa(v, RT),
+        siklus=SIK.analisa(df, dfD, bProb, sym.startswith("BTC")) if tf == "240" else None,
         lolos=int(sum(1 for i in range(90) if pvA[i] or pvA[i + 90])), feed="FEED RESMI BYBIT:%s.P" % sym,
     )
