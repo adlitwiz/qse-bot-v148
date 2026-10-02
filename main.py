@@ -638,6 +638,41 @@ def uji_mingguan(paksa=False):
     TG.send([QU.ringkas(u) + "\n\nJalur yang hasilnya jelek otomatis berhenti mengirim saran."])
 
 
+def _blok_posisi_analisa(it, r):
+    vonis, alasan, aksi, _ = SY.analisa_posisi(it, r, (r or {}).get("live"))
+    px = (r or {}).get("live") or 0
+    fl = SY.floating(it, px) if px else None
+    ik = {"MASIH SESUAI ANALISA": "✅", "MELEMAH": "⚠️", "BERBALIK": "🛑"}.get(vonis, "•")
+    head = f"{IKON.get(it['arah'], '')} <b>{TG.e(it['sym'])} {it['arah']}</b> | {SY.NM_POS.get(it['status'], it['status'])}"
+    if fl:
+        head += f" | {fl['pct']:+.2f}% | {fl['r']:+.2f}R"
+    return f"{head}\n{ik} {vonis}\nKenapa: {TG.e('; '.join(alasan[:6]))}\nSaran: {TG.e(aksi)}"
+
+
+def _cek_posisi_berubah(res_map):
+    """Kabari bila vonis analisa posisi kamu berubah (misalnya dari MASIH SESUAI ke MELEMAH atau BERBALIK)."""
+    out = []
+    ganti = {}
+    for k, it in SY.lihat()["open"].items():
+        if it["status"] not in ("TERISI", "TP1"):
+            continue
+        r = res_map.get(it["sym"]) or SY.hasil_robot(it["sym"])
+        if not r:
+            continue
+        vonis = SY.analisa_posisi(it, r, r.get("live"))[0]
+        if it.get("vonis_pos") and vonis != it["vonis_pos"]:
+            out.append(_blok_posisi_analisa(it, r) + f"\nSebelumnya: {it['vonis_pos']}")
+        if vonis != it.get("vonis_pos"):
+            ganti[k] = vonis
+    if ganti:
+        def f(d):
+            for k, v in ganti.items():
+                if k in d["open"]:
+                    d["open"][k]["vonis_pos"] = v
+        SY.ubah(f)
+    return out
+
+
 def cek_cepat(now, paksa=False):
     """Tiap jam di tengah candle 4J: nilai ulang koin rapor A/B (dan koin yang punya order menunggu) memakai
     candle 4J yang sedang berjalan, persis seperti panel DASBOR. Kirim hanya sinyal baru, entry yang bergeser,
@@ -654,6 +689,7 @@ def cek_cepat(now, paksa=False):
     FX.antrian_terapkan(led)
     target = {r["symbol"] for r in lama if r.get("tf", "240") == "240" and r["rapor"] in RAPOR_OK}
     target |= {v["sym"] for v in led["open"].values() if v["status"] == "MENUNGGU" and v.get("tf", "240") == "240"}
+    target |= {v["sym"] for v in SY.lihat()["open"].values()}        # posisi kamu selalu dipantau
     if not target:
         return
     syms = B.get_symbols()
@@ -702,7 +738,7 @@ def cek_cepat(now, paksa=False):
                     f"sebelum sampai 1 jam sesudah rilis. Posisi jalan: kunci profit atau geser SL ke entry sebelum rilis.")
     if ctx["kirim_guncang"]:
         g = ctx["kirim_guncang"]
-        info.append(f"⚠️ PASAR BERGEJOLAK: BTC bergerak {g['x']:.1f} kali gerak normal, 3 jam terakhir {g['pct']:+.1f}%. "
+        info.append(f"⚠️ PASAR BERGEJOLAK: BTC {'NAIK' if g['pct'] > 0 else 'TURUN'} tajam, {g['x']:.1f} kali gerak normal, 3 jam terakhir {g['pct']:+.1f}%. "
                     f"Sinyal baru ditahan 3 jam. Posisi jalan: kunci profit atau geser SL ke entry.")
     # alarm zona emas untuk trading manual, sekali per koin per candle 4J
     st = _st_load()
@@ -718,12 +754,12 @@ def cek_cepat(now, paksa=False):
         if n_k >= ALARM_KONF and (paksa or sudah.get(r["symbol"]) != tutup):
             if not paksa:
                 sudah[r["symbol"]] = tutup
-            lo, hi = p["gp"] if p.get("in_gp") else p["gz"]
+            zi = SY.info_zona(r) or {}
             alarm.append(f"{IKON.get(p['arah'], '')} <b>{TG.e(r['symbol'])} {p['arah']}</b> | rapor {r['rapor']} | konf {n_k}/8\n"
-                         f"{'Golden pocket' if p.get('in_gp') else 'Golden zone'} {TG.fp(min(lo, hi), r['tick'])}-"
-                         f"{TG.fp(max(lo, hi), r['tick'])} | batal {TG.fp(p['batal'], r['tick'])}\n"
-                         f"DASBOR: {TG.e(_status_dasbor(r))}")
+                         + (TG.e(zi["teks"]) + "\n" if zi.get("teks") else "")
+                         + f"DASBOR: {TG.e(_status_dasbor(r))}")
     _st_update({"alarm_zona": {k: v for k, v in sudah.items() if v >= tutup - H4}})
+    pos_berubah = _cek_posisi_berubah({r["symbol"]: r for r in results})
     FX.antrian_terapkan(led)
     FX.save(led)
     # perbarui hasil scan untuk /cek tanpa menghapus koin lain
@@ -732,7 +768,7 @@ def cek_cepat(now, paksa=False):
     with open(path, "w") as f:
         json.dump(lama, f, default=float)
     masih = [(r, x) for r, x in sel if tag_of[id(x)] == "sudah dikirim"] if paksa else []
-    if not (baru or events or alarm or cad or sik or info or paksa):
+    if not (baru or events or alarm or cad or sik or info or paksa or pos_berubah):
         print(f"Cek per jam {len(results)} koin, tidak ada perubahan. {time.time() - t0:.0f}s")
         return
     jam = now.astimezone(WIB).strftime("%d/%m %H:%M WIB")
@@ -746,6 +782,8 @@ def cek_cepat(now, paksa=False):
         blocks += [_blok(i, r, x, f"{x['mutu']} EKSEKUSI, masih valid", led) for i, (r, x) in enumerate(masih, 1)]
     if info:
         blocks.append(f"{GARIS}\n⚠️ <b>PERINGATAN PASAR</b>\n" + "\n".join(info))
+    if pos_berubah:
+        blocks.append(f"{GARIS}\n👤 <b>ANALISA POSISI KAMU BERUBAH</b>\n\n" + "\n\n".join(pos_berubah))
     if baru:
         blocks.append(f"{GARIS}\n🆕 <b>SINYAL BARU DI TENGAH CANDLE ({len(baru)})</b>")
         for i, (r, x) in enumerate(baru, 1):
@@ -883,7 +921,7 @@ def scan(now, run4, tfs):
                            f"Tutup posisi atau batalkan order sebelum tanggal delisting.")
     if ctx["kirim_guncang"]:
         g = ctx["kirim_guncang"]
-        waspada.append(f"⚠️ PASAR BERGEJOLAK: BTC bergerak {g['x']:.1f} kali gerak normal, 3 jam terakhir {g['pct']:+.1f}%. "
+        waspada.append(f"⚠️ PASAR BERGEJOLAK: BTC {'NAIK' if g['pct'] > 0 else 'TURUN'} tajam, {g['x']:.1f} kali gerak normal, 3 jam terakhir {g['pct']:+.1f}%. "
                        f"Sinyal baru ditahan 3 jam. Posisi jalan: kunci profit atau geser SL ke entry.")
     if waspada:
         TG.send(["⚠️ <b>QSE v148 | PERINGATAN POSISI</b>\n\n" + "\n\n".join(waspada)])
@@ -1013,7 +1051,10 @@ def _blok(no, r, s, status, led=None):
     if s["order"] != "MARKET":
         rows.append(f"Peluang terisi 4 jam {s.get('p_isi4', 0):.0f}% | 24 jam {s['p_isi']:.0f}%")
     if s.get("dur", 0) > 0:
-        rows.append(f"Perkiraan hasil ±{s['dur']:.0f} candle ({s['dur'] * jam_c:.0f} jam)")
+        rows.append(f"Perkiraan hasil ±{s['dur']:.0f} candle ({s['dur'] * jam_c:.0f} jam) dari riwayat pola")
+    e1 = SY.estimasi_jam(s["tp1"] - s["entry"], r["atr"], jam_c)
+    e2 = SY.estimasi_jam(s["tp2"] - s["entry"], r["atr"], jam_c)
+    rows.append(f"Estimasi tersentuh dari volatilitas sekarang: TP1 {SY.teks_waktu(e1)} | TP2 {SY.teks_waktu(e2)}")
     if r.get("skill"):
         n_k, tot, ok = SK.konfirmasi(r["skill"], s["arah"])
         rows.append(f"Konfirmasi skill {n_k}/{tot}" + (f": {', '.join(ok)}" if ok else ""))
@@ -1120,21 +1161,22 @@ def _pantauan(rs, sig, kode):
             f"Lengkap {hit('Lengkap')} | Momen emas {hit('Momen emas')} | Zona emas {hit('Zona emas')} | A+ {hit('A+')}\n"
             "Entry manual hanya bila harga di zona dan ada candle konfirmasi searah")
     out = [head]
-    for r in pilih[:10]:
-        p, t = r["pasar"], r["tick"]
+    tampil = [r for r in pool if r["rapor"] == "A" or kat[r["symbol"]]]
+    tampil.sort(key=lambda r: (r["rapor"] != "A", -len(kat[r["symbol"]]),
+                               -SK.konfirmasi(r.get("skill"), r["pasar"]["arah"])[0], -r["wr"]))
+    for r in tampil[:20]:
+        p = r["pasar"]
         n_k = SK.konfirmasi(r.get("skill"), p["arah"])[0]
-        zona = ""
-        if p["zona_searah"]:
-            lo, hi = sorted(p["gp"] if p["in_gp"] else p["gz"])
-            zona = f"{'GP' if p['in_gp'] else 'GZ'} {TG.fp(lo, t)}-{TG.fp(hi, t)} | "
+        zi = SY.info_zona(r) or {}
         out.append(f"{IKON.get(p['arah'], '')} <b>{TG.e(r['symbol'])} {p['arah']}</b> | rapor {r['rapor']} | "
-                   f"WR {r['wr']:.0f}% | PF {r['pf']:.2f}\n"
-                   f"Kategori: {', '.join(kat[r['symbol']])}\n"
-                   f"{zona}batal {TG.fp(p['batal'], t)} | ADX {p['adx']:.0f} | konf {n_k}/8\n"
-                   f"DASBOR: {TG.e(_status_dasbor(r))}")
+                   f"WR {r['wr']:.0f}% | PF {r['pf']:.2f} | konf {n_k}/8 | ADX {p['adx']:.0f}\n"
+                   + (f"Kategori: {', '.join(kat[r['symbol']])}\n" if kat[r["symbol"]] else "")
+                   + (TG.e(zi["teks"]) + "\n" if zi.get("teks") else "")
+                   + f"DASBOR: {TG.e(_status_dasbor(r))}")
+    pilih = tampil
     if not pilih:
         out.append("Belum ada koin yang masuk kategori. Biasanya karena bias koin ditahan BTC atau harga belum di zona.")
-    lain = [r for r in pool if not kat[r["symbol"]]]
+    lain = [r for r in pool if r not in tampil[:20]]
     rA = [r["symbol"] for r in lain if r["rapor"] == "A"]
     rB = [r["symbol"] for r in lain if r["rapor"] == "B"]
     if rA or rB:
@@ -1223,6 +1265,11 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         rows += [f"🟡 {TG.e(r['symbol'])} {x['arah']} | {x['order']} | cadangan | konf {x['konf']}/8" for r, x, _ in cad]
         rows += [f"🔵 {TG.e(r['symbol'])} {x['arah']} | {x['order']} | siklus | teruji {x['uji']}" for r, x, _ in sik]
         out.append("\n".join(rows))
+    pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
+    if pos and tf == "240":
+        peta = {r["symbol"]: r for r in rs}
+        out.append(f"{GARIS}\n👤 <b>ANALISA POSISI KAMU ({len(pos)})</b>")
+        out += [_blok_posisi_analisa(it, peta.get(it["sym"]) or SY.hasil_robot(it["sym"])) for it in pos]
     out.append(f"{GARIS}\n🎯 <b>1. SINYAL VALID ({len(sig)})</b>" +
                ("" if sig else "\nBelum ada sinyal yang lolos semua syarat di candle ini."))
     for i, (r, s) in enumerate(sig, 1):

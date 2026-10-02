@@ -323,6 +323,8 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         btc_ok=bool(btcOkL if biasLg else btcOkS),
         btc_selaras=bool((bProb >= 55 and btcOkL) if biasLg else (bProb <= 45 and btcOkS)),
         adx=float(v["adx"][RT]) if not np.isnan(v["adx"][RT]) else 0.0,
+        k_now=tuple(float(v[k][RT]) for k in ("open", "high", "low", "close")),
+        k_prev=tuple(float(v[k][RT - 1]) for k in ("open", "high", "low", "close")),
     )
     rg = ["TREND NAIK", "TREND TURUN", "SIDEWAYS", "VOLATILE"][int(v["rgIdx"][RT])]
     btcTxt = bn["txt"] if bn else "BTC 4J " + ("NAIK" if v["btcUp"][L] else "TURUN" if v["btcDn"][L] else "SIDEWAYS")

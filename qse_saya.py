@@ -2,6 +2,7 @@
 peringatan kasus besar, konsultasi entry, dan statistik WR harian, mingguan, bulanan."""
 import fcntl
 import json
+import math
 import os
 import time
 import requests
@@ -285,19 +286,18 @@ def konsultasi(sym, arah=None, entry=None):
             gerak = ((px - p["entry"]) if p["arah"] == "LONG" else (p["entry"] - px)) / risk if px else 0.0
             rows.append(f"{p['arah']} {p['asal']} | {NM_ST.get(p['status'], p['status'])} | entry {fp(p['entry'], t)}"
                         + (f" | sekarang {gerak:+.2f}R" if p["status"] != "MENUNGGU" and px else ""))
-            if ps.get("arah") and ps["arah"] != p["arah"]:
-                rows.append(f"Bias robot sekarang {ps['arah']}, berlawanan dengan posisi ini. Pertimbangkan kunci profit "
-                            f"atau geser SL ke entry, dan jangan buka {ps['arah']} di koin yang sama.")
+        for it in [v for v in _load()["open"].values() if v["sym"] == sym and v["status"] in ("TERISI", "TP1")]:
+            vonis, alasan_v, aksi, _ = analisa_posisi(it, r, px)
+            rows.append(f"Analisa: {vonis}\nKenapa: {'; '.join(alasan_v[:6])}\nSaran: {aksi}")
         blok.append("\n".join(rows))
 
     # ---- teknikal ----
     rows = ["<b>Teknikal</b>",
             f"Rapor robot {r['rapor']} | {r['trd']} trade | WR {r['wr']:.0f}% | PF {r['pf']:.2f} | bias {ps.get('arah', '-')}",
             f"{r['btc']} | yang diizinkan: {r.get('izin', '-')}"]
-    if ps.get("zona_searah"):
-        lo, hi = ps["gp"] if ps.get("in_gp") else ps["gz"]
-        rows.append(f"Zona emas {'GP' if ps.get('in_gp') else 'GZ'} {fp(min(lo, hi), t)}-{fp(max(lo, hi), t)} | "
-                    f"batal di {fp(ps['batal'], t)}")
+    zi = info_zona(r, px)
+    if zi and zi.get("teks"):
+        rows.append("Zona emas: " + zi["teks"])
     blok.append("\n".join(rows))
 
     # ---- siklus ----
@@ -902,7 +902,14 @@ def status_saya(harga=None):
         blok.append("Tidak ada trade terbuka.")
     tot = 0.0
     for i, it in enumerate(op, 1):
-        blok.append(blok_posisi(i, it, harga.get(it["sym"], 0.0), f" | nilai robot {it['nilai']}"))
+        bp = blok_posisi(i, it, harga.get(it["sym"], 0.0), f" | nilai robot {it['nilai']}")
+        if it["status"] in ("TERISI", "TP1"):
+            try:
+                vonis, alasan_v, aksi, _ = analisa_posisi(it, None, harga.get(it["sym"]) or None)
+                bp += f"\nAnalisa: {vonis}. {aksi}"
+            except Exception:
+                pass
+        blok.append(bp)
         fl = floating(it, harga.get(it["sym"], 0.0))
         tot += fl["r"] if fl else 0.0
     if any(floating(it, harga.get(it["sym"], 0.0)) for it in op):
@@ -998,3 +1005,168 @@ def evaluasi(hari=90):
         n = sum(1 for c in cl if c.get("jalur", "manual") == j)
         rows.append(f"{j.capitalize()}: {lot_jalur(j):g}x lot normal" + ("" if n >= 10 else f" (bawaan, baru {n}/10 trade)"))
     return "\n".join(rows)
+
+
+# ---------------- estimasi waktu, zona emas, analisa posisi ----------------
+def estimasi_jam(jarak, atr, tf_jam=4):
+    """Perkiraan kasar waktu harga menempuh jarak tertentu dari volatilitas sekarang (pola acak: waktu ~ jarak kuadrat)."""
+    if atr <= 0:
+        return None
+    s1 = atr / math.sqrt(tf_jam)
+    return (abs(jarak) / s1) ** 2
+
+
+def teks_waktu(jam):
+    if jam is None:
+        return "-"
+    if jam < 1:
+        return f"±{max(5, int(round(jam * 60 / 5) * 5))} menit"
+    if jam < 48:
+        return f"±{jam:.0f} jam"
+    if jam < 24 * 7:
+        return f"±{jam / 24:.0f} hari"
+    return "lebih dari seminggu"
+
+
+def konfirmasi_candle(p, arah):
+    """Candle konfirmasi searah: candle berjalan tutup di 60% atas (LONG) atau bawah (SHORT) dan searah,
+    atau candle tutup terakhir punya ekor penolakan minimal 40% range dan searah."""
+    L = arah == "LONG"
+    o, h, l, c = p.get("k_now") or (0, 0, 0, 0)
+    rg = h - l
+    if rg > 0 and ((c > o and (c - l) / rg >= 0.6) if L else (c < o and (h - c) / rg >= 0.6)):
+        return True, "candle berjalan " + ("hijau dan tutup di atas" if L else "merah dan tutup di bawah")
+    o, h, l, c = p.get("k_prev") or (0, 0, 0, 0)
+    rg = h - l
+    if rg > 0 and ((c > o and (min(o, c) - l) / rg >= 0.4) if L else (c < o and (h - max(o, c)) / rg >= 0.4)):
+        return True, "candle sebelumnya menolak " + ("turun (ekor bawah panjang)" if L else "naik (ekor atas panjang)")
+    return False, "belum ada candle konfirmasi"
+
+
+def info_zona(r, px=None):
+    """Jarak harga ke golden zone, estimasi tersentuh, konfirmasi candle, dan saran MARKET manual bila sudah siap."""
+    p = r.get("pasar") or {}
+    if not p:
+        return None
+    arah = p["arah"]
+    L = arah == "LONG"
+    c = px or r.get("live") or r["close"]
+    a = r["atr"]
+    t = r["tick"]
+    lo, hi = sorted(p["gz"])
+    glo, ghi = sorted(p["gp"])
+    if (L and c < p["batal"]) or ((not L) and c > p["batal"]):
+        return dict(teks=f"Harga sudah tembus batas batal {fp(p['batal'], t)}, setup zona emas gugur", siap=False)
+    if lo <= c <= hi:
+        jarak, posisi = 0.0, ("di dalam golden pocket" if glo <= c <= ghi else "di dalam golden zone")
+    else:
+        jarak = ((c - hi) if c > hi else (lo - c)) if L else ((lo - c) if c < lo else (c - hi))
+        posisi = None
+    out = dict(lo=lo, hi=hi, jarak_pct=abs(jarak) / c * 100 if c else 0, siap=False)
+    tf_jam = r["tf_ms"] / 3600000
+    if posisi:
+        teks = f"GZ {fp(lo, t)}-{fp(hi, t)} | harga {posisi} | batal {fp(p['batal'], t)}"
+    else:
+        arah_zona = (c > hi) if L else (c < lo)
+        if not arah_zona:
+            return dict(teks=f"GZ {fp(lo, t)}-{fp(hi, t)} | harga sudah lewat zona ke arah berlawanan", siap=False)
+        teks = (f"GZ {fp(lo, t)}-{fp(hi, t)} | jarak {out['jarak_pct']:.2f}% | perkiraan tersentuh "
+                f"{teks_waktu(estimasi_jam(jarak, a, tf_jam))} | batal {fp(p['batal'], t)}")
+    ok, alasan_c = konfirmasi_candle(p, arah)
+    out["konf_candle"] = alasan_c
+    if posisi and ok and p.get("btc_ok"):
+        base = p["batal"] - a * 0.45 if L else p["batal"] + a * 0.45
+        dist = (c - base) if L else (base - c)
+        dist = min(max(dist if dist > 0 else a * 1.5, a * 1.0), a * 2.5)
+        sl = c - dist if L else c + dist
+        tp1 = c + 0.8 * dist if L else c - 0.8 * dist
+        lv = (r.get("skill") or {}).get("res" if L else "sup") or []
+        tp2 = next((x for x in lv if 1.2 * dist <= (x - c if L else c - x) <= 3 * dist), c + 1.8 * dist if L else c - 1.8 * dist)
+        out.update(siap=True, entry=c, sl=sl, tp1=tp1, tp2=tp2)
+        teks += (f"\nCandle: {alasan_c}\nSaran MARKET manual: entry {fp(c, t)} | SL {fp(sl, t)} | TP1 {fp(tp1, t)} | "
+                 f"TP2 {fp(tp2, t)} | lot {lot_jalur('manual'):g}x")
+    else:
+        teks += f"\nCandle: {alasan_c}" + ("" if p.get("btc_ok") else " | BTC belum mengizinkan arah ini")
+    out["teks"] = teks
+    return out
+
+
+def analisa_posisi(it, r=None, px=None):
+    """Apakah trade kamu masih sesuai analisa robot. Return (vonis, alasan, aksi, skor)."""
+    r = r or hasil_robot(it["sym"])
+    px = px or harga_live(it["sym"])
+    if not r:
+        return "TIDAK ADA DATA", ["koin belum ada di scan terakhir"], "Pantau manual.", 0
+    arah = it["arah"]
+    L = arah == "LONG"
+    p = r.get("pasar") or {}
+    a = r["atr"] or 1e-12
+    t = r["tick"]
+    skor, alasan = 0, []
+    if p.get("arah") == arah:
+        skor += 1
+        alasan.append(f"bias robot masih {arah}")
+    elif p.get("arah"):
+        skor -= 2
+        alasan.append(f"bias robot berbalik ke {p['arah']}")
+    izin = r.get("izin", "")
+    if izin == "LONG dan SHORT" or izin.startswith(arah):
+        skor += 1
+        alasan.append("BTC 4J mengizinkan arah ini")
+    else:
+        skor -= 1
+        alasan.append(f"BTC 4J melawan, yang diizinkan {izin}")
+    eks = [x for x in r["saran"] if x["eksekusi"]]
+    if any(x["arah"] == arah for x in eks):
+        skor += 1
+        alasan.append("ada saran robot EKSEKUSI searah")
+    if any(x["arah"] != arah for x in eks):
+        skor -= 2
+        alasan.append("ada saran robot EKSEKUSI berlawanan")
+    if p.get("zona_searah") and p.get("arah") == arah:
+        skor += 1
+        alasan.append("harga di zona emas searah")
+    if (L and px and px < p.get("batal", 0)) or ((not L) and px and px > p.get("batal", 1e18)):
+        skor -= 2
+        alasan.append(f"struktur patah, harga tembus batas {fp(p['batal'], t)}")
+    if r.get("skill"):
+        nk = SK.konfirmasi(r["skill"], arah)[0]
+        if nk >= 5:
+            skor += 1
+            alasan.append(f"skill tambahan searah {nk}/8")
+        elif nk <= 2:
+            skor -= 1
+            alasan.append(f"skill tambahan lemah {nk}/8")
+    sk = r.get("siklus") or {}
+    if sk.get("c4P") is not None:
+        c4 = sk["c4P"]
+        if (c4 >= 55) if L else (c4 <= 45):
+            skor += 1
+            alasan.append(f"peluang 4 jam searah ({c4:.0f}% naik)")
+        elif (c4 <= 45) if L else (c4 >= 55):
+            skor -= 1
+            alasan.append(f"peluang 4 jam melawan ({c4:.0f}% naik)")
+    fl = (sk.get("aliran") or {}).get("skor")
+    if fl is not None:
+        if (fl >= 2) if L else (fl <= -2):
+            skor += 1
+            alasan.append("aliran dana searah")
+        elif (fl <= -2) if L else (fl >= 2):
+            skor -= 1
+            alasan.append("aliran dana melawan")
+    if r["rapor"] == "D buruk":
+        skor -= 2
+        alasan.append("rapor robot turun ke D")
+    if px:
+        g = ((px - it["entry"]) if L else (it["entry"] - px)) / a
+        if g < 0:
+            alasan.insert(0, f"harga {abs(g):.1f} ATR melawan entry, " +
+                          ("masih dalam gerak normal 4J" if abs(g) < 1 else "sudah di luar gerak normal 4J"))
+    if skor >= 3:
+        vonis, aksi = "MASIH SESUAI ANALISA", "Tahan. Biarkan SL dan TP bekerja."
+    elif skor >= 0:
+        vonis, aksi = "MELEMAH", "Tahan dengan SL tetap, jangan tambah lot. Kalau sudah untung, geser SL ke entry."
+    else:
+        vonis, aksi = "BERBALIK", (f"Pertimbangkan kurangi risiko: /sl {it['sym'].replace('USDT', '')} 50% "
+                                   f"atau geser SL lebih dekat dengan /ubah.")
+    return vonis, alasan, aksi, skor
