@@ -134,7 +134,8 @@ def jalur_saran(sym, arah, harga, r=None, dengan_pola=False):
             import qse_fixprofit as FX
             for it in FX.load()["open"].values():
                 if it["sym"] == sym and it["arah"] == arah and (not a or abs(it["entry"] - harga) <= a):
-                    j = "saran cadangan" if it.get("cadangan") else "saran siklus" if it.get("siklus") else "saran utama"
+                    j = ("saran cadangan" if it.get("cadangan") else "saran siklus" if it.get("siklus")
+                         else "saran 1J" if it.get("tf") == "60" else "saran utama")
                     hasil = (j, it["pola"])
                     break
         except Exception:
@@ -143,21 +144,9 @@ def jalur_saran(sym, arah, harga, r=None, dengan_pola=False):
 
 
 def posisi_koin(sym):
-    """Semua posisi atau order terbuka di koin ini: trade kamu (/entry) dan sinyal robot yang dipantau."""
-    out = []
-    for it in _load()["open"].values():
-        if it["sym"] == sym:
-            out.append(dict(asal="trade kamu", arah=it["arah"], status=it["status"], entry=it["entry"],
-                            sl=it["sl"], tp1=it["tp1"], tp2=it["tp2"]))
-    try:
-        import qse_fixprofit as FX
-        for it in FX.load()["open"].values():
-            if it["sym"] == sym:
-                out.append(dict(asal=f"sinyal robot {it['pola']}", arah=it["arah"], status=it["status"],
-                                entry=it["entry"], sl=it["sl"], tp1=it["tp1"], tp2=it["tp2"]))
-    except Exception:
-        pass
-    return out
+    """Posisi atau order kamu (/entry) di koin ini."""
+    return [dict(asal="trade kamu", arah=it["arah"], status=it["status"], entry=it["entry"], sl=it["sl"],
+                 tp1=it["tp1"], tp2=it["tp2"]) for it in _load()["open"].values() if it["sym"] == sym]
 
 
 NM_ST = {"MENUNGGU": "order belum terisi", "TERISI": "posisi jalan", "TP1": "sudah TP1, SL di entry"}
@@ -181,6 +170,13 @@ def nilai(sym, arah, entry=None):
     izin = r.get("izin", "LONG dan SHORT")
     if izin != "LONG dan SHORT" and not izin.startswith(arah):
         merah.append(f"BTC 4J melawan, yang diizinkan {izin}")
+    try:
+        import qse_modal as MD
+        st = MD.status()
+        if st["rem"]:
+            merah.append(st["alasan"])
+    except Exception:
+        pass
     if r["rapor"] == "D buruk":
         merah.append(f"rapor robot D ({r['trd']} trade, WR {r['wr']:.0f}%)")
     elif r["rapor"] in ("A", "B"):
@@ -210,90 +206,186 @@ def nilai(sym, arah, entry=None):
     return label, merah + kuning + hijau, r, px
 
 
+RAPOR_ARTI = {"A": "robot sering untung di koin ini", "B": "hasil robot cukup bagus di koin ini",
+              "C": "hasil robot biasa saja di koin ini", "D buruk": "robot sering rugi di koin ini",
+              "SAMPEL KURANG": "data robot di koin ini belum cukup"}
+
+
 def konsultasi(sym, arah=None, entry=None):
+    import qse_fundamental as FD
     r = hasil_robot(sym)
     px = harga_live(sym)
     t = tick_of(r, px or 1)
     if r is None:
-        return f"<b>KONSULTASI {sym}</b>\nKoin ini belum ada di scan 4 jam terakhir. Cek nama koinnya, contoh /cek DOT"
+        return f"<b>CEK {sym}</b>\nKoin ini belum ada di scan 4 jam terakhir. Cek nama koinnya, contoh /cek DOT"
     ps = r.get("pasar", {})
     pos = posisi_koin(sym)
     arah = arah or (pos[0]["arah"] if pos else ps.get("arah", "LONG"))
-    rows_pos = []
-    for p in pos:
-        risk = max(abs(p["entry"] - p["sl"]), 1e-12)
-        gerak = ((px - p["entry"]) if p["arah"] == "LONG" else (p["entry"] - px)) / risk if px else 0.0
-        rows_pos.append(f"➡️ {p['arah']} {p['asal']} | {NM_ST.get(p['status'], p['status'])} | entry {fp(p['entry'], t)} "
-                        f"SL {fp(p['sl'], t)} TP1 {fp(p['tp1'], t)}" +
-                        (f" | sekarang {gerak:+.2f}R" if p["status"] != "MENUNGGU" and px else ""))
-        if ps.get("arah") and ps["arah"] != p["arah"]:
-            rows_pos.append(f"   Bias robot sekarang {ps['arah']}, berlawanan dengan posisi ini. Pilihan: tutup di profit kecil, "
-                            f"geser SL ke entry, atau biarkan sampai SL atau TP. Jangan buka {ps['arah']} di koin yang sama.")
-    rows = [f"<b>KONSULTASI {sym} {arah}</b>",
-            f"Harga sekarang {fp(px, t) if px else '-'} | robot: rapor {r['rapor']} ({r['trd']} trade, WR {r['wr']:.0f}%, "
-            f"PF {r['pf']:.2f}) | bias {ps.get('arah', '-')}",
-            f"{r['btc']} | yang diizinkan: {r.get('izin', '-')}"]
-    for s in r["saran"][:3]:
-        v = "EKSEKUSI" if s["eksekusi"] else "TAHAN " + s["alasan"]
-        rows.append(f"Saran {s['slot']} {s['arah']} {s['pola']} mutu {s['mutu']} {v} | E {fp(s['entry'], t)} "
-                    f"SL {fp(s['sl'], t)} TP1 {fp(s['tp1'], t)} TP2 {fp(s['tp2'], t)}")
+    label, alasan, _, _ = nilai(sym, arah, entry)
+    fund, catat_f = FD.teks_fundamental(sym)
+    deriv, catat_d = FD.teks_derivatif(sym)
+
+    # ---- kesimpulan yang mudah dipahami ----
+    eks = [x for x in r["saran"] if x["eksekusi"] and not x["sudah_masuk"]]
+    kal = [f"Robot melihat {sym} condong {ps.get('arah', '-')} di 4 jam. Rapor {r['rapor']}, "
+           f"{RAPOR_ARTI.get(r['rapor'], 'data robot terbatas')} ({r['trd']} trade, WR {r['wr']:.0f}%)."]
+    if eks:
+        x = eks[0]
+        kal.append(f"Ada saran {x['pola']} {x['arah']} yang sedang EKSEKUSI di {fp(x['entry'], t)}.")
+    elif r["saran"]:
+        x = r["saran"][0]
+        kal.append(f"Saran terbaiknya {x['pola']} {x['arah']} masih TAHAN karena {x['alasan']}.")
+    else:
+        kal.append("Belum ada saran entry dari robot.")
+    kal.append(f"BTC 4 jam {r['btc'].replace('BTC 4J ', '').lower()}, yang aman sekarang {r.get('izin', '-')}.")
+    if ps.get("zona_searah"):
+        kal.append("Harga sedang di zona emas searah bias, area entry yang bagus kalau ada candle konfirmasi.")
+    kecil = [x for x in (catat_f, catat_d) if x]
+    if kecil:
+        kal.append("Catatan pasar: " + ", ".join(kecil) + ".")
+    try:
+        import qse_berita as BR
+        hari = BR.hari_ini()
+        jd = BR.jeda()
+        if jd:
+            kal.append(f"Sedang jeda berita {jd['judul']}, sebaiknya tunggu sampai satu jam setelah rilis.")
+        elif hari:
+            kal.append(f"Hari ini ada berita besar {hari[0]['judul']} jam {BR.jam_wib(hari[0]['ts'])[6:]}, "
+                       f"hindari entry baru 2 jam sebelumnya.")
+    except Exception:
+        BR = None
+    aksi = {"SEJALAN": "Boleh entry, ikuti SL dan TP robot atau pasang LIMIT di zona emas.",
+            "HATI-HATI": "Kalau tetap masuk, pakai setengah lot dan SL wajib terpasang.",
+            "BERISIKO": "Sebaiknya tunggu. Kondisi utama sedang melawan arah ini.",
+            "NETRAL": "Robot belum punya pendapat kuat. Tunggu saran atau zona emas."}[label]
+    p24 = ""
+    try:
+        d24 = FD.derivatif(sym).get("p24")
+        p24 = f" | 24 jam {d24:+.1f}%" if d24 is not None else ""
+    except Exception:
+        pass
+    blok = [f"Harga {fp(px, t) if px else '-'}{p24}",
+            "<b>Kesimpulan</b>\n" + " ".join(kal) + f"\n\nPenilaian {arah}: <b>{label}</b>. {aksi}"]
+
+    # ---- saran robot ----
+    rows = ["<b>Saran robot</b>"]
+    for x in r["saran"][:3]:
+        v = "EKSEKUSI" if x["eksekusi"] else "TAHAN, " + x["alasan"]
+        rows.append(f"{x['slot']}. {x['arah']} {x['pola']} | mutu {x['mutu']} | {v}\n"
+                    f"Entry {fp(x['entry'], t)} | SL {fp(x['sl'], t)} | TP1 {fp(x['tp1'], t)} | TP2 {fp(x['tp2'], t)}")
     if not r["saran"]:
-        rows.append("Robot belum punya saran untuk koin ini.")
-    if rows_pos:
-        rows.append("<b>Posisi terbuka di koin ini</b>")
-        rows += rows_pos
+        rows.append("Belum ada saran.")
+    blok.append("\n".join(rows))
+
+    # ---- posisi kamu ----
+    if pos:
+        rows = ["<b>Posisi kamu di koin ini</b>"]
+        for p in pos:
+            risk = max(abs(p["entry"] - p["sl"]), 1e-12)
+            gerak = ((px - p["entry"]) if p["arah"] == "LONG" else (p["entry"] - px)) / risk if px else 0.0
+            rows.append(f"{p['arah']} {p['asal']} | {NM_ST.get(p['status'], p['status'])} | entry {fp(p['entry'], t)}"
+                        + (f" | sekarang {gerak:+.2f}R" if p["status"] != "MENUNGGU" and px else ""))
+            if ps.get("arah") and ps["arah"] != p["arah"]:
+                rows.append(f"Bias robot sekarang {ps['arah']}, berlawanan dengan posisi ini. Pertimbangkan kunci profit "
+                            f"atau geser SL ke entry, dan jangan buka {ps['arah']} di koin yang sama.")
+        blok.append("\n".join(rows))
+
+    # ---- teknikal ----
+    rows = ["<b>Teknikal</b>",
+            f"Rapor robot {r['rapor']} | {r['trd']} trade | WR {r['wr']:.0f}% | PF {r['pf']:.2f} | bias {ps.get('arah', '-')}",
+            f"{r['btc']} | yang diizinkan: {r.get('izin', '-')}"]
     if ps.get("zona_searah"):
         lo, hi = ps["gp"] if ps.get("in_gp") else ps["gz"]
         rows.append(f"Zona emas {'GP' if ps.get('in_gp') else 'GZ'} {fp(min(lo, hi), t)}-{fp(max(lo, hi), t)} | "
-                    f"batal {fp(ps['batal'], t)}")
+                    f"batal di {fp(ps['batal'], t)}")
+    blok.append("\n".join(rows))
+
+    # ---- siklus ----
     sk = r.get("siklus") or {}
     if sk and not sk.get("error"):
-        rows.append("<b>Siklus pasar</b>")
+        rows = ["<b>Siklus pasar</b>"]
         if sk.get("c4P") is not None:
-            rows.append(f"Arah: 4J naik {sk['c4P']:.0f}% | 1D naik {(sk.get('cDP') or 50):.0f}% | BTC naik {r.get('bProb', 50):.0f}%")
+            rows.append(f"Peluang naik: 4 jam {sk['c4P']:.0f}% | harian {(sk.get('cDP') or 50):.0f}% | BTC {r.get('bProb', 50):.0f}%")
         fl = sk.get("aliran") or {}
         if fl:
-            dana = "DANA MASUK" if fl["skor"] >= 2 else "DANA KELUAR" if fl["skor"] <= -2 else "NETRAL"
-            rows.append(f"Aliran dana: {dana} skor {fl['skor']:+d} | CMF {fl['cmf']:.2f} | MFI {fl['mfi']:.0f} | "
+            dana = "dana masuk" if fl["skor"] >= 2 else "dana keluar" if fl["skor"] <= -2 else "netral"
+            rows.append(f"Aliran dana {dana} (skor {fl['skor']:+d}) | CMF {fl['cmf']:.2f} | MFI {fl['mfi']:.0f} | "
                         f"CVD {'naik' if fl['cvd_up'] else 'turun'}")
         pk = sk.get("pola")
-        if pk:
-            rows.append(f"Pola kembar: {pk['n']} pola mirip | sesudahnya naik {pk['up'] * 100:.0f}% | "
-                        f"teruji {pk['hitN']}/{pk['hitT']} tepat")
+        if pk and pk["n"]:
+            rows.append(f"Pola kembar: {pk['n']} pola mirip di masa lalu, sesudahnya naik {pk['up'] * 100:.0f}% "
+                        f"(teruji {pk['hitN']}/{pk['hitT']} tepat)")
         mu = sk.get("musim") or {}
         if mu.get("hari"):
             b_, w_ = mu["hari"]["terbaik"], mu["hari"]["terburuk"]
-            rows.append(f"Musiman hari: terbaik {b_[0]} {b_[1]:+.2f}% WR {b_[2]:.0f}%, terburuk {w_[0]} {w_[1]:+.2f}%")
+            rows.append(f"Hari terbaik {b_[0]} ({b_[1]:+.2f}%), terburuk {w_[0]} ({w_[1]:+.2f}%)")
         if mu.get("jam"):
             b_, w_ = mu["jam"]["terbaik"], mu["jam"]["terburuk"]
-            rows.append(f"Musiman jam WIB: terbaik {b_[0]} {b_[1]:+.2f}%, terburuk {w_[0]} {w_[1]:+.2f}%")
+            rows.append(f"Jam terbaik {b_[0]} WIB ({b_[1]:+.2f}%), terburuk {w_[0]} WIB ({w_[1]:+.2f}%)")
         pv = sk.get("pivot")
         if pv:
             import qse_siklus as SIK
-            tx = f"Siklus besar: terakhir {pv['jenis']} {SIK.tgl(pv['t'])} di {fp(pv['p'], t)}"
+            tx = f"Siklus besar: terakhir {pv['jenis'].lower()} {SIK.tgl(pv['t'])} di {fp(pv['p'], t)}"
             if pv.get("berikut"):
-                tx += (f". {pv['berikut']} berikutnya sekitar {SIK.tgl(pv['t1'])} (±{pv['sd'] / 86400000:.0f} hari) "
-                       f"di {fp(pv['lo'], t)}-{fp(pv['hi'], t)}")
+                tx += (f". Perkiraan {pv['berikut'].lower()} berikutnya sekitar {SIK.tgl(pv['t1'])} "
+                       f"(±{pv['sd'] / 86400000:.0f} hari) di {fp(pv['lo'], t)}-{fp(pv['hi'], t)}")
             rows.append(tx)
         if sk.get("saran"):
             x = sk["saran"]
             rows.append(f"Saran siklus: {x['arah']} {x['order']} di {fp(x['entry'], t)} | SL {fp(x['sl'], t)} | "
                         f"TP1 {fp(x['tp1'], t)} | TP2 {fp(x['tp2'], t)}")
+        blok.append("\n".join(rows))
+
+    # ---- skill ----
     if r.get("skill"):
-        rows.append("<b>Skill tambahan</b>")
-        rows += SK.detail(r["skill"], arah, lambda x: fp(x, t))
-    label, alasan, _, _ = nilai(sym, arah, entry)
-    rows.append(f"<b>Penilaian {arah}: {label}</b>")
-    rows += ["➡️ " + a for a in alasan]
-    saran = {"SEJALAN": "Boleh entry, ikuti SL dan TP robot atau pasang LIMIT di zona emas.",
-             "HATI-HATI": "Kalau tetap masuk, pakai setengah lot dan SL wajib terpasang.",
-             "BERISIKO": "Sebaiknya tunggu. Kondisi utama sedang melawan arah ini.",
-             "NETRAL": "Robot belum punya pendapat kuat. Tunggu saran atau zona emas."}[label]
-    rows.append(saran)
-    return "\n".join(rows)
+        blok.append("\n".join(["<b>Skill tambahan</b>"] + SK.detail(r["skill"], arah, lambda x: fp(x, t))))
+
+    # ---- fundamental, derivatif, kalender ----
+    blok.append("\n".join(["<b>Fundamental</b>"] + fund))
+    blok.append("\n".join(["<b>Pasar derivatif Bybit</b>"] + deriv))
+    rows = ["<b>Kalender dan berita</b>"]
+    try:
+        import qse_berita as BR
+        hari = BR.hari_ini()
+        rows += [f"{e['judul']} jam {BR.jam_wib(e['ts'])[6:]}" for e in hari[:5]] or ["Tidak ada berita besar USD hari ini."]
+        if sym in BR.delisting():
+            rows.append("Bybit mengumumkan delisting koin ini. Jangan buka posisi baru.")
+    except Exception:
+        rows.append("Kalender tidak bisa diambil.")
+    blok.append("\n".join(rows))
+
+    # ---- alasan penilaian ----
+    blok.append("\n".join([f"<b>Alasan penilaian {arah}</b>"] + ["➡️ " + x for x in alasan]))
+    return f"<b>CEK {sym} {arah}</b>\n" + "\n\n".join(blok)
 
 
-# ---------------- /entry ----------------
+def saran_aktif(tf="240"):
+    """Daftar saran robot yang masih aktif di TF tertentu, dengan harga sekarang dan jaraknya ke entry."""
+    import qse_fixprofit as FX
+    led = FX.load()
+    now = int(time.time() * 1000)
+    umur = 4 * JAM if tf == "240" else JAM
+    items = [v for v in led["open"].values() if v.get("tf", "240") == tf and
+             (v["status"] == "MENUNGGU" or now - v.get("created_ts", v.get("start_ts", 0)) <= umur)]
+    nama = "4 JAM" if tf == "240" else "1 JAM"
+    if not items:
+        return f"Tidak ada saran TF {nama} yang aktif sekarang. Ketik /scan untuk scan dengan harga terkini."
+    harga = harga_semua()
+    rows = [f"<b>Saran TF {nama} aktif ({len(items)})</b>"]
+    for i, v in enumerate(items, 1):
+        rr = hasil_robot(v["sym"])
+        t = v.get("tick") or (rr or {}).get("tick") or 10 ** -max(2, 5 - len(str(int(v["entry"]))))
+        px = harga.get(v["sym"], 0)
+        jalur = "CADANGAN" if v.get("cadangan") else "SIKLUS" if v.get("siklus") else "UTAMA"
+        ik = "🟡" if v.get("cadangan") else "🔵" if v.get("siklus") else ("🟢" if v["arah"] == "LONG" else "🔴")
+        jarak = abs(px - v["entry"]) / v["entry"] * 100 if px else 0
+        st = "menunggu terisi" if v["status"] == "MENUNGGU" else "MARKET baru dikirim"
+        rows.append(f"{ik} <b>{i}. {v['sym']} {v['arah']} {v.get('order', '')}</b> | {jalur} | {v['pola']}\n"
+                    f"Entry {fp(v['entry'], t)} | SL {fp(v['sl'], t)} | TP1 {fp(v['tp1'], t)} | TP2 {fp(v['tp2'], t)}\n"
+                    f"Harga sekarang {fp(px, t) if px else '-'} | jarak ke entry {jarak:.2f}% | {st}")
+    return "\n\n".join(rows)
+
+
 def _angka(x):
     try:
         return float(x.replace(",", "."))
@@ -438,6 +530,15 @@ def entry(args):
             f" | lot disarankan {lot_jalur(jalur):g}x lot normal",
             f"SL dan TP dari {sumber}. Fee pulang pergi sekitar {fee_r:.2f}R.",
             f"<b>Penilaian robot: {label}</b>"]
+    try:
+        import qse_modal as MD
+        bl = MD.baris_lot(harga, sl, lot_jalur(jalur), int(kv["LEV"]) if kv.get("LEV") else None)
+        if bl:
+            rows.insert(4, bl)
+    except Exception:
+        pass
+    if kv.get("LEV"):
+        rows.insert(4, f"Leverage {kv['LEV']:g}x dicatat, /status menampilkan ROE.")
     rows += ["➡️ " + x for x in alasan]
     if r and r.get("skill"):
         rows.append(SK.ringkas(r["skill"], arah, lambda x: fp(x, t)))
@@ -614,7 +715,7 @@ def _jalan(it, rows, iv):
                 return ev
             if it["status"] == "TERISI" and ((hi >= t1) if L else (lo <= t1)):
                 r = _tutup_bagian(it, 0.5, t1)
-                it["status"] = "TP1"
+                it["status"], it["tp1_ts"] = "TP1", ts
                 ev.append(("TP1", f"KENA TP1, separuh ditutup {r:+.2f}R. Geser SL ke entry {fp(e, it['tick'])}"))
             if it["status"] == "TP1" and ((hi >= t2) if L else (lo <= t2)):
                 _tutup_bagian(it, 1.0, t2)
@@ -654,13 +755,40 @@ def pantau():
                 if px and jauh > 2.5 and "jauh" not in it["alert"]:
                     it["alert"].append("jauh")
                     ev.append(("INFO", f"LIMIT kejauhan, harga sudah {jauh:.1f} ATR dari entry. Peluang terisi hari ini kecil."))
-            ik = {"TERISI": "📥", "TP1": "💰", "TP2": "🏆", "SL": "🛑", "BE": "⚖️", "INFO": "⚠️"}
+            if it["status"] == "TP1" and px:
+                ev += _trailing(it, h1, px)
+            ik = {"TERISI": "📥", "TP1": "💰", "TP2": "🏆", "SL": "🛑", "BE": "⚖️", "INFO": "⚠️", "TRAIL": "📈"}
             for e, txt in ev:
                 pesan.append(f"{ik.get(e, '•')} <b>{it['sym']} {it['arah']}</b>\n↳ {txt} | entry {fp(it['entry'], it['tick'])}")
             if it["status"] == "SELESAI":
                 d["closed"].append(d["open"].pop(k))
         return pesan
     return ubah(f)
+
+
+def _trailing(it, h1, px):
+    """Saran trailing stop setelah TP1: puncak sejak TP1 dikurangi 1,5 ATR 4J (chandelier).
+    Hanya dikirim bila mengunci lebih baik minimal 0,25 ATR dari SL sekarang atau saran sebelumnya."""
+    a = it.get("atr") or 0
+    if a <= 0:
+        return []
+    L = it["arah"] == "LONG"
+    mulai = it.get("tp1_ts") or it.get("fill_ts") or 0
+    bars = [x for x in h1 if x[0] >= mulai - JAM]
+    if len(bars) < 2:
+        return []
+    trail = (max(x[1] for x in bars) - 1.5 * a) if L else (min(x[2] for x in bars) + 1.5 * a)
+    stop = it["sl"] if it.get("sl_manual") else it["entry"]
+    acuan = max(stop, it.get("trail_saran", stop)) if L else min(stop, it.get("trail_saran", stop))
+    lebih = (trail - acuan) if L else (acuan - trail)
+    aman = (px - trail) if L else (trail - px)
+    if lebih < 0.25 * a or aman < 0.3 * a:
+        return []
+    it["trail_saran"] = trail
+    kunci = _real(it) + _sisa(it) * _r_at(it, trail)
+    t = it["tick"]
+    return [("TRAIL", f"TRAILING STOP: geser SL ke {fp(trail, t)}, total trade terkunci {kunci:+.2f}R. "
+                      f"Ketik /ubah {it['sym'].replace('USDT', '')} sl {fp(trail, t)}")]
 
 
 def cek_4j(res_map):
@@ -788,7 +916,7 @@ def wr_jalur(closed, hari=30):
     """WR 30 hari trade kamu dipisah menurut asal entry."""
     a = int(time.time() * 1000) - hari * 86400000
     rows = [f"<b>Menurut asal entry ({hari} hari)</b>"]
-    for j in ("saran utama", "saran cadangan", "saran siklus", "manual"):
+    for j in ("saran utama", "saran 1J", "saran cadangan", "saran siklus", "manual"):
         x = [c for c in closed if c.get("why") in ("SL", "BE", "TP2", "TUTUP") and c.get("closed_ts", 0) >= a
              and c.get("jalur", "manual") == j]
         if x:
@@ -800,7 +928,7 @@ def wr_jalur(closed, hari=30):
 
 
 # ---------------- belajar dari trade kamu ----------------
-LOT_DASAR = {"saran utama": 1.0, "saran cadangan": 0.5, "saran siklus": 0.5, "manual": 0.5}
+LOT_DASAR = {"saran utama": 1.0, "saran 1J": 0.5, "saran cadangan": 0.5, "saran siklus": 0.5, "manual": 0.5}
 SELESAI = ("SL", "BE", "TP2", "TUTUP")
 
 
@@ -866,7 +994,7 @@ def evaluasi(hari=90):
     grup("Hari masuk", lambda c: hari_nm[int((wib(c) // 86400000 + 4) % 7)])
     grup("Jam masuk (WIB)", lambda c: f"{int(wib(c) % 86400000 // 3600000) // 4 * 4:02d}-{int(wib(c) % 86400000 // 3600000) // 4 * 4 + 4:02d}")
     rows.append("\n<b>Lot disarankan</b>")
-    for j in ("saran utama", "saran cadangan", "saran siklus", "manual"):
+    for j in ("saran utama", "saran 1J", "saran cadangan", "saran siklus", "manual"):
         n = sum(1 for c in cl if c.get("jalur", "manual") == j)
         rows.append(f"{j.capitalize()}: {lot_jalur(j):g}x lot normal" + ("" if n >= 10 else f" (bawaan, baru {n}/10 trade)"))
     return "\n".join(rows)

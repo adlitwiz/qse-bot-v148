@@ -12,6 +12,25 @@ from config import STATE_DIR
 
 LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
+def mulai_scan():
+    """Jalankan scan sekarang di proses terpisah supaya listener tetap bisa membalas perintah lain."""
+    import subprocess
+    import sys
+    tanda = os.path.join(STATE_DIR, ".scan_terakhir")
+    try:
+        if time.time() - os.path.getmtime(tanda) < 600:
+            sisa = int(600 - (time.time() - os.path.getmtime(tanda))) // 60 + 1
+            return f"Scan terakhir belum 10 menit. Coba lagi sekitar {sisa} menit lagi, atau cek /sinyal4j dan /sinyal1j."
+    except OSError:
+        pass
+    open(tanda, "w").close()
+    folder = os.path.dirname(os.path.abspath(__file__))
+    subprocess.Popen([sys.executable, "main.py", "--scan"], cwd=folder, env=os.environ.copy(),
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return ("Scan dimulai. Robot menilai ulang koin rapor A/B di TF 4J dan TF 1J dengan harga terkini. "
+            "Hasilnya terkirim dalam 1 sampai 3 menit.")
+
+
 BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "<b>Catat entry</b>\n"
            "/entry long market AUSDT = entry MARKET di harga sekarang\n"
@@ -26,12 +45,20 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/ubah AUSDT sl entry = geser SL ke titik impas\n"
            "/tutup AUSDT = tutup semua sisa posisi di harga sekarang\n"
            "/batal AUSDT = batalkan order yang belum terisi\n\n"
+           "<b>Modal dan risiko</b>\n"
+           "/modal 1000 risk 1 = modal 1000 USDT, risiko 1% per trade, tiap saran menampilkan ukuran posisi\n"
+           "/modal rem 3 posisi 3 = rem harian -3R dan maksimal 3 posisi sekaligus\n"
+           "/modal = lihat pengaturan dan kondisi rem sekarang\n\n"
            "<b>Alarm harga</b>\n"
            "/alert BTC 60000 = kabari saat harga menyentuh 60000, bisa ditambah catatan\n"
            "/alert = daftar alarm aktif\n"
            "/alert hapus BTC atau /alert hapus semua = hapus alarm\n\n"
+           "<b>Sinyal</b>\n"
+           "/sinyal4j = saran TF 4 jam yang masih aktif, dengan harga sekarang\n"
+           "/sinyal1j = saran TF 1 jam yang masih aktif\n"
+           "/scan = scan sekarang dengan harga terkini, hasil dalam 1 sampai 3 menit\n\n"
            "<b>Info</b>\n"
-           "/cek AUSDT = konsultasi robot sebelum entry\n"
+           "/cek AUSDT = analisa lengkap koin: kesimpulan, saran robot, teknikal, siklus, skill, fundamental, derivatif, kalender\n"
            "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
            "/uji = hasil uji mundur 6 bulan saran cadangan dan saran siklus\n"
            "/status = trade kamu, floating, dan WR\n"
@@ -97,6 +124,15 @@ def balas(cmd, args, dari_main=False):
         return SY.ubah_level(args)
     if cmd in ("/alert", "/alarm"):
         return AL.perintah(args)
+    if cmd in ("/sinyal4j", "/sinyal4", "/sinyal"):
+        return SY.saran_aktif("240")
+    if cmd in ("/sinyal1j", "/sinyal1"):
+        return SY.saran_aktif("60")
+    if cmd == "/scan":
+        return mulai_scan()
+    if cmd == "/modal":
+        import qse_modal as MD
+        return MD.perintah(args)
     if cmd == "/evaluasi":
         return SY.evaluasi()
     if cmd == "/uji":
@@ -143,7 +179,8 @@ def proses(cmds, dari_main=False):
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
-                    "/uji": "🧪",
+                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/sinyal4j": "📡", "/sinyal4": "📡",
+                    "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"
             TG.send(isi.split("\n\n"))

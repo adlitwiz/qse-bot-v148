@@ -19,7 +19,8 @@ TFS = [t for t in _env("QSE_TF", "240").replace(" ", "").split(",") if t in ("24
 SCAN_MIN_TURNOVER = _env("QSE_SCAN_MIN_TURNOVER", 0, float)  # isi angka untuk melewati koin sepi, 0 = semua koin
 MAX_MENIT = _env("QSE_MAX_MENIT", 45, float)
 CEK_JAM = _env("QSE_CEK_JAM", 1, int) == 1        # tiap jam: nilai ulang koin rapor A/B di candle 4J berjalan
-ALARM_KONF = _env("QSE_ALARM_KONF", 5, int)        # alarm zona emas manual bila konfirmasi skill minimal segini                     # batas waktu satu run
+ALARM_KONF = _env("QSE_ALARM_KONF", 5, int)
+CEK_1J = _env("QSE_CEK_1J", 1, int) == 1           # saran TF 1J selektif tiap jam (koin rapor 4J A/B, searah bias 4J)        # alarm zona emas manual bila konfirmasi skill minimal segini                     # batas waktu satu run
 ONLY_SYMBOLS = [s for s in _env("QSE_SYMBOLS", "").replace(" ", "").split(",") if s]
 STATE_DIR = _env("QSE_STATE_DIR", os.path.expanduser("~/qse_state"))
 

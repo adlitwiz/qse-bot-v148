@@ -225,6 +225,8 @@ def jalankan(daftar, ambil, btc4, batas_detik=900):
     out = dict(ts=int(time.time() * 1000), koin=len(per_koin), bar=BARS,
                cadangan=_statistik(hasil["cadangan"]), siklus=_statistik(hasil["siklus"]), per_koin=per_koin,
                durasi=int(time.time() - t0))
+    if "1j" in lihat():
+        out["1j"] = lihat()["1j"]
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(FILE + ".tmp", "w") as f:
         json.dump(out, f)
@@ -234,13 +236,32 @@ def jalankan(daftar, ambil, btc4, batas_detik=900):
 
 def ringkas(u=None):
     u = u or lihat()
-    if not u:
+    if not u or "cadangan" not in u:
         return "Uji mundur belum pernah jalan. Jalan otomatis seminggu sekali."
     rows = [f"<b>🧪 UJI MUNDUR 6 BULAN</b> ({u['koin']} koin, {time.strftime('%d/%m %H:%M', time.gmtime(u['ts'] / 1000 + 7 * 3600))} WIB)"]
-    for j, nama in (("cadangan", "Saran cadangan"), ("siklus", "Saran siklus")):
+    for j, nama in (("cadangan", "Saran cadangan"), ("siklus", "Saran siklus"), ("1j", "Saran TF 1J")):
+        if j not in u:
+            continue
         s = u[j]
         st = "AKTIF" if aktif(j) else "DIMATIKAN"
         if s["n"] < 30:
             st += ", data belum cukup untuk menilai"
         rows.append(f"{nama}: {s['n']} trade | WR {s['wr']:.0f}% | PF {s['pf']:.2f} | rata {s['avg']:+.2f}R | {st}")
     return "\n".join(rows)
+
+
+def catat_1j(results):
+    """Uji jalur 1J = gabungan rapor robot TF 1J (simulasi DASBOR di chart 1 jam) dari koin yang dipindai."""
+    n = sum(r["trd"] for r in results)
+    if not n:
+        return
+    win = sum(r["trd"] * r["wr"] / 100 for r in results)
+    net = sum(r["net_r"] for r in results)
+    kalah = n - win
+    u = lihat()
+    u["1j"] = dict(n=int(n), wr=win / n * 100, pf=(net + kalah) / kalah if kalah > 0 else 9.9, avg=net / n, net=net,
+                   koin=len(results), ts=int(time.time() * 1000))
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(FILE + ".tmp", "w") as f:
+        json.dump(u, f)
+    os.replace(FILE + ".tmp", FILE)

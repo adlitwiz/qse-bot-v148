@@ -314,7 +314,8 @@ def register(led, r, s):
     mk = s["order"] == "MARKET"
     led["open"][key] = dict(sym=r["symbol"], tf=r["tf"], pola=s["pola"], arah=s["arah"], entry=s["entry"],
                             sl=s["sl"], tp1=s["tp1"], tp2=s["tp2"], order=s["order"], sent_ts=r["time"],
-                            start_ts=start, last_ts=start - 1, exp_ts=start + int(FP["limit_hours"] * 3600000),
+                            start_ts=start, last_ts=start - 1,
+                            exp_ts=start + int((8 if r["tf"] == "60" else FP["limit_hours"]) * 3600000),
                             status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r["rapor"],
                             fill_ts=start if mk else 0, p_isi=s["p_isi"], cadangan=bool(s.get("cadangan")),
                             siklus=bool(s.get("siklus")))
