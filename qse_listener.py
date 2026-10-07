@@ -60,6 +60,15 @@ def _tugas_berkala():
         except Exception as ex:
             print("[WARN] dini", ex)
         try:
+            import qse_makro as MK
+            bb = MK.berita_baru()
+            if bb:
+                TG.send(["📰 <b>QSE v148 | BERITA PENTING</b>\nDisaring kata kunci berdampak besar. Bukan sinyal, cek kondisi pasar.\n\n"
+                         + "\n\n".join(f"🗞️ <b>{TG.e(b['judul'])}</b>\n↳ {b['sumber']} | {', '.join(b['kategori'])}"
+                                         + (f"\n↳ {TG.e(b['link'])}" if b["link"] else "") for b in bb)])
+        except Exception as ex:
+            print("[WARN] berita", ex)
+        try:
             import qse_momentum as MO
             with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
                 lama = json.load(f)

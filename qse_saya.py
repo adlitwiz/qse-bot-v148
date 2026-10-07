@@ -358,7 +358,15 @@ def konsultasi(sym, arah=None, entry=None):
     # ---- fundamental, derivatif, kalender ----
     blok.append("\n".join(["<b>Fundamental</b>"] + fund))
     blok.append("\n".join(["<b>Pasar derivatif Bybit</b>"] + deriv))
-    rows = ["<b>Kalender dan berita</b>"]
+    rows = ["<b>Kalender, makro, dan berita</b>"]
+    try:
+        import qse_makro as MK
+        mb = MK.baris()
+        if mb:
+            rows.append(mb)
+        rows += ["Berita: " + b for b in MK.berita(3)]
+    except Exception:
+        pass
     try:
         import qse_berita as BR
         hari = BR.hari_ini()

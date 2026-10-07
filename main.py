@@ -29,6 +29,7 @@ import qse_alarm as AL
 import qse_uji as QU
 import qse_modal as MD
 import qse_pola as PL
+import qse_makro as MK
 import telegram_notify as TG
 
 MIN_BARS = 300
@@ -321,7 +322,7 @@ def _cad_status(led):
     return dict(n=n, wr=wr, pf=pf, mati=mati, cl=cl)
 
 
-def _cadangan(results, sel, led, tickers, ctx, rb, maks=3, konf_min=6):
+def _cadangan(results, sel, led, tickers, ctx, rb, maks=3, konf_min=5):
     """Saran cadangan dari koin rapor A/B di zona emas searah bias, izin BTC, konfirmasi skill tinggi."""
     if _cad_status(led)["mati"] or ctx["tahan"] or ctx["jeda"] or not QU.aktif("cadangan"):
         return []
@@ -485,7 +486,7 @@ def _konfluensi(r, arah, zona=False):
         ok.append("skill 6/8+")
     sk = r.get("siklus") or {}
     pk = sk.get("pola") or {}
-    if pk.get("n", 0) >= 3 and ((pk["up"] >= 0.67) if L else (pk["up"] <= 0.33)):
+    if pk.get("n", 0) >= 3 and ((pk["up"] >= SIK.MIN_UP) if L else (pk["up"] <= 1 - SIK.MIN_UP)):
         ok.append("pola kembar")
     fl = (sk.get("aliran") or {}).get("skor", 0)
     if (fl >= 2) if L else (fl <= -2):
@@ -515,7 +516,7 @@ def _alasan_cad(rs, ctx):
         return "Tidak ada: belum ada koin rapor A/B di zona emas yang diizinkan BTC."
     best = max(SK.konfirmasi(r.get("skill"), r["pasar"]["arah"])[0] for r in z)
     return (f"Tidak ada: {len(z)} koin di zona emas, konfirmasi skill tertinggi {best}/8, "
-            f"butuh minimal 6/8. Koinnya ada di bagian 3 untuk analisa manual.")
+            f"butuh minimal 5/8. Koinnya ada di bagian 3 untuk analisa manual.")
 
 
 def _alasan_sik(rs, ctx):
@@ -526,8 +527,8 @@ def _alasan_sik(rs, ctx):
     n = sum(1 for r in rs if ((r.get("siklus") or {}).get("saran")))
     if n:
         return f"Tidak ada: {n} kandidat pola kembar tertahan aliran dana, likuiditas, atau posisi kamu."
-    return ("Tidak ada: belum ada pola kembar yang teruji dan searah dengan arah 4J, 1D, aliran dana, dan BTC. "
-            "Syaratnya ketat, jadi jalur ini jarang muncul.")
+    return ("Tidak ada: belum ada pola kembar yang teruji dan searah dengan arah 4J, 1D, aliran dana, dan BTC "
+            "di candle ini.")
 
 
 def _blok_sik(no, r, x, tag, led):
@@ -550,7 +551,7 @@ def _blok_sik(no, r, x, tag, led):
         rows.append(f"Cara: LIMIT di EMA20, lot {SY.lot_jalur('saran siklus'):g}x lot normal, batal otomatis "
                     f"{_jam(it['exp_ts']) if it and it.get('exp_ts') else '24 jam'}")
     rows.append("Kelola: TP1 tutup separuh, SL ke entry, sisa ke TP2")
-    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran siklus"), _lev_maks(x))
+    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran siklus") * MK.kali_lot(x["arah"]), _lev_maks(x))
     if bl:
         rows.append(bl)
     rows.append("Catatan: dari pola harga masa lalu, konfirmasi di DASBOR sebelum entry")
@@ -652,7 +653,7 @@ def _blok_fib(no, r, x, tag, led):
     rows.append(_baris_waktu(r, x))
     rows.append(f"Cara: MARKET sekarang, lot {SY.lot_jalur('saran fib'):g}x lot normal, SL di luar ekor candle khas koin ini")
     rows.append("Kelola: TP1 di puncak kaki fib, tutup separuh, SL ke entry, sisa ke extension 1.272")
-    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran fib"), _lev_maks(x))
+    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran fib") * MK.kali_lot(x["arah"]), _lev_maks(x))
     if bl:
         rows.append(bl)
     rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
@@ -690,7 +691,7 @@ def _blok_cad(no, r, x, tag, led):
         rows.append(f"Cara: LIMIT di entry, lot {SY.lot_jalur('saran cadangan'):g}x lot normal, batal otomatis "
                     f"{_jam(it['exp_ts']) if it and it.get('exp_ts') else '24 jam'}")
     rows.append("Kelola: TP1 tutup separuh, SL ke entry, sisa ke TP2")
-    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran cadangan"), _lev_maks(x))
+    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran cadangan") * MK.kali_lot(x["arah"]), _lev_maks(x))
     if bl:
         rows.append(bl)
     rows.append("Catatan: belum lolos backtest v148")
@@ -795,7 +796,7 @@ def cek_1j(now, jalur_aktif=True, paksa=False):
 def uji_mingguan(paksa=False):
     """Uji mundur saran cadangan dan siklus, seminggu sekali di run per jam (bukan jam scan 4 jam)."""
     u = QU.lihat()
-    if not paksa and u and time.time() * 1000 - u.get("ts", 0) < 7 * 86400000:
+    if not paksa and u and u.get("versi") == QU.VERSI and time.time() * 1000 - u.get("ts", 0) < 7 * 86400000:
         return
     try:
         with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
@@ -1315,12 +1316,15 @@ def _blok(no, r, s, status, led=None):
         rows.append(f"Cara: LIMIT di entry, batal otomatis {_jam(it['exp_ts']) if it and it.get('exp_ts') else '24 jam'}")
     rows.append("Kelola: TP1 tutup separuh, SL ke entry, sisa ke TP2")
     jl = "saran 1J" if r["tf"] == "60" else "saran utama"
+    if MK.kali_lot(s["arah"]) < 1:
+        rows.append("⚠️ Tekanan makro AS (yield dan dolar naik bersamaan): lot LONG dipotong setengah")
     if SY.lot_jalur(jl) != 1.0:
         rows.append(f"Lot: {SY.lot_jalur(jl):g}x lot normal" + (" (saran TF 1J)" if r["tf"] == "60" else " (dari hasil trade kamu)"))
     slp = abs(s["entry"] - s["sl"]) / s["entry"] if s["entry"] > 0 else 1
     lev = max(1, min(FP["lev_cap"], int(1 / (slp * 1.3 + 0.006))))
     rows.append(f"Leverage maks {lev}x isolated | SL {slp * 100:.1f}% dari entry")
-    bl = MD.baris_lot(s["entry"], s["sl"], SY.lot_jalur("saran 1J" if r["tf"] == "60" else "saran utama"), lev)
+    bl = MD.baris_lot(s["entry"], s["sl"], SY.lot_jalur("saran 1J" if r["tf"] == "60" else "saran utama") *
+                      MK.kali_lot(s["arah"]), lev)
     if bl:
         rows.append(bl)
     elif FP["risk_usdt"] > 0:
@@ -1470,6 +1474,9 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         head.append("Trade kamu: " + ", ".join(f"{v} {nm.get(k, k)}" for k, v in st_open.items()))
     if ctx and tf == "240":
         head += _berita_baris(ctx)
+        mb = MK.baris()
+        if mb:
+            head.append(TG.e(mb))
     mst = MD.status()
     if mst["rem"]:
         head.append("⛔ " + mst["alasan"])
@@ -1495,6 +1502,9 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     if tf == "240" and tutup_dt.hour == 0:
         out.append(_rekap(SY.lihat(), tutup_dt, 1, "REKAP TRADE KAMU KEMARIN", ("SL", "BE", "TP2", "TUTUP")))
         out.append(_evaluasi_saran(led, tutup_dt))
+        bk = MK.berita()
+        if bk:
+            out.append("📰 <b>BERITA KRIPTO TERBARU</b> (hanya bacaan, bukan sinyal)\n" + "\n".join("↳ " + TG.e(b) for b in bk))
         if tutup_dt.weekday() == 0:
             out.append(_rekap(SY.lihat(), tutup_dt, 7, "REKAP 7 HARI TRADE KAMU", ("SL", "BE", "TP2", "TUTUP")))
             if len(SY._selesai()) >= 5:

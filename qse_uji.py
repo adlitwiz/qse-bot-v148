@@ -67,7 +67,10 @@ def _simulasi(h, l, c, t, arah, order, entry, sl, tp1, tp2):
 
 
 # ---------------- jalur cadangan ----------------
-def uji_cadangan(v, mulai, konf_min=6):
+VERSI = 2          # naik bila aturan jalur berubah, supaya uji mundur langsung diulang
+
+
+def uji_cadangan(v, mulai, konf_min=5):
     h, l, c, a = v["high"], v["low"], v["close"], v["atr"]
     out, t = [], mulai
     n = len(c)
@@ -196,17 +199,18 @@ def uji_siklus(df, dfD, btc_prob, mulai, is_btc=False):
     n = len(c)
     while t < n - 2:
         bp = btc_prob[t] if btc_prob is not None and not np.isnan(btc_prob[t]) else 50.0
-        preB = c4[t] >= 55 and cD[t] >= 55 and dana[t] >= 0 and (is_btc or bp >= 50)
-        preS = c4[t] <= 45 and cD[t] <= 45 and dana[t] <= 0 and (is_btc or bp <= 50)
+        A = SIK.MIN_ARAH
+        preB = c4[t] >= A and cD[t] >= A and dana[t] >= 0 and (is_btc or bp >= 50)
+        preS = c4[t] <= 100 - A and cD[t] <= 100 - A and dana[t] <= 0 and (is_btc or bp <= 50)
         if not (preB or preS) or not a[t] > 0:
             t += 1
             continue
         pk = SIK.pola_kembar(c[:t + 1])
-        if not pk or not pk["frs"] or pk["n"] < 3 or pk["hitT"] < 8 or pk["hitN"] / pk["hitT"] < 0.6:
+        if not pk or not pk["frs"] or pk["n"] < 3 or pk["hitT"] < SIK.MIN_UJI or pk["hitN"] / pk["hitT"] < SIK.MIN_TEPAT:
             t += 1
             continue
-        L = preB and pk["up"] >= 0.67
-        S = preS and pk["up"] <= 0.33
+        L = preB and pk["up"] >= SIK.MIN_UP
+        S = preS and pk["up"] <= 1 - SIK.MIN_UP
         if not (L or S):
             t += 1
             continue
@@ -263,7 +267,7 @@ def jalankan(daftar, ambil, btc4, batas_detik=900):
             per_koin[sym] = dict(cadangan=_statistik(rc), siklus=_statistik(rs))
         except Exception as ex:
             print(f"[WARN] uji {sym}: {ex}")
-    out = dict(ts=int(time.time() * 1000), koin=len(per_koin), bar=BARS,
+    out = dict(ts=int(time.time() * 1000), versi=VERSI, koin=len(per_koin), bar=BARS,
                cadangan=_statistik(hasil["cadangan"]), siklus=_statistik(hasil["siklus"]), fib=_statistik(hasil["fib"]),
                per_koin=per_koin,
                durasi=int(time.time() - t0))

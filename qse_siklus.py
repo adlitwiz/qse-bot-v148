@@ -13,6 +13,9 @@ from numpy.lib.stride_tricks import sliding_window_view as swv
 import qse_ta as T
 
 DAY = 86400000
+# Ambang saran siklus. Versi Pine asli: korelasi 0.80, teruji 8x, naik 67%, arah 55%. Hasil uji mundur 6 bulan
+# versi asli 0 trade, jadi dipakai versi lebih longgar ini. Uji mundur mingguan tetap menilai dan mematikan bila jelek.
+KOR, MIN_UJI, MIN_TEPAT, MIN_UP, MIN_ARAH = 0.75, 5, 0.6, 0.65, 52
 WIB = 7 * 3600000
 HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
 
@@ -166,7 +169,8 @@ def _match(rr, o, N, L, H, S, K, thr):
     return n, (sum(1 for f in fw if f > 0) / n if n else 0.5), (float(np.mean(fw)) if n else 0.0), fw
 
 
-def pola_kembar(c, L=20, H=12, S=400, K=5, thr=0.80):
+def pola_kembar(c, L=20, H=12, S=400, K=5, thr=None):
+    thr = KOR if thr is None else thr
     N = min(len(c) - 2, 1500)
     if N <= L + H + 60:
         return None
@@ -209,9 +213,11 @@ def analisa(df, dfD, btc_prob, is_btc=False):
             return out
         hitR = pk["hitN"] / pk["hitT"] if pk["hitT"] else 0.0
         bp = 50.0 if btc_prob is None else btc_prob
-        base = pk["n"] >= 3 and pk["hitT"] >= 8 and hitR >= 0.6
-        okB = base and pk["up"] >= 0.67 and (c4P or 50) >= 55 and (cDP or 50) >= 55 and fl["skor"] >= 0 and (is_btc or bp >= 50)
-        okS = base and pk["up"] <= 0.33 and (c4P or 50) <= 45 and (cDP or 50) <= 45 and fl["skor"] <= 0 and (is_btc or bp <= 50)
+        base = pk["n"] >= 3 and pk["hitT"] >= MIN_UJI and hitR >= MIN_TEPAT
+        okB = (base and pk["up"] >= MIN_UP and (c4P or 50) >= MIN_ARAH and (cDP or 50) >= MIN_ARAH and fl["skor"] >= 0
+               and (is_btc or bp >= 50))
+        okS = (base and pk["up"] <= 1 - MIN_UP and (c4P or 50) <= 100 - MIN_ARAH and (cDP or 50) <= 100 - MIN_ARAH
+               and fl["skor"] <= 0 and (is_btc or bp <= 50))
         if not (okB or okS):
             return out
         L = okB
