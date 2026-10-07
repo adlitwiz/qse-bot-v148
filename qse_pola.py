@@ -190,3 +190,43 @@ def teks(pl):
     if pl.get("candle"):
         rows.append(f"Candle terakhir: {pl['candle']}")
     return rows
+
+
+def gz_hunter(h, l, c, depth=10, thr=4.0):
+    """Port Golden Zone Hunter (skrip Gabungan, bagian SMC): zigzag pivot kedalaman 10, ambang deviasi
+    4 x ATR(10)/close. Fib digambar dari pivot terakhir (0) ke pivot sebelumnya (1)."""
+    h, l, c = (np.asarray(x, float) for x in (h, l, c))
+    n = len(c)
+    if n < 60:
+        return None
+    tr = np.maximum(h[1:] - l[1:], np.maximum(abs(h[1:] - c[:-1]), abs(l[1:] - c[:-1])))
+    tr = np.r_[h[0] - l[0], tr]
+    atr = np.empty(n)
+    atr[:10] = np.nan
+    atr[9] = tr[:10].mean()
+    for i in range(10, n):
+        atr[i] = (atr[i - 1] * 9 + tr[i]) / 10
+    ln = depth // 2
+    p_last, hi_last, y1, ada = 0.0, False, None, False
+    for t in range(2 * ln, n):
+        thr_t = (atr[t] / c[t]) * 100 * thr if not np.isnan(atr[t]) else 1e9
+        w_h, w_l = h[t - 2 * ln:t + 1], l[t - 2 * ln:t + 1]
+        ph = h[t - ln] if h[t - ln] >= w_h.max() else None
+        pl = l[t - ln] if l[t - ln] <= w_l.min() else None
+        for is_high, p in ((True, ph), (False, pl)):
+            if p is None or (not is_high and ph is not None):
+                continue
+            dev = 100 * (p - p_last) / p if p else 0
+            if hi_last == is_high and ada:
+                if (p > p_last) if hi_last else (p < p_last):
+                    p_last = p
+            elif abs(dev) > thr_t:
+                y1, ada = p_last, True
+                p_last, hi_last = p, is_high
+    if not ada or not y1:
+        return None
+    start, end = p_last, y1
+    diff = (-1 if start > end else 1) * abs(start - end)
+    lv = {m: start + diff * m for m in (-1.0, -0.618, -0.236, 0.0, 0.5, 0.618, 0.65, 1.0)}
+    return dict(start=float(start), end=float(end), puncak=bool(start > end),
+                levels={str(k): float(v) for k, v in lv.items()})

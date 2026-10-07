@@ -215,6 +215,55 @@ def main():
         raise
 
 
+def _evaluasi_saran(led, now):
+    """Hasil semua saran robot kemarin dan 7 hari (simulasi dari level saran, bukan trade kamu)."""
+    b = int(dt.datetime(now.year, now.month, now.day, tzinfo=dt.timezone.utc).timestamp() * 1000)
+    rows = ["📊 <b>EVALUASI SARAN ROBOT</b> (simulasi level saran, bukan trade kamu)"]
+    for nama, a in (("Kemarin", b - 86400000), ("7 hari", b - 7 * 86400000)):
+        cl = [c for c in led["closed"] if c.get("why") in ("SL", "BE", "TP2") and a <= c.get("closed_ts", 0) < b]
+        if not cl:
+            rows.append(f"{nama}: belum ada saran yang selesai")
+            continue
+        g = {}
+        for c in cl:
+            j = ("cadangan" if c.get("cadangan") else "siklus" if c.get("siklus") else "fib" if c.get("fib")
+                 else "cadangan 2" if c.get("cad2") else "1J" if c.get("tf") == "60" else "utama")
+            g.setdefault(f"{c['pola']} ({j})", []).append(c["result_r"])
+
+        def st(x):
+            w = [v for v in x if v > 0]
+            rugi = -sum(v for v in x if v < 0)
+            return len(x), len(w) / len(x) * 100, (sum(w) / rugi if rugi > 0 else 9.9), sum(x)
+        semua = [v for x in g.values() for v in x]
+        n, wr, pf, net = st(semua)
+        rows.append(f"{nama}: {n} saran | WR {wr:.0f}% | PF {pf:.2f} | rata {net / n:+.2f}R | total {net:+.2f}R")
+        if len(g) > 1:
+            urut = sorted(((k, st(v)) for k, v in g.items()), key=lambda z: -z[1][3])
+            k, s_ = urut[0]
+            rows.append(f"↳ profit terbanyak: {TG.e(k)} {s_[3]:+.2f}R ({s_[0]} saran, PF {s_[2]:.2f})")
+            akur = max(((k, st(v)) for k, v in g.items() if len(v) >= 2), key=lambda z: (z[1][1], z[1][2]), default=None)
+            if akur:
+                rows.append(f"↳ paling akurat: {TG.e(akur[0])} WR {akur[1][1]:.0f}% PF {akur[1][2]:.2f} ({akur[1][0]} saran)")
+    return "\n".join(rows)
+
+
+def _pin(ids):
+    """Sematkan pesan sinyal. Bila gagal (bot belum admin), kabari sekali sehari dengan cara memperbaikinya."""
+    if not ids:
+        return
+    st = _st_load()
+    if st.get("pin_id"):
+        TG.unpin(st["pin_id"])
+    err = TG.pin(ids[0])
+    if err:
+        if time.time() - st.get("pin_warn", 0) > 86400:
+            TG.send([f"⚠️ <b>QSE v148 | PIN GAGAL</b>\nTelegram: {TG.e(str(err))}\nJadikan bot admin grup dengan izin "
+                     f"<b>Sematkan pesan</b> (Pin messages), lalu sinyal berikutnya otomatis disematkan."])
+            _st_update({"pin_warn": time.time()})
+        return
+    _st_update({"pin_id": ids[0]})
+
+
 def _konteks_berita(b1):
     """Kalender, delisting, dan guncangan BTC. Guncangan menahan sinyal baru 3 jam."""
     now_ms = int(time.time() * 1000)
@@ -971,6 +1020,12 @@ def cek_cepat(now, paksa=False):
     if alarm:
         blocks.append(f"{GARIS}\n🥇 <b>ALARM ZONA EMAS UNTUK ENTRY MANUAL</b>\n"
                       "Cek chart dan tunggu candle konfirmasi searah\n\n" + "\n\n".join(alarm))
+    prospek = [(r, x) for r, x in baru if x.get("golden") or _konfluensi(r, x["arah"], x.get("zona_emas"))[0] >= 3
+               or x["mutu"] == "A"]
+    if prospek:
+        _pin(TG.send([f"🎯 <b>QSE v148 | SINYAL PROSPEK 4 JAM</b>\n{jam}\nSinyal baru di tengah candle dengan mutu A, "
+                      f"GOLDEN, atau konfluensi tinggi."] +
+                     [_blok(i, r, x, f"{x['mutu']} EKSEKUSI, SINYAL BARU", led) for i, (r, x) in enumerate(prospek, 1)]) or [])
     TG.send(blocks)
     for b in blocks:
         print(b, "\n")
@@ -1121,13 +1176,7 @@ def scan(now, run4, tfs):
         if fail > max(5, 0.05 * len(order)):
             blocks[0] += f"\nData tidak lengkap: {fail} koin gagal diambil atau dihitung"
         if ada:
-            ids = TG.send(sinyal) or []
-            if ids:
-                lama_pin = _st_load().get("pin_id")
-                if lama_pin:
-                    TG.unpin(lama_pin)
-                TG.pin(ids[0])
-                _st_update({"pin_id": ids[0]})
+            _pin(TG.send(sinyal) or [])
         TG.send(blocks)
         for b in sinyal + blocks:
             print(b, "\n")
@@ -1445,6 +1494,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     tutup_dt = dt.datetime.fromtimestamp(tutup / 1000, dt.timezone.utc) if tutup else now
     if tf == "240" and tutup_dt.hour == 0:
         out.append(_rekap(SY.lihat(), tutup_dt, 1, "REKAP TRADE KAMU KEMARIN", ("SL", "BE", "TP2", "TUTUP")))
+        out.append(_evaluasi_saran(led, tutup_dt))
         if tutup_dt.weekday() == 0:
             out.append(_rekap(SY.lihat(), tutup_dt, 7, "REKAP 7 HARI TRADE KAMU", ("SL", "BE", "TP2", "TUTUP")))
             if len(SY._selesai()) >= 5:

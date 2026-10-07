@@ -13,15 +13,21 @@ def _aksi(metode, **data):
     if not token or not chat_id:
         return
     try:
-        requests.post(f"https://api.telegram.org/bot{token}/{metode}", data={"chat_id": chat_id, **data}, timeout=15)
+        r = requests.post(f"https://api.telegram.org/bot{token}/{metode}", data={"chat_id": chat_id, **data}, timeout=15)
+        js = r.json()
+        if not js.get("ok"):
+            print("[WARN] Telegram", metode, js.get("description"))
+            return js.get("description") or "gagal"
     except Exception as ex:
         print("[WARN] Telegram", metode, ex)
+        return str(ex)
+    return None
 
 
 def pin(mid):
     """Sematkan pesan (bot harus admin grup dengan izin pin). Gagal tidak masalah."""
     if mid:
-        _aksi("pinChatMessage", message_id=mid, disable_notification=True)
+        return _aksi("pinChatMessage", message_id=mid, disable_notification=True)
 
 
 def unpin(mid):

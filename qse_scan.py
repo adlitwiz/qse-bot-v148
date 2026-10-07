@@ -17,6 +17,28 @@ FAM = np.array(R.FAM, dtype=np.int64)
 FIB_IDX = set(list(range(8)) + [30, 31])
 
 
+def _pola_top(NM, jidx, wnA, lsA, ntA, wrA, pfA, minSmp=12):
+    """Sama dengan f_lib DASBOR: tiap pola pakai arah dengan net R lebih besar, wajib minimal 12 trade dan net > 0."""
+    out, pakai = [], set()
+    for _ in range(5):
+        bb, bv = -1, -99999.0
+        for i in range(90):
+            if i in pakai:
+                continue
+            dl = ntA[jidx(i, True)] >= ntA[jidx(i, False)]
+            j = jidx(i, dl)
+            if ntA[j] > bv and wnA[j] + lsA[j] >= minSmp and ntA[j] > 0:
+                bv, bb = ntA[j], i
+        if bb < 0:
+            break
+        pakai.add(bb)
+        dl = ntA[jidx(bb, True)] >= ntA[jidx(bb, False)]
+        j = jidx(bb, dl)
+        out.append(dict(pola=NM[bb], arah="LONG" if dl else "SHORT", net_r=float(ntA[j]), win=int(wnA[j]),
+                        loss=int(lsA[j]), wr=float(wrA[j]), pf=float(pfA[j])))
+    return out
+
+
 def mulai_uji(ts, TF_MS):
     last_bar_time = int(ts[-1]) + TF_MS          # bar realtime yang sedang berjalan di TradingView
     ujiW = 3000 * TF_MS
@@ -335,12 +357,11 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         symbol=sym, tf=tf, tf_ms=TF_MS, time=int(ts[L]), close=float(c), atr=float(a), tick=tick, rapor=nilT, trd=totT,
         wr=wrT, pf=pfT, net_r=float(vlRes), bias="LONG" if biasLg else "SHORT", regime=rg, bProb=bProb,
         btc=btcTxt, golden=gIdx + 1 if gIdx >= 0 else 0, saran=saran, candle=n, mulai=mu, skill=SK.analisa(v, RT),
+        awal_ts=int(ts[0]), uji_ts=int(ts[mu]) if mu < len(ts) else int(ts[-1]),
         siklus=SIK.analisa(df, dfD, bProb, sym.startswith("BTC")) if tf == "240" else None,
         lolos=int(sum(1 for i in range(90) if pvA[i] or pvA[i + 90])), feed="FEED RESMI BYBIT:%s.P" % sym,
-        pola_top=sorted([dict(pola=R.NM[i], arah="LONG" if dd else "SHORT", net_r=float(ntA[jidx(i, dd)]),
-                              win=int(wnA[jidx(i, dd)]), loss=int(lsA[jidx(i, dd)]), wr=float(wrA[jidx(i, dd)]),
-                              pf=float(pfA[jidx(i, dd)])) for i in range(90) for dd in (True, False)
-                         if wnA[jidx(i, dd)] + lsA[jidx(i, dd)] > 0], key=lambda z: -z["net_r"])[:5],
+        pola_top=_pola_top(R.NM, jidx, wnA, lsA, ntA, wrA, pfA),
+        gzh=PL.gz_hunter(v["high"][:n], v["low"][:n], v["close"][:n]) if tf == "240" else None,
         pola_chart=PL.analisa(v["open"][:n], v["high"][:n], v["low"][:n], v["close"][:n], v["atr"][:n],
                               backtest=nilT in ("A", "B", "C")) if tf == "240" else None,
     )

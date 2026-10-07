@@ -1326,9 +1326,15 @@ def kalibrasi_teks(sym):
         return f"{sym} belum ada di scan 4 jam terakhir."
     t = r["tick"]
     rows = [f"<b>KALIBRASI {sym} TF 4J</b>",
-            f"Candle dipakai {r.get('candle', '-')} | mulai uji {time.strftime('%d/%m/%Y', time.gmtime((r.get('mulai') or 0) / 1000))}",
+            f"Candle uji {(r.get('candle') or 0) - (r.get('mulai') or 0)} (sama dengan angka 'candle' di DASBOR) | "
+            f"total {r.get('candle', '-')} candle | "
+            f"candle pertama {time.strftime('%d/%m/%Y', time.gmtime((r.get('awal_ts') or 0) / 1000 + 7 * 3600))} | "
+            f"mulai uji {time.strftime('%d/%m/%Y %H:%M', time.gmtime((r.get('uji_ts') or 0) / 1000 + 7 * 3600))} WIB",
             f"Baris 16 Rapor robot: {r['rapor']} | {r['trd']}trd WR{r['wr']:.0f} PF{r['pf']:.2f} {r['net_r']:+.1f}R",
-            f"Bias {r['bias']} | {r['btc']} | lolos {r.get('lolos', '-')}", "", "<b>POLA TERBAIK</b>"] + pola_top_teks(r) + ["", "<b>SARAN</b>"]
+            f"Bias {r['bias']} | {r['btc']} | lolos {r.get('lolos', '-')}", "",
+            "<b>POLA TERBAIK</b> (minimal 12 trade, sama seperti tabel DASBOR)"] + (pola_top_teks(r) or ["belum ada"]) + ["", "<b>SARAN</b>"]
+    if not r["saran"]:
+        rows.append("Sm1 sampai Sm5 kosong (mencari pola)")
     for x in r["saran"][:3]:
         rows.append(f"Sm{x['slot']} {x['pola']} | {x['mutu']} {'EKSEKUSI' if x['eksekusi'] else 'TAHAN, ' + x['alasan']} | "
                     f"E {fp(x['entry'], t)} SL {fp(x['sl'], t)} TP1 {fp(x['tp1'], t)} TP2 {fp(x['tp2'], t)}")
@@ -1448,3 +1454,54 @@ def fib_teks(r):
     if ps:
         tx += f" | dekat angka psikologis {fp(ps, t)}"
     return tx
+
+
+def sentuh_fib():
+    """Notif saat harga menyentuh TEPAT level 0.618 (dan 0.65) Golden Zone Hunter dari skrip Gabungan.
+    Dicek tiap menit: harga dianggap menyentuh bila melintasi level sejak pengecekan sebelumnya."""
+    try:
+        with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
+            lama = json.load(f)
+    except Exception:
+        return []
+    cal = [r for r in lama if r.get("tf", "240") == "240" and r["rapor"] != "D buruk" and r.get("gzh")]
+    if not cal:
+        return []
+    harga = harga_semua()
+    fpath = os.path.join(STATE_DIR, "sentuh_fib.json")
+    try:
+        with open(fpath) as f:
+            st = json.load(f)
+    except Exception:
+        st = {}
+    px_lama, sudah = st.get("px", {}), st.get("sudah", {})
+    out = []
+    for r in cal:
+        sym, px = r["symbol"], harga.get(r["symbol"])
+        if not px:
+            continue
+        g, t = r["gzh"], r["tick"]
+        lv = g["levels"]
+        p0 = px_lama.get(sym)
+        px_lama[sym] = px
+        if p0 is None:
+            continue
+        for key, nama in (("0.618", "0.618"), ("0.65", "0.65")):
+            L = lv[key]
+            kunci = f"{sym}|{key}|{L:.10g}"
+            if (p0 - L) * (px - L) > 0 or kunci in sudah:
+                continue
+            sudah[kunci] = int(time.time())
+            arah = "LONG (pantulan dari koreksi turun)" if g["puncak"] else "SHORT (pantulan dari koreksi naik)"
+            p = r.get("pasar") or {}
+            out.append(f"{'🟢' if g['puncak'] else '🔴'} <b>{sym}</b> menyentuh tepat fib {nama} di {fp(L, t)}\n"
+                       f"↳ kaki fib {fp(g['end'], t)} ke {fp(g['start'], t)} | 0.5 {fp(lv['0.5'], t)} | 0.65 {fp(lv['0.65'], t)} | "
+                       f"batal di 1.0 {fp(lv['1.0'], t)}\n"
+                       f"↳ target extension -0.618 {fp(lv['-0.618'], t)}, -1 {fp(lv['-1.0'], t)} | arah setup {arah}\n"
+                       f"↳ rapor {r['rapor']} | bias robot {p.get('arah', '-')} | tunggu candle konfirmasi, cek /cek {sym.replace('USDT', '')}")
+            break
+    batas = time.time() - 3 * 86400
+    with open(fpath + ".tmp", "w") as f:
+        json.dump(dict(px=px_lama, sudah={k: v for k, v in sudah.items() if v > batas}), f)
+    os.replace(fpath + ".tmp", fpath)
+    return out[:8]
