@@ -106,6 +106,14 @@ def recheck(led, res_map, tfs_now):
         r = res_map.get((it["sym"], tf))
         if r is None:
             continue
+        if it.get("fib"):
+            p = r.get("pasar") or {}
+            if not (p.get("in_gp") and p.get("zona_searah") and p.get("arah") == it["arah"]) and \
+                    abs((r.get("live") or r["close"]) - it["entry"]) > 1.0 * r["atr"]:
+                _close(led, key, it, 0.0, "harga keluar dari golden pocket", r["time"])
+                it["status"] = "BATAL"
+                ev.append(("BATAL", it))
+            continue
         if it.get("siklus"):
             sk = (r.get("siklus") or {}).get("saran")
             if not sk or sk["arah"] != it["arah"]:
@@ -130,7 +138,7 @@ def recheck(led, res_map, tfs_now):
                 ev.append(("BATAL", it))
             continue
         same = [s for s in r["saran"] if s["pola"] == it["pola"] and s["arah"] == it["arah"]]
-        ok = [s for s in same if s["eksekusi"] and not s["sudah_masuk"]]
+        ok = [s for s in same if (s["eksekusi"] or (it.get("cad2") and s["mutu"] in ("A", "B"))) and not s["sudah_masuk"]]
         why = ""
         if r["rapor"] not in RAPOR_OK:
             why = "rapor turun ke %s" % r["rapor"]
@@ -318,7 +326,7 @@ def register(led, r, s):
                             exp_ts=start + int((8 if r["tf"] == "60" else FP["limit_hours"]) * 3600000),
                             status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r["rapor"],
                             fill_ts=start if mk else 0, p_isi=s["p_isi"], cadangan=bool(s.get("cadangan")),
-                            siklus=bool(s.get("siklus")))
+                            siklus=bool(s.get("siklus")), cad2=bool(s.get("cad2")), fib=bool(s.get("fib")))
     return "UPDATE" if old else "BARU"
 
 

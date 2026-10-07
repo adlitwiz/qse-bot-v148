@@ -92,7 +92,7 @@ def musiman(df, min_n=20):
         if not rows:
             return None
         rows.sort(key=lambda x: x[1])
-        return dict(terbaik=rows[-1], terburuk=rows[0])
+        return dict(terbaik=rows[-1], terburuk=rows[0], semua={x[0]: (float(x[1]), float(x[2])) for x in rows})
     return dict(hari=best(dow, lambda k: HARI[int(k)]), jam=best(jam, lambda k: f"{int(k):02d}:00"))
 
 

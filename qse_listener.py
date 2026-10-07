@@ -3,6 +3,7 @@ pantau trade kamu (/entry) tiap menit. Pasang sekali dengan: bash pasang_listene
 import fcntl
 import json
 import os
+import sys
 import time
 import requests
 
@@ -44,6 +45,43 @@ def _st(upd=None):
     return st
 
 
+def _tugas_berkala():
+    """Tiap 15 menit: peringatan dini posisi, BTC berbalik, scan momentum 15/30 menit.
+    Tiap jam menit ke-2: jalankan main.py (cadangan jadwal GitHub yang sering telat). Ganda dicegah oleh main.py."""
+    import subprocess
+    now = time.time()
+    st = _st()
+    if now - st.get("t15", 0) >= 900:
+        _st({"t15": now})
+        try:
+            pesan = SY.peringatan_dini()
+            if pesan:
+                TG.send(["⚠️ <b>QSE v148 | PERINGATAN</b>\n\n" + "\n\n".join(pesan)])
+        except Exception as ex:
+            print("[WARN] dini", ex)
+        try:
+            import qse_momentum as MO
+            with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
+                lama = json.load(f)
+            bias = {r["symbol"]: (r.get("pasar") or {}).get("arah") for r in lama
+                    if r.get("tf", "240") == "240" and r["rapor"] in ("A", "B")}
+            pos = {it["sym"]: it["arah"] for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")}
+            pesan = MO.scan(list(dict.fromkeys(list(pos) + list(bias))), bias, pos)
+            if pesan:
+                TG.send(["⚡ <b>QSE v148 | MOMENTUM 15/30 MENIT</b>\n\n" + "\n\n".join(pesan)])
+        except Exception as ex:
+            print("[WARN] momentum", ex)
+    jam = int(now // 3600)
+    if time.gmtime(now).tm_min >= 2 and st.get("jam_main") != jam:
+        _st({"jam_main": jam})
+        try:
+            subprocess.Popen([sys.executable, "main.py"], cwd=os.path.dirname(os.path.abspath(__file__)),
+                             env=os.environ.copy(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except Exception as ex:
+            print("[WARN] jadwal main", ex)
+
+
 def main():
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat = os.environ.get("TELEGRAM_CHAT_ID")
@@ -69,6 +107,7 @@ def main():
                     TG.send(["🔔 <b>QSE v148 | ALARM HARGA</b>\n\n" + "\n\n".join(kena)])
             except Exception as ex:
                 print("[WARN] alarm", ex)
+        _tugas_berkala()
         off = _st().get("tg_offset", 0)
         try:
             r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",

@@ -626,6 +626,7 @@ def build(df, df1h, dfD, dfW, btc, symbol, mintick, tf="240", df4=None, btc_tf=N
         bProb=bProb, btcUp=btcUp, btcDn=btcDn, btcMom=btcMom, btcKuat=btcKuat, helpL=helpL, helpS=helpS,
         confL=confL, confS=confS, rwBlock=rwBlock, suicL=suicL, suicS=suicS, kScL=kScL, kScS=kScS,
         tUp=tUp, tDn=tDn, upLeg=upLeg, gzTop=gzTop, gzBot=gzBot, gpTop=gpTop, gpBot=gpBot, swH=swH, swL=swL,
+        e127=e127, e161=e161, fib0=fib0,
         inGZ=inGZ, inGP=inGP, ema20=ema20, brkUp=brkUp, brkDn=brkDn, adx=adxV, rsi=rsiV, rvol=rvol,
         hurst=hurst, rSq=rSq, atrPc=atrPc, biasCt=biasCtA, m60=m60, m240=m240, mDy=mDy, mWk=mWk,
     )

@@ -40,6 +40,9 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "<b>Kelola posisi</b>\n"
            "/tp AUSDT 30% = ambil profit 30% posisi di harga sekarang (bisa 50% atau 100%)\n"
            "/sl AUSDT 50% = cut loss 50% posisi di harga sekarang\n"
+           "/sl AUSDT short 100% = tutup hanya posisi SHORT (kalau ada LONG dan SHORT di koin yang sama)\n"
+           "/serok AUSDT long 0.95 = tambah posisi di harga lebih baik, lot dibatasi supaya rugi total di SL maks 1.5R\n"
+           "/hapus AUSDT short = hapus catatan trade selesai terakhir yang salah\n"
            "/tp AUSDT 50% 1.050 = sama, tapi di harga yang kamu tulis\n"
            "/ubah AUSDT sl 0.99 tp1 1.05 tp2 1.08 = ubah level SL atau TP\n"
            "/ubah AUSDT sl entry = geser SL ke titik impas\n"
@@ -60,7 +63,8 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "<b>Info</b>\n"
            "/cek AUSDT = analisa lengkap koin: kesimpulan, saran robot, teknikal, siklus, skill, fundamental, derivatif, kalender\n"
            "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
-           "/uji = hasil uji mundur 6 bulan saran cadangan dan saran siklus\n"
+           "/uji = hasil uji mundur 6 bulan saran cadangan, fib, dan siklus\n"
+           "/kalibrasi ETHFI = angka bot untuk dicocokkan dengan DASBOR TradingView\n"
            "/status = trade kamu, floating, dan WR\n"
            "/bantuan = daftar perintah ini")
 
@@ -120,6 +124,12 @@ def balas(cmd, args, dari_main=False):
         return SY.tutup(args, "ambil profit")
     if cmd == "/sl":
         return SY.tutup(args, "cut loss")
+    if cmd == "/kalibrasi":
+        return SY.kalibrasi_teks(args[0]) if args else "Format: /kalibrasi ETHFI"
+    if cmd == "/serok":
+        return SY.serok(args)
+    if cmd == "/hapus":
+        return SY.hapus(args)
     if cmd == "/ubah":
         return SY.ubah_level(args)
     if cmd in ("/alert", "/alarm"):
@@ -178,7 +188,7 @@ def proses(cmds, dari_main=False):
         except Exception as ex:
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
-            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
+            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
                     "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}

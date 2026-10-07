@@ -102,6 +102,45 @@ def uji_cadangan(v, mulai, konf_min=6):
     return out
 
 
+# ---------------- jalur fib golden pocket ----------------
+def uji_fib(v, mulai, konf_min=5):
+    o, h, l, c, a = v["open"], v["high"], v["low"], v["close"], v["atr"]
+    lw = (np.minimum(o, c) - l) / np.maximum(a, 1e-12)
+    uw = (h - np.maximum(o, c)) / np.maximum(a, 1e-12)
+    out, t, n = [], mulai, len(c)
+    while t < n - 2:
+        bias = bool(v["biasLg"][t])
+        if not (v["inGP"][t] and bool(v["upLeg"][t]) == bias and (v["btcOkL"][t] if bias else v["btcOkS"][t])) or not a[t] > 0:
+            t += 1
+            continue
+        rg = h[t] - l[t]
+        konf_c = rg > 0 and ((c[t] > o[t] and ((c[t] - l[t]) / rg >= 0.6 or (min(o[t], c[t]) - l[t]) / rg >= 0.4)) if bias
+                             else (c[t] < o[t] and ((h[t] - c[t]) / rg >= 0.6 or (h[t] - max(o[t], c[t])) / rg >= 0.4)))
+        if not konf_c:
+            t += 1
+            continue
+        arah = "LONG" if bias else "SHORT"
+        if SK.konfirmasi(SK.analisa(v, t), arah)[0] < konf_min:
+            t += 1
+            continue
+        w = float(np.nanpercentile((lw if bias else uw)[max(0, t - 500):t + 1], 85))
+        buf = max(0.45, w + 0.1) * a[t]
+        e = c[t]
+        sl = v["swL"][t] - buf if bias else v["swH"][t] + buf
+        tp1 = v["swH"][t] if bias else v["swL"][t]
+        tp2 = v["e127"][t]
+        risk = abs(e - sl)
+        ok = risk > 0 and risk <= 3 * a[t] and ((sl < e < tp1 < tp2) if bias else (sl > e > tp1 > tp2))
+        if not ok or abs(tp1 - e) / risk < 0.8 or abs(tp2 - e) / risk < 1.5:
+            t += 1
+            continue
+        r, akhir = _simulasi(h, l, c, t, arah, "MARKET", e, sl, tp1, tp2)
+        if r is not None:
+            out.append(r)
+        t = akhir + 1
+    return out
+
+
 # ---------------- jalur siklus ----------------
 def _arah_seri(close):
     """Seri f_fc Pine: nilai di bar i = peluang naik di bar i-1."""
@@ -201,7 +240,7 @@ def _statistik(rs):
 def jalankan(daftar, ambil, btc4, batas_detik=900):
     """daftar = [(sym, tick)]. ambil(sym) -> (df4 tutup, df1h, dfD, dfW). Simpan hasil ke uji.json."""
     t0 = time.time()
-    hasil = {"cadangan": [], "siklus": []}
+    hasil = {"cadangan": [], "siklus": [], "fib": []}
     per_koin = {}
     bf = F._btc_fc(btc4)
     for sym, tick in daftar:
@@ -214,6 +253,8 @@ def jalankan(daftar, ambil, btc4, batas_detik=900):
             v = F.build(df, h1, dD, dW, btc4, sym, tick)
             mulai = len(df) - BARS
             rc = uji_cadangan(v, mulai)
+            rf = uji_fib(v, mulai)
+            hasil["fib"] += rf
             ts = df.index.values.astype("datetime64[ms]").astype(np.int64)
             bp = bf["bProb"].reindex(ts + H4, method="ffill").values
             rs = uji_siklus(df, dD, bp, mulai, sym.startswith("BTC"))
@@ -223,7 +264,8 @@ def jalankan(daftar, ambil, btc4, batas_detik=900):
         except Exception as ex:
             print(f"[WARN] uji {sym}: {ex}")
     out = dict(ts=int(time.time() * 1000), koin=len(per_koin), bar=BARS,
-               cadangan=_statistik(hasil["cadangan"]), siklus=_statistik(hasil["siklus"]), per_koin=per_koin,
+               cadangan=_statistik(hasil["cadangan"]), siklus=_statistik(hasil["siklus"]), fib=_statistik(hasil["fib"]),
+               per_koin=per_koin,
                durasi=int(time.time() - t0))
     if "1j" in lihat():
         out["1j"] = lihat()["1j"]
@@ -239,7 +281,8 @@ def ringkas(u=None):
     if not u or "cadangan" not in u:
         return "Uji mundur belum pernah jalan. Jalan otomatis seminggu sekali."
     rows = [f"<b>🧪 UJI MUNDUR 6 BULAN</b> ({u['koin']} koin, {time.strftime('%d/%m %H:%M', time.gmtime(u['ts'] / 1000 + 7 * 3600))} WIB)"]
-    for j, nama in (("cadangan", "Saran cadangan"), ("siklus", "Saran siklus"), ("1j", "Saran TF 1J")):
+    for j, nama in (("cadangan", "Saran cadangan"), ("fib", "Saran fib 0.618-0.65"), ("siklus", "Saran siklus"),
+                    ("1j", "Saran TF 1J")):
         if j not in u:
             continue
         s = u[j]

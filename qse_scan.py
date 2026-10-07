@@ -6,6 +6,7 @@ import qse_engine as E
 import qse_rules as R
 import qse_skill as SK
 import qse_siklus as SIK
+import qse_pola as PL
 from config import P
 
 TFMS = {"240": 4 * 3600 * 1000, "60": 3600 * 1000}
@@ -323,6 +324,7 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         btc_ok=bool(btcOkL if biasLg else btcOkS),
         btc_selaras=bool((bProb >= 55 and btcOkL) if biasLg else (bProb <= 45 and btcOkS)),
         adx=float(v["adx"][RT]) if not np.isnan(v["adx"][RT]) else 0.0,
+        fib_hi=float(v["swH"][RT]), fib_lo=float(v["swL"][RT]), e127=float(v["e127"][RT]), e161=float(v["e161"][RT]),
         k_now=tuple(float(v[k][RT]) for k in ("open", "high", "low", "close")),
         k_prev=tuple(float(v[k][RT - 1]) for k in ("open", "high", "low", "close")),
     )
@@ -335,4 +337,10 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         btc=btcTxt, golden=gIdx + 1 if gIdx >= 0 else 0, saran=saran, candle=n, mulai=mu, skill=SK.analisa(v, RT),
         siklus=SIK.analisa(df, dfD, bProb, sym.startswith("BTC")) if tf == "240" else None,
         lolos=int(sum(1 for i in range(90) if pvA[i] or pvA[i + 90])), feed="FEED RESMI BYBIT:%s.P" % sym,
+        pola_top=sorted([dict(pola=R.NM[i], arah="LONG" if dd else "SHORT", net_r=float(ntA[jidx(i, dd)]),
+                              win=int(wnA[jidx(i, dd)]), loss=int(lsA[jidx(i, dd)]), wr=float(wrA[jidx(i, dd)]),
+                              pf=float(pfA[jidx(i, dd)])) for i in range(90) for dd in (True, False)
+                         if wnA[jidx(i, dd)] + lsA[jidx(i, dd)] > 0], key=lambda z: -z["net_r"])[:5],
+        pola_chart=PL.analisa(v["open"][:n], v["high"][:n], v["low"][:n], v["close"][:n], v["atr"][:n],
+                              backtest=nilT in ("A", "B", "C")) if tf == "240" else None,
     )

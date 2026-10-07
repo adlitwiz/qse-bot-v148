@@ -136,6 +136,7 @@ def jalur_saran(sym, arah, harga, r=None, dengan_pola=False):
             for it in FX.load()["open"].values():
                 if it["sym"] == sym and it["arah"] == arah and (not a or abs(it["entry"] - harga) <= a):
                     j = ("saran cadangan" if it.get("cadangan") else "saran siklus" if it.get("siklus")
+                         else "saran cadangan 2" if it.get("cad2") else "saran fib" if it.get("fib")
                          else "saran 1J" if it.get("tf") == "60" else "saran utama")
                     hasil = (j, it["pola"])
                     break
@@ -298,7 +299,21 @@ def konsultasi(sym, arah=None, entry=None):
     zi = info_zona(r, px)
     if zi and zi.get("teks"):
         rows.append("Zona emas: " + zi["teks"])
+    ft = fib_teks(r)
+    if ft:
+        rows.append(ft)
+    try:
+        import qse_pola as PL
+        rows += PL.teks(r.get("pola_chart"))
+    except Exception:
+        pass
+    hk = hari_ini_koin(r, arah)
+    if hk:
+        rows.append(hk)
     blok.append("\n".join(rows))
+    pt = pola_top_teks(r)
+    if pt:
+        blok.append("\n".join(["<b>Pola terbaik koin ini sepanjang sejarah (sama dengan tabel POLA TERBAIK)</b>"] + pt))
 
     # ---- siklus ----
     sk = r.get("siklus") or {}
@@ -502,6 +517,8 @@ def entry(args):
     risk = abs(harga - sl)
     if risk <= 0 or (L and sl >= harga) or ((not L) and sl <= harga):
         return "SL harus di bawah entry untuk LONG dan di atas entry untuk SHORT."
+    if risk < harga * 0.001:
+        return "SL terlalu dekat dengan entry (kurang dari 0.1%). Hasil R jadi tidak masuk akal, pakai SL yang lebih jauh."
     tp1 = tp1 or (harga + risk * 0.8 if L else harga - risk * 0.8)
     tp2 = tp2 or (harga + risk * 1.8 if L else harga - risk * 1.8)
     a_now = (r or {}).get("atr") or atr_4j(sym) or risk
@@ -553,31 +570,49 @@ def entry(args):
 
 # ---------------- /tutup /batal ----------------
 def _parse_tutup(args):
+    """KOIN [long|short] [30%] [harga]. Angka tanpa % dibaca persen bila <= 100 dan jauh dari harga sekarang."""
     sym = args[0] if args[0].endswith("USDT") else args[0] + "USDT"
-    pct, harga = 100.0, None
+    pct, harga, arah = 100.0, None, None
+    px = None
     for a in args[1:]:
-        if a.endswith("%") and _angka(a[:-1]) is not None:
+        if a in ("LONG", "SHORT"):
+            arah = a
+        elif a.endswith("%") and _angka(a[:-1]) is not None:
             pct = _angka(a[:-1])
         elif _angka(a) is not None:
-            harga = _angka(a)
-    return sym, max(0.0, min(100.0, pct)), harga
+            x = _angka(a)
+            if px is None:
+                px = harga_live(sym) or 0
+            if x <= 100 and (not px or abs(x - px) / px > 0.3):
+                pct = x
+            else:
+                harga = x
+    return sym, max(0.0, min(100.0, pct)), harga, arah
 
 
 def tutup(args, label="TUTUP"):
     """/tp KOIN [30%] [harga], /sl KOIN [50%] [harga], /tutup KOIN [harga]. Tanpa harga = harga sekarang."""
     if not args:
         return "Format: /tp AUSDT 30% atau /sl AUSDT 100% atau /tp AUSDT 50% 1.050"
-    sym, pct, harga = _parse_tutup(args)
-    px = harga or harga_live(sym)
+    sym, pct, harga, arah = _parse_tutup(args)
+    live = harga_live(sym)
+    px = harga or live
     if not px:
         return f"Harga {sym} tidak bisa diambil, tulis harganya, contoh /tp {args[0]} 50% 1.050"
+    if harga and live and abs(harga - live) / live > 0.3:
+        return (f"Harga {harga:g} terlalu jauh dari harga sekarang {live:g}. Kalau maksudnya persen, "
+                f"tulis dengan tanda %, contoh /sl {args[0]} 100%")
     now = int(time.time() * 1000)
 
     def f(d):
         rows = []
-        for k in [k for k, v in d["open"].items() if v["sym"] == sym]:
+        for k in [k for k, v in d["open"].items() if v["sym"] == sym and (arah is None or v["arah"] == arah)]:
             it = d["open"][k]
             t = it["tick"]
+            if it["status"] in ("TERISI", "TP1") and abs(_r_at(it, px)) > 15:
+                rows.append(f"{sym} {it['arah']}: hasil {_r_at(it, px):+.1f}R tidak masuk akal, perintah dibatalkan. "
+                            f"Cek lagi harganya.")
+                continue
             if it["status"] == "MENUNGGU":
                 if pct >= 100:
                     it = d["open"].pop(k)
@@ -598,7 +633,74 @@ def tutup(args, label="TUTUP"):
                             f"sisa posisi {it['sisa'] * 100:.0f}% | sudah direalisasi {_real(it):+.2f}R")
         return rows
     rows = ubah(f)
-    return "\n\n".join(rows) if rows else f"Tidak ada trade kamu yang terbuka di {sym}."
+    return "\n\n".join(rows) if rows else f"Tidak ada trade kamu yang terbuka di {sym}" + (f" {arah}." if arah else ".")
+
+
+def serok(args):
+    """/serok KOIN long|short [harga] [lot 0.5]: tambah posisi di harga lebih baik dari entry.
+    Lot tambahan dibatasi supaya total rugi kalau kena SL maksimal 1,5R dari risiko awal."""
+    if len(args) < 2:
+        return "Format: /serok PENDLE short 2.60 atau /serok PENDLE short (harga sekarang)"
+    sym = args[0] if args[0].endswith("USDT") else args[0] + "USDT"
+    arah = next((a for a in args[1:] if a in ("LONG", "SHORT")), None)
+    angka = [_angka(a) for a in args[1:] if a not in ("LONG", "SHORT", "LOT") and _angka(a) is not None]
+    lot_minta = None
+    if "LOT" in args:
+        i = args.index("LOT")
+        lot_minta = _angka(args[i + 1]) if i + 1 < len(args) else None
+        angka = [x for x in angka if x != lot_minta]
+    px = angka[0] if angka else harga_live(sym)
+    if not px:
+        return "Harga tidak bisa diambil, tulis harganya."
+
+    def f(d):
+        it = next((v for v in d["open"].values() if v["sym"] == sym and v["status"] in ("TERISI", "TP1")
+                   and (arah is None or v["arah"] == arah)), None)
+        if not it:
+            return f"Tidak ada posisi jalan {sym}" + (f" {arah}" if arah else "") + "."
+        L = it["arah"] == "LONG"
+        t = it["tick"]
+        if (L and px >= it["entry"]) or ((not L) and px <= it["entry"]):
+            return f"Serok hanya di harga lebih baik dari entry {fp(it['entry'], t)}."
+        sl = it["entry"] if it["status"] == "TP1" and not it.get("sl_manual") else it["sl"]
+        if (L and px <= sl) or ((not L) and px >= sl):
+            return "Harga serok sudah melewati SL. Tutup posisi dulu, jangan serok."
+        it["risk0"], it["sisa"], it["real"] = _risk0(it), _sisa(it), _real(it)
+        rugi_sl = it["real"] + it["sisa"] * _r_at(it, sl)
+        r_add = ((sl - px) if L else (px - sl)) / it["risk0"]
+        maks = (1.5 + rugi_sl) / -r_add if r_add < 0 else 0
+        if maks <= 0.01:
+            return f"Tidak bisa serok: rugi kalau kena SL sudah {rugi_sl:+.2f}R, batasnya -1.5R."
+        x = min(lot_minta, maks) if lot_minta else maks
+        e_baru = (it["sisa"] * it["entry"] + x * px) / (it["sisa"] + x)
+        it.setdefault("serok", []).append(dict(harga=px, lot=x, ts=int(time.time() * 1000)))
+        it["entry"], it["sisa"] = e_baru, it["sisa"] + x
+        rugi_baru = it["real"] + it["sisa"] * _r_at(it, sl)
+        return (f"{sym} {it['arah']} serok di {fp(px, t)}, tambah {x:.2f}x lot awal"
+                + (f" (dibatasi dari {lot_minta:g}x)" if lot_minta and lot_minta > maks else "") +
+                f"\nEntry rata-rata baru {fp(e_baru, t)} | ukuran sekarang {it['sisa']:.2f}x lot awal"
+                f"\nKalau kena SL {fp(sl, t)}: {rugi_baru:+.2f}R. TP tetap, cek lagi dengan /status")
+    return ubah(f)
+
+
+def hapus(args):
+    """/hapus KOIN [long|short]: buang catatan trade selesai terakhir di koin itu (untuk data yang salah)."""
+    if not args:
+        return "Format: /hapus PENDLE atau /hapus PENDLE short"
+    sym = args[0] if args[0].endswith("USDT") else args[0] + "USDT"
+    arah = next((a for a in args[1:] if a in ("LONG", "SHORT")), None)
+
+    def f(d):
+        for i in range(len(d["closed"]) - 1, -1, -1):
+            c = d["closed"][i]
+            if c["sym"] == sym and (arah is None or c["arah"] == arah):
+                return d["closed"].pop(i)
+        return None
+    c = ubah(f)
+    if not c:
+        return f"Tidak ada catatan trade selesai di {sym}" + (f" {arah}." if arah else ".")
+    return (f"Catatan dihapus: {sym} {c['arah']} | {c.get('why', '-')} {c.get('result_r', 0):+.2f}R. "
+            f"WR dan evaluasi sudah dihitung ulang tanpa trade ini.")
 
 
 def ubah_level(args):
@@ -606,6 +708,8 @@ def ubah_level(args):
     if not args:
         return "Format: /ubah AUSDT sl 0.99 tp1 1.05 tp2 1.08 atau /ubah AUSDT sl entry"
     sym = args[0] if args[0].endswith("USDT") else args[0] + "USDT"
+    arah_f = next((a for a in args[1:] if a in ("LONG", "SHORT")), None)
+    args = [a for a in args if a not in ("LONG", "SHORT")]
     baru, i = {}, 1
     while i < len(args) - 1:
         k, v = args[i], args[i + 1]
@@ -620,7 +724,7 @@ def ubah_level(args):
 
     def f(d):
         rows = []
-        for it in [v for v in d["open"].values() if v["sym"] == sym]:
+        for it in [v for v in d["open"].values() if v["sym"] == sym and (arah_f is None or v["arah"] == arah_f)]:
             it["risk0"] = _risk0(it)
             it["sisa"], it["real"] = _sisa(it), _real(it)
             L = it["arah"] == "LONG"
@@ -711,7 +815,8 @@ def _jalan(it, rows, iv):
                 res = _real(it)
                 why = "SL" if res < 0 else "BE"
                 it.update(status="SELESAI", why=why, result_r=round(res, 3), closed_ts=ts)
-                ev.append((why, f"kena SL di {fp(sl, it['tick'])}, selesai {res:+.2f}R"))
+                ev.append((why, f"kena SL di {fp(sl, it['tick'])}, selesai {res:+.2f}R" if why == "SL" else
+                           f"harga balik ke SL {fp(sl, it['tick'])} (sudah di titik aman), keluar dengan {res:+.2f}R"))
                 return ev
             if it["status"] == "TERISI" and ((hi >= t1) if L else (lo <= t1)):
                 r = _tutup_bagian(it, 0.5, t1)
@@ -902,11 +1007,11 @@ def status_saya(harga=None):
         blok.append("Tidak ada trade terbuka.")
     tot = 0.0
     for i, it in enumerate(op, 1):
-        bp = blok_posisi(i, it, harga.get(it["sym"], 0.0), f" | nilai robot {it['nilai']}")
+        bp = blok_posisi(i, it, harga.get(it["sym"], 0.0), f" | nilai saat entry {it['nilai']}")
         if it["status"] in ("TERISI", "TP1"):
             try:
                 vonis, alasan_v, aksi, _ = analisa_posisi(it, None, harga.get(it["sym"]) or None)
-                bp += f"\nAnalisa: {vonis}. {aksi}"
+                bp += f"\nAnalisa sekarang: {vonis}. {aksi}"
             except Exception:
                 pass
         blok.append(bp)
@@ -923,7 +1028,7 @@ def wr_jalur(closed, hari=30):
     """WR 30 hari trade kamu dipisah menurut asal entry."""
     a = int(time.time() * 1000) - hari * 86400000
     rows = [f"<b>Menurut asal entry ({hari} hari)</b>"]
-    for j in ("saran utama", "saran 1J", "saran cadangan", "saran siklus", "manual"):
+    for j in ("saran utama", "saran 1J", "saran cadangan", "saran cadangan 2", "saran fib", "saran siklus", "manual"):
         x = [c for c in closed if c.get("why") in ("SL", "BE", "TP2", "TUTUP") and c.get("closed_ts", 0) >= a
              and c.get("jalur", "manual") == j]
         if x:
@@ -935,7 +1040,8 @@ def wr_jalur(closed, hari=30):
 
 
 # ---------------- belajar dari trade kamu ----------------
-LOT_DASAR = {"saran utama": 1.0, "saran 1J": 0.5, "saran cadangan": 0.5, "saran siklus": 0.5, "manual": 0.5}
+LOT_DASAR = {"saran utama": 1.0, "saran 1J": 0.5, "saran cadangan": 0.5, "saran cadangan 2": 0.25, "saran fib": 0.5,
+             "saran siklus": 0.5, "manual": 0.5}
 SELESAI = ("SL", "BE", "TP2", "TUTUP")
 
 
@@ -1001,7 +1107,7 @@ def evaluasi(hari=90):
     grup("Hari masuk", lambda c: hari_nm[int((wib(c) // 86400000 + 4) % 7)])
     grup("Jam masuk (WIB)", lambda c: f"{int(wib(c) % 86400000 // 3600000) // 4 * 4:02d}-{int(wib(c) % 86400000 // 3600000) // 4 * 4 + 4:02d}")
     rows.append("\n<b>Lot disarankan</b>")
-    for j in ("saran utama", "saran 1J", "saran cadangan", "saran siklus", "manual"):
+    for j in ("saran utama", "saran 1J", "saran cadangan", "saran cadangan 2", "saran fib", "saran siklus", "manual"):
         n = sum(1 for c in cl if c.get("jalur", "manual") == j)
         rows.append(f"{j.capitalize()}: {lot_jalur(j):g}x lot normal" + ("" if n >= 10 else f" (bawaan, baru {n}/10 trade)"))
     return "\n".join(rows)
@@ -1170,3 +1276,175 @@ def analisa_posisi(it, r=None, px=None):
         vonis, aksi = "BERBALIK", (f"Pertimbangkan kurangi risiko: /sl {it['sym'].replace('USDT', '')} 50% "
                                    f"atau geser SL lebih dekat dengan /ubah.")
     return vonis, alasan, aksi, skor
+
+
+# ---------------- tahap 2: perkiraan hari, hari ini, pola terbaik, kalibrasi ----------------
+HARI_NM = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
+
+
+def perkiraan_hari(jam):
+    """Jam dari sekarang -> 'Selasa malam' (WIB)."""
+    if jam is None:
+        return "-"
+    ts = time.time() + jam * 3600 + 7 * 3600
+    d = int((ts // 86400 + 4) % 7)
+    h = int(ts % 86400 // 3600)
+    bagian = "dini hari" if h < 5 else "pagi" if h < 11 else "siang" if h < 15 else "sore" if h < 18 else "malam"
+    return f"{HARI_NM[d]} {bagian}"
+
+
+def hari_ini_koin(r, arah):
+    """Apakah hari ini termasuk hari bagus atau buruk untuk arah ini di koin ini (statistik candle 4J per hari WIB)."""
+    mu = ((r.get("siklus") or {}).get("musim") or {}).get("hari") or {}
+    semua = mu.get("semua") or {}
+    if len(semua) < 5:
+        return ""
+    hari = HARI_NM[int(((time.time() + 7 * 3600) // 86400 + 4) % 7)]
+    if hari not in semua:
+        return ""
+    urut = sorted(semua.items(), key=lambda z: z[1][0], reverse=(arah == "LONG"))
+    rank = [k for k, _ in urut].index(hari)
+    avg, wr = semua[hari]
+    kelas = "bagus" if rank <= 1 else "buruk" if rank >= len(urut) - 2 else "biasa"
+    return (f"Hari ini {hari}: rata candle {avg:+.2f}%, naik {wr:.0f}% | termasuk hari {kelas} untuk {arah} di koin ini "
+            f"(terbaik {urut[0][0]}, terburuk {urut[-1][0]})")
+
+
+def pola_top_teks(r, n=5):
+    rows = []
+    for p in (r.get("pola_top") or [])[:n]:
+        rows.append(f"{p['pola']} {'B' if p['arah'] == 'LONG' else 'S'} | {p['net_r']:+.1f}R | {p['win']}/{p['loss']} | "
+                    f"WR {p['wr']:.0f}% | PF {p['pf']:.2f}")
+    return rows
+
+
+def kalibrasi_teks(sym):
+    """Angka bot untuk dicocokkan baris per baris dengan DASBOR TradingView di chart 4 jam."""
+    sym = sym if sym.endswith("USDT") else sym + "USDT"
+    r = hasil_robot(sym)
+    if not r:
+        return f"{sym} belum ada di scan 4 jam terakhir."
+    t = r["tick"]
+    rows = [f"<b>KALIBRASI {sym} TF 4J</b>",
+            f"Candle dipakai {r.get('candle', '-')} | mulai uji {time.strftime('%d/%m/%Y', time.gmtime((r.get('mulai') or 0) / 1000))}",
+            f"Baris 16 Rapor robot: {r['rapor']} | {r['trd']}trd WR{r['wr']:.0f} PF{r['pf']:.2f} {r['net_r']:+.1f}R",
+            f"Bias {r['bias']} | {r['btc']} | lolos {r.get('lolos', '-')}", "", "<b>POLA TERBAIK</b>"] + pola_top_teks(r) + ["", "<b>SARAN</b>"]
+    for x in r["saran"][:3]:
+        rows.append(f"Sm{x['slot']} {x['pola']} | {x['mutu']} {'EKSEKUSI' if x['eksekusi'] else 'TAHAN, ' + x['alasan']} | "
+                    f"E {fp(x['entry'], t)} SL {fp(x['sl'], t)} TP1 {fp(x['tp1'], t)} TP2 {fp(x['tp2'], t)}")
+    rows.append("\nBandingkan dengan DASBOR di chart 4 jam (baris 16, tabel POLA TERBAIK, kolom Sm1). "
+                "Kalau ada yang beda, kirim screenshot DASBOR dan pesan ini ke Claude.")
+    return "\n".join(rows)
+
+
+def sl_aman(r, arah, entry, sl):
+    """Cek apakah SL rawan tersentuh ekor candle. Return teks atau ''."""
+    w = ((r.get("pola_chart") or {}).get("wick") or {})
+    a = r.get("atr") or 0
+    if not w or a <= 0:
+        return ""
+    ekor = w["bawah" if arah == "LONG" else "atas"]
+    p = r.get("pasar") or {}
+    batal = p.get("batal")
+    jarak = abs(entry - sl) / a
+    teks = f"Ekor candle koin ini biasanya sampai {ekor:.2f} ATR ({ekor * a / entry * 100:.1f}%)"
+    if batal and ((arah == "LONG" and sl > batal - ekor * a) or (arah == "SHORT" and sl < batal + ekor * a)):
+        alt = batal - (ekor + 0.1) * a if arah == "LONG" else batal + (ekor + 0.1) * a
+        if abs(entry - alt) / a <= 3.0:
+            teks += (f". SL {jarak:.1f} ATR rawan kena ekor, SL aman alternatif {fp(alt, r['tick'])} "
+                     f"({abs(entry - alt) / entry * 100:.1f}%, kecilkan lot supaya risiko tetap sama)")
+    return teks
+
+
+# ---------------- peringatan dini dan BTC berbalik (dipanggil listener tiap 15 menit) ----------------
+def _ema(xs, n):
+    k, e = 2 / (n + 1), xs[0]
+    for x in xs[1:]:
+        e = x * k + e * (1 - k)
+    return e
+
+
+def peringatan_dini():
+    d = _load()
+    jalan = [it for it in d["open"].values() if it["status"] in ("TERISI", "TP1")]
+    pesan = []
+    try:
+        btc = _kline("BTCUSDT", "60", 60)
+        cls = [x[3] for x in btc[:-1]]
+        e20 = _ema(cls[-40:], 20)
+        btc_naik = cls[-1] > e20
+        ch3 = (cls[-1] / cls[-4] - 1) * 100 if len(cls) > 4 else 0
+    except Exception:
+        btc, btc_naik, ch3 = None, None, 0
+    st_btc = d.get("btc_1j")
+    if btc_naik is not None and st_btc is not None and btc_naik != st_btc and jalan:
+        kena = [it for it in jalan if (it["arah"] == "LONG") != btc_naik]
+        if kena:
+            pesan.append(f"⚠️ <b>BTC 1 JAM BERBALIK {'NAIK' if btc_naik else 'TURUN'}</b> (3 jam terakhir {ch3:+.1f}%)\n↳ posisi "
+                         + ", ".join(f"{it['sym']} {it['arah']}" for it in kena)
+                         + " jadi lebih berisiko. Pertimbangkan geser SL ke entry kalau sudah untung, atau kurangi lot.")
+    ganti = {"btc_1j": btc_naik}
+    for it in jalan:
+        if it.get("dini"):
+            continue
+        px = harga_live(it["sym"])
+        a = it.get("atr") or 0
+        if not px or a <= 0:
+            continue
+        L = it["arah"] == "LONG"
+        lawan = ((it["entry"] - px) if L else (px - it["entry"])) / a
+        if lawan < 0.5:
+            continue
+        alasan = []
+        try:
+            k1 = _kline(it["sym"], "60", 8)[:-1]
+            if len(k1) >= 4:
+                c_, low3, hi3 = k1[-1][3], min(x[2] for x in k1[-4:-1]), max(x[1] for x in k1[-4:-1])
+                if (L and c_ < low3) or ((not L) and c_ > hi3):
+                    alasan.append("struktur 1 jam patah")
+        except Exception:
+            pass
+        if btc_naik is not None and btc_naik != L:
+            alasan.append(f"BTC 1 jam melawan ({ch3:+.1f}% 3 jam)")
+        if not alasan:
+            continue
+        pct = lawan * a / it["entry"] * 100
+        pesan.append(f"⚠️ <b>PERINGATAN DINI {it['sym']} {it['arah']}</b>\n↳ harga melawan {lawan:.1f} ATR (-{pct:.1f}%), "
+                     + ", ".join(alasan) + f". Jangan tunggu SL penuh: pertimbangkan /sl {it['sym'].replace('USDT', '')} "
+                     f"{it['arah'].lower()} 50% atau geser SL lebih dekat.")
+        ganti[it["id"] if "id" in it else it["sym"]] = True
+
+    def f(dd):
+        dd["btc_1j"] = ganti.pop("btc_1j")
+        for k, v in dd["open"].items():
+            if ganti.get(v.get("id", v["sym"])):
+                v["dini"] = True
+    ubah(f)
+    return pesan
+
+
+def psikologis(p):
+    """Angka bulat terdekat (kelipatan setengah satuan terbesar) bila jaraknya di bawah 1,5%."""
+    if p <= 0:
+        return None
+    m = 10 ** math.floor(math.log10(p))
+    lv = round(p / (m / 2)) * (m / 2)
+    return lv if lv > 0 and abs(lv - p) / p <= 0.015 else None
+
+
+def fib_teks(r):
+    """Fib retracement 0.618/0.65, extension, dan angka psikologis untuk koin ini."""
+    p = r.get("pasar") or {}
+    if not p.get("fib_hi"):
+        return ""
+    t = r["tick"]
+    c = r.get("live") or r["close"]
+    lo, hi = sorted(p["gp"])
+    naik = p["leg"] == "naik"
+    tx = (f"Fib kaki {'naik' if naik else 'turun'} {fp(p['fib_lo'], t)}-{fp(p['fib_hi'], t)} | 0.618-0.65 {fp(lo, t)}-{fp(hi, t)}"
+          + (" (harga di sini)" if lo <= c <= hi else f" (jarak {min(abs(c - lo), abs(c - hi)) / c * 100:.1f}%)")
+          + f" | extension 1.272 {fp(p['e127'], t)}, 1.618 {fp(p['e161'], t)}")
+    ps = psikologis(c)
+    if ps:
+        tx += f" | dekat angka psikologis {fp(ps, t)}"
+    return tx

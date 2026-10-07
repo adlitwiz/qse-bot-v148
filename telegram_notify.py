@@ -8,6 +8,27 @@ import requests
 API = "https://api.telegram.org/bot{t}/sendMessage"
 
 
+def _aksi(metode, **data):
+    token, chat_id = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/{metode}", data={"chat_id": chat_id, **data}, timeout=15)
+    except Exception as ex:
+        print("[WARN] Telegram", metode, ex)
+
+
+def pin(mid):
+    """Sematkan pesan (bot harus admin grup dengan izin pin). Gagal tidak masalah."""
+    if mid:
+        _aksi("pinChatMessage", message_id=mid, disable_notification=True)
+
+
+def unpin(mid):
+    if mid:
+        _aksi("unpinChatMessage", message_id=mid)
+
+
 def send(blocks, token=None, chat_id=None):
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
@@ -22,12 +43,14 @@ def send(blocks, token=None, chat_id=None):
         cur += b + "\n\n"
     if cur.strip():
         msgs.append(cur)
+    ids = []
     for m in msgs:
         for k in range(4):
             try:
                 r = requests.post(API.format(t=token), data={"chat_id": chat_id, "text": m, "parse_mode": "HTML",
                                                              "disable_web_page_preview": True}, timeout=20)
                 if r.status_code == 200:
+                    ids.append(r.json().get("result", {}).get("message_id"))
                     break
                 if r.status_code == 429:
                     time.sleep(int(r.json().get("parameters", {}).get("retry_after", 5)) + 1)
@@ -38,6 +61,7 @@ def send(blocks, token=None, chat_id=None):
                 print("[WARN] Telegram", e)
                 time.sleep(3)
         time.sleep(1.1)
+    return ids
 
 
 def fp(x, tick):
