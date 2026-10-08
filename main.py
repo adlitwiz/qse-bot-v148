@@ -857,6 +857,44 @@ def _cek_posisi_berubah(res_map):
     return out
 
 
+def _unggulan(results, sudah_valid, maks=10):
+    """Koin rapor A+/A/B atau GOLDEN MOMENT dengan saran EKSEKUSI mutu A/B yang entry-nya terjangkau:
+    MARKET di harga sekarang, LIMIT dengan peluang terisi 4 jam minimal 60%, atau STOP yang tinggal 0,5 ATR."""
+    out = []
+    for r in results:
+        if r["tf"] != "240" or (r["rapor"] not in ("A", "B") and not r.get("golden")):
+            continue
+        c = r.get("live") or r["close"]
+        for x in r["saran"]:
+            if not x["eksekusi"] or x["sudah_masuk"] or x["mutu"] not in ("A", "B"):
+                continue
+            y = dict(x)
+            if FX._order_live(r, y):          # sudah lewat entry, SL, TP1, atau kejauhan: tidak terjangkau
+                continue
+            jarak = abs(c - y["entry"]) / r["atr"] if r["atr"] else 9
+            dekat = y["order"] == "MARKET" or (y["order"] == "LIMIT" and y.get("p_isi4", 0) >= 60) or \
+                (y["order"] == "STOP" and jarak <= 0.5)
+            if not dekat:
+                continue
+            x = y
+            t = r["tick"]
+            label = "A+" if _aplus(r) else r["rapor"]
+            status = ("sudah dikirim sebagai sinyal valid" if r["symbol"] in sudah_valid else
+                      "belum valid: " + (x.get("saring") or x.get("buang") or "tertahan saringan fix profit (volume, spread, "
+                                         "funding, atau TP1 terlalu dekat setelah fee)"))
+            out.append((not x.get("golden"), label != "A+", r["rapor"] != "A", jarak,
+                        f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {label}"
+                        + (" | 🌟 GOLDEN MOMENT" if x.get("golden") else "") + f" | {TG.e(x['pola'])} mutu {x['mutu']}\n"
+                        f"{x['order']} di {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | TP1 {TG.fp(x['tp1'], t)} | "
+                        f"TP2 {TG.fp(x['tp2'], t)}\n"
+                        f"Jarak {abs(c - x['entry']) / c * 100:.2f}% ({jarak:.1f} ATR)"
+                        + (f" | peluang terisi 4 jam {x.get('p_isi4', 0):.0f}%" if x["order"] != "MARKET" else "")
+                        + f"\n↳ {TG.e(status)}"))
+            break
+    out.sort(key=lambda z: z[:4])
+    return [z[4] for z in out[:maks]]
+
+
 def _kartu_jam(results, b1, led):
     """Kartu ringkas yang selalu ada tiap jam: BTC, posisi kamu, saran aktif, koin paling bergerak."""
     rows = []
@@ -992,6 +1030,12 @@ def cek_cepat(now, paksa=False):
     jam = now.astimezone(WIB).strftime("%d/%m %H:%M WIB")
     judul = "🔎 <b>QSE v148 | SCAN SEKARANG TF 4J</b>" if paksa else "⏱️ <b>QSE v148 | CEK PER JAM TF 4J</b>"
     blocks = [f"{judul}\n{jam}\n" + _kartu_jam(results, b1, led)]
+    if paksa:
+        ung = _unggulan(results, {r["symbol"] for r, _ in sel})
+        if ung:
+            blocks.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN DENGAN SARAN TERJANGKAU ({len(ung)})</b>\n"
+                          "Rapor A+, A, B, atau GOLDEN MOMENT yang punya saran EKSEKUSI dan entry-nya dekat. "
+                          "Yang belum masuk sinyal valid ditulis alasannya.\n\n" + "\n\n".join(ung))
     if paksa and not (baru or masih or cad or sik or fib or cad2):
         blocks.append("Belum ada saran 4J baru yang lolos semua syarat di harga sekarang.")
     if masih:
