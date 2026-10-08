@@ -62,6 +62,14 @@ def send(blocks, token=None, chat_id=None):
                     time.sleep(int(r.json().get("parameters", {}).get("retry_after", 5)) + 1)
                     continue
                 print("[WARN] Telegram", r.status_code, r.text[:200])
+                if r.status_code == 400 and "parse" in r.text.lower():
+                    # tag HTML rusak: kirim ulang sebagai teks polos supaya sinyal tidak hilang
+                    import re as _re
+                    polos = html.unescape(_re.sub(r"<[^>]+>", "", m))
+                    r2 = requests.post(API.format(t=token), data={"chat_id": chat_id, "text": polos,
+                                                                  "disable_web_page_preview": True}, timeout=20)
+                    if r2.status_code == 200:
+                        ids.append(r2.json().get("result", {}).get("message_id"))
                 break
             except Exception as e:
                 print("[WARN] Telegram", e)

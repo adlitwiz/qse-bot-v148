@@ -20,6 +20,7 @@ Wants=network-online.target
 User=$USER
 WorkingDirectory=$DIR
 Environment=QSE_STATE_DIR=$STATE
+Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=$STATE/.env
 ExecStart=$STATE/venv/bin/python $DIR/qse_listener.py
 Restart=always

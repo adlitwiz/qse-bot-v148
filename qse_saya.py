@@ -363,8 +363,8 @@ def konsultasi(sym, arah=None, entry=None):
         import qse_makro as MK
         mb = MK.baris()
         if mb:
-            rows.append(mb)
-        rows += ["Berita: " + b for b in MK.berita(3)]
+            rows.append(__import__("html").escape(mb))
+        rows += ["Berita: " + __import__("html").escape(b) for b in MK.berita(3)]
     except Exception:
         pass
     try:

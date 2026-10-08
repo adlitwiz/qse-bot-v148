@@ -5,7 +5,14 @@ import json
 import os
 import sys
 import time
+import threading
 import requests
+
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 STATE_DIR = os.environ.get("QSE_STATE_DIR") or os.path.expanduser("~/qse_state")
 ENV = os.path.join(STATE_DIR, ".env")
@@ -91,47 +98,87 @@ def _tugas_berkala():
             print("[WARN] jadwal main", ex)
 
 
+HB = {"perintah": time.time(), "kerja": time.time()}
+BATAS_PERINTAH = 180      # loop perintah macet lebih dari 3 menit -> restart paksa
+BATAS_KERJA = 1500        # tugas berkala macet lebih dari 25 menit -> restart paksa
+
+
+def _tugas_menit():
+    try:
+        pesan = SY.pantau()
+        if pesan:
+            TG.send(["👤 <b>QSE v148 | TRADE KAMU</b>\n\n" + "\n".join(pesan)])
+    except Exception as ex:
+        print("[WARN] pantau", ex)
+    try:
+        fb = SY.sentuh_fib()
+        if fb:
+            TG.send(["📐 <b>QSE v148 | SENTUH FIB 0.618</b> (Golden Zone Hunter)\n\n" + "\n\n".join(fb)])
+    except Exception as ex:
+        print("[WARN] fib", ex)
+    try:
+        kena = AL.cek()
+        if kena:
+            TG.send(["🔔 <b>QSE v148 | ALARM HARGA</b>\n\n" + "\n\n".join(kena)])
+    except Exception as ex:
+        print("[WARN] alarm", ex)
+
+
+def _pekerja():
+    """Thread terpisah: pantau trade, alarm, berita, momentum. Kalau macet, balasan perintah tetap jalan."""
+    terakhir = 0.0
+    while True:
+        HB["kerja"] = time.time()
+        try:
+            if time.time() - terakhir >= 60:
+                terakhir = time.time()
+                _tugas_menit()
+            _tugas_berkala()
+        except Exception as ex:
+            print("[WARN] pekerja", ex)
+        HB["kerja"] = time.time()
+        time.sleep(5)
+
+
+def _penjaga():
+    """Bila salah satu loop macet, matikan proses. systemd (Restart=always) menghidupkannya lagi dalam 5 detik."""
+    while True:
+        time.sleep(30)
+        a = time.time() - HB["perintah"]
+        b = time.time() - HB["kerja"]
+        if a > BATAS_PERINTAH or b > BATAS_KERJA:
+            print(f"[FATAL] listener macet (perintah {a:.0f}s, kerja {b:.0f}s), restart paksa")
+            os._exit(1)
+
+
 def main():
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat:
         raise SystemExit(f"Isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di {ENV}")
     os.makedirs(STATE_DIR, exist_ok=True)
-    print("QSE listener aktif")
-    terakhir = 0.0
+    print("QSE listener aktif", flush=True)
+    threading.Thread(target=_pekerja, daemon=True).start()
+    threading.Thread(target=_penjaga, daemon=True).start()
     while True:
+        HB["perintah"] = time.time()
         with open(ALIVE, "w") as f:
             f.write(str(time.time()))
-        if time.time() - terakhir >= 60:
-            terakhir = time.time()
-            try:
-                pesan = SY.pantau()
-                if pesan:
-                    TG.send(["👤 <b>QSE v148 | TRADE KAMU</b>\n\n" + "\n".join(pesan)])
-            except Exception as ex:
-                print("[WARN] pantau", ex)
-            try:
-                fb = SY.sentuh_fib()
-                if fb:
-                    TG.send(["📐 <b>QSE v148 | SENTUH FIB 0.618</b> (Golden Zone Hunter)\n\n" + "\n\n".join(fb)])
-            except Exception as ex:
-                print("[WARN] fib", ex)
-            try:
-                kena = AL.cek()
-                if kena:
-                    TG.send(["🔔 <b>QSE v148 | ALARM HARGA</b>\n\n" + "\n\n".join(kena)])
-            except Exception as ex:
-                print("[WARN] alarm", ex)
-        _tugas_berkala()
         off = _st().get("tg_offset", 0)
         try:
             r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
-                             params={"offset": off, "timeout": 25, "allowed_updates": '["message"]'}, timeout=40)
-            data = r.json().get("result", [])
+                             params={"offset": off, "timeout": 25, "allowed_updates": '["message"]'}, timeout=(10, 40))
+            js = r.json()
         except Exception as ex:
-            print("[WARN]", ex)
+            print("[WARN] getUpdates", ex)
             time.sleep(5)
             continue
+        if not js.get("ok"):
+            # 401 = token salah/dicabut, 409 = ada pemanggil getUpdates lain atau webhook aktif
+            print("[WARN] getUpdates ditolak Telegram:", r.status_code, js.get("description"))
+            time.sleep(10)
+            continue
+        data = js.get("result", [])
         cmds = []
         for u in data:
             off = max(off, u["update_id"] + 1)
@@ -144,7 +191,11 @@ def main():
         if data:
             _st({"tg_offset": off})
         if cmds:
-            print("perintah:", QP.proses(cmds))
+            print("perintah:", [c for c, _ in cmds], flush=True)
+            try:
+                print("dibalas:", QP.proses(cmds), flush=True)
+            except Exception as ex:
+                print("[WARN] proses perintah", ex)
 
 
 if __name__ == "__main__":
