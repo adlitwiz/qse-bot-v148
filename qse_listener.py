@@ -113,7 +113,7 @@ def _tugas_menit():
     try:
         fb = SY.sentuh_fib()
         if fb:
-            TG.send(["📐 <b>QSE v148 | SENTUH FIB 0.618</b> (Golden Zone Hunter)\n\n" + "\n\n".join(fb)])
+            TG.send(["📐 <b>QSE v148 | GOLDEN ZONE HUNTER</b>\nCuma setup yang lolos penilaian semua aspek yang aku kirim.\n\n" + "\n\n".join(fb)])
     except Exception as ex:
         print("[WARN] fib", ex)
     try:

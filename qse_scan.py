@@ -39,6 +39,18 @@ def _pola_top(NM, jidx, wnA, lsA, ntA, wrA, pfA, minSmp=12):
     return out
 
 
+def _gzh(v, n, df1h):
+    """Golden Zone Hunter 4J. Kalau sampel backtest 4J kurang dari 8, backtest juga dihitung di 1J (6000 candle)."""
+    from config import FP as _FP
+    g = PL.gz_hunter(v["high"][:n], v["low"][:n], v["close"][:n], fee_pct=_FP["fee_pct"])
+    if g and g["bt"]["n"] < 8 and df1h is not None and len(df1h) > 300:
+        d = df1h.iloc[-6000:]
+        g1 = PL.gz_hunter(d["high"].values, d["low"].values, d["close"].values, fee_pct=_FP["fee_pct"], tf_jam=1)
+        if g1 and g1["bt"]["n"] > g["bt"]["n"]:
+            g["bt1j"] = g1["bt"]
+    return g
+
+
 def mulai_uji(ts, TF_MS):
     last_bar_time = int(ts[-1]) + TF_MS          # bar realtime yang sedang berjalan di TradingView
     ujiW = 3000 * TF_MS
@@ -363,7 +375,8 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         siklus=SIK.analisa(df, dfD, bProb, sym.startswith("BTC")) if tf == "240" else None,
         lolos=int(sum(1 for i in range(90) if pvA[i] or pvA[i + 90])), feed="FEED RESMI BYBIT:%s.P" % sym,
         pola_top=_pola_top(R.NM, jidx, wnA, lsA, ntA, wrA, pfA),
-        gzh=PL.gz_hunter(v["high"][:n], v["low"][:n], v["close"][:n]) if tf == "240" else None,
+        gzh=_gzh(v, n, df1h) if tf == "240" else None,
+        pola_kecil=_pola_top(R.NM, jidx, wnA, lsA, ntA, wrA, pfA, minSmp=3) if totT < 12 else None,
         pola_chart=PL.analisa(v["open"][:n], v["high"][:n], v["low"][:n], v["close"][:n], v["atr"][:n],
                               backtest=nilT in ("A", "B", "C")) if tf == "240" else None,
     )

@@ -312,3 +312,58 @@ def catat_1j(results):
     with open(FILE + ".tmp", "w") as f:
         json.dump(u, f)
     os.replace(FILE + ".tmp", FILE)
+
+
+# ---------------- backtest semua teknik untuk satu koin (dipakai /cek) ----------------
+def uji_koin(sym, tick, umur_cache=12 * 3600):
+    """Uji mundur jalur zona emas (cadangan), fib golden pocket, dan siklus khusus koin ini.
+    Pakai candle 4J. Koin baru dengan kurang dari 700 candle 4J diuji di candle 1J supaya tetap punya sampel."""
+    fpath = os.path.join(STATE_DIR, "uji_koin.json")
+    try:
+        with open(fpath) as f:
+            cache = json.load(f)
+    except Exception:
+        cache = {}
+    c = cache.get(sym)
+    if c and time.time() - c.get("ts", 0) < umur_cache:
+        return c
+    import bybit_fetch as B
+    from config import TV_BARS
+    d4 = B.get_klines(sym, "240", TV_BARS)
+    dD = B.get_klines(sym, "D", 1500, closed_only=False)
+    dW = B.get_klines(sym, "W", 400, closed_only=False)
+    b4 = B.get_klines("BTCUSDT", "240", TV_BARS)
+    h1 = B.get_klines(sym, "60", max(len(d4) * 4 + 400, 2000))
+    out = dict(ts=time.time(), tf="4J")
+    if len(d4) >= 700:
+        df, v = d4, F.build(d4, h1, dD, dW, b4, sym, tick)
+        mulai = max(250, len(df) - BARS)
+        bf = F._btc_fc(b4)
+        ts = df.index.values.astype("datetime64[ms]").astype(np.int64)
+        bp = bf["bProb"].reindex(ts + H4, method="ffill").values
+    else:
+        b1 = B.get_klines("BTCUSDT", "60", TV_BARS)
+        df = h1.iloc[-TV_BARS:]
+        v = F.build(df, None, dD, dW, b4, sym, tick, "60", d4, b1)
+        mulai = max(250, len(df) - BARS * 4)
+        bp, out["tf"] = None, "1J"
+    out["candle"] = int(len(df) - mulai)
+    if len(df) - mulai < 100:
+        out.update(cadangan=_statistik([]), fib=_statistik([]), siklus=_statistik([]))
+    else:
+        out["cadangan"] = _statistik(uji_cadangan(v, mulai))
+        out["fib"] = _statistik(uji_fib(v, mulai))
+        try:
+            out["siklus"] = _statistik(uji_siklus(df, dD, bp, mulai, sym.startswith("BTC")))
+        except Exception as ex:
+            print("[WARN] uji siklus koin", ex)
+            out["siklus"] = _statistik([])
+    for k in ("cadangan", "fib", "siklus"):
+        out[k] = {a: float(b) for a, b in out[k].items()}
+    cache[sym] = out
+    cache = {k: x for k, x in cache.items() if time.time() - x.get("ts", 0) < 3 * 86400}
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(fpath + ".tmp", "w") as f:
+        json.dump(cache, f)
+    os.replace(fpath + ".tmp", fpath)
+    return out

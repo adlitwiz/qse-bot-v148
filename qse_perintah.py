@@ -65,6 +65,7 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
            "/uji = hasil uji mundur 6 bulan saran cadangan, fib, dan siklus\n"
            "/kalibrasi ETHFI = angka bot untuk dicocokkan dengan DASBOR TradingView\n"
+           "/tespin = cek apakah bot sudah bisa menyematkan pesan\n"
            "/status = trade kamu, floating, dan WR\n"
            "/bantuan = daftar perintah ini")
 
@@ -124,6 +125,14 @@ def balas(cmd, args, dari_main=False):
         return SY.tutup(args, "ambil profit")
     if cmd == "/sl":
         return SY.tutup(args, "cut loss")
+    if cmd == "/tespin":
+        ids = TG.send(["📌 <b>QSE v148 | TES PIN</b>\nKalau pesan ini tersemat, izin pin bot sudah benar."]) or []
+        if not ids:
+            return "Pesan tes gagal terkirim."
+        err = TG.pin(ids[0])
+        return ("✅ Pin berhasil. Sinyal 4 jam berikutnya akan otomatis disematkan dan pin lama dilepas."
+                if not err else f"❌ Pin gagal. Kata Telegram: {TG.e(str(err))}\nBuka info grup, Administrator, pilih bot, "
+                f"lalu aktifkan izin Sematkan pesan (Pin messages).")
     if cmd == "/kalibrasi":
         return SY.kalibrasi_teks(args[0]) if args else "Format: /kalibrasi ETHFI"
     if cmd == "/serok":
@@ -188,7 +197,7 @@ def proses(cmds, dari_main=False):
         except Exception as ex:
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
-            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
+            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
                     "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}

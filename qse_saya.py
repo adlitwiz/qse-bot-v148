@@ -230,7 +230,8 @@ def konsultasi(sym, arah=None, entry=None):
     # ---- kesimpulan yang mudah dipahami ----
     eks = [x for x in r["saran"] if x["eksekusi"] and not x["sudah_masuk"]]
     kal = [f"Robot melihat {sym} condong {ps.get('arah', '-')} di 4 jam. Rapor {r['rapor']}, "
-           f"{RAPOR_ARTI.get(r['rapor'], 'data robot terbatas')} ({r['trd']} trade, WR {r['wr']:.0f}%)."]
+           f"{RAPOR_ARTI.get(r['rapor'], 'data robot terbatas')} ({r['trd']} trade, WR {r['wr']:.0f}%)."
+           + (" Tenang, teknik lain tetap aku uji di sejarah koin ini, hasilnya ada di bagian Backtest." if r["trd"] < 12 else "")]
     if eks:
         x = eks[0]
         kal.append(f"Ada saran {x['pola']} {x['arah']} yang sedang EKSEKUSI di {fp(x['entry'], t)}.")
@@ -356,6 +357,7 @@ def konsultasi(sym, arah=None, entry=None):
         blok.append("\n".join(["<b>Skill tambahan</b>"] + SK.detail(r["skill"], arah, lambda x: fp(x, t))))
 
     # ---- fundamental, derivatif, kalender ----
+    blok.append(backtest_teks(r))
     blok.append("\n".join(["<b>Fundamental</b>"] + fund))
     blok.append("\n".join(["<b>Pasar derivatif Bybit</b>"] + deriv))
     rows = ["<b>Kalender, makro, dan berita</b>"]
@@ -1464,15 +1466,81 @@ def fib_teks(r):
     return tx
 
 
-def sentuh_fib():
-    """Notif saat harga menyentuh TEPAT level 0.618 (dan 0.65) Golden Zone Hunter dari skrip Gabungan.
-    Dicek tiap menit: harga dianggap menyentuh bila melintasi level sejak pengecekan sebelumnya."""
+def nilai_gzh(r):
+    """Skor setup Golden Zone Hunter 0-100 dari semua aspek. Return (skor, arah, alasan_plus, alasan_minus, bt)."""
+    g = r.get("gzh") or {}
+    L = g.get("puncak")
+    arah = "LONG" if L else "SHORT"
+    bt = g.get("bt") or {}
+    if bt.get("n", 0) < 8 and g.get("bt1j"):
+        bt = g["bt1j"]
+    plus, minus, sk = [], [], 0
+    if bt.get("n", 0) >= 8 and bt["pf"] >= 1.5 and bt["wr"] >= 55:
+        sk += 30
+        plus.append(f"backtest GZH koin ini kuat ({bt['n']}x, WR {bt['wr']:.0f}%, PF {bt['pf']:.2f})")
+    elif bt.get("n", 0) >= 8 and bt["pf"] >= 1.2:
+        sk += 20
+        plus.append(f"backtest GZH koin ini untung ({bt['n']}x, WR {bt['wr']:.0f}%, PF {bt['pf']:.2f})")
+    else:
+        minus.append(f"backtest GZH koin ini belum terbukti ({bt.get('n', 0)}x, WR {bt.get('wr', 0):.0f}%, "
+                     f"PF {bt.get('pf', 0):.2f})")
+    p = r.get("pasar") or {}
+    if p.get("arah") == arah:
+        sk += 15
+        plus.append(f"bias robot {arah} searah")
+    else:
+        minus.append(f"bias robot {p.get('arah', '-')}, berlawanan")
+    izin = r.get("izin", "")
+    if izin == "LONG dan SHORT" or izin.startswith(arah):
+        sk += 10
+        plus.append("BTC 4J mengizinkan")
+    else:
+        minus.append(f"BTC 4J melawan ({izin})")
+    rp = r.get("rapor", "")
+    if rp in ("A", "B"):
+        sk += 10
+        plus.append(f"rapor robot {rp}")
+    elif rp == "C":
+        sk += 5
+    else:
+        minus.append(f"rapor robot {rp}")
+    if r.get("skill"):
+        nk = SK.konfirmasi(r["skill"], arah)[0]
+        sk += round(nk / 8 * 15)
+        (plus if nk >= 5 else minus).append(f"skill tambahan {nk}/8")
+    si = r.get("siklus") or {}
+    c4, cd = si.get("c4P"), si.get("cDP")
+    if c4 is not None and cd is not None:
+        if (c4 >= 55 and cd >= 50) if L else (c4 <= 45 and cd <= 50):
+            sk += 10
+            plus.append(f"peluang 4J {c4:.0f}% naik, harian {cd:.0f}%")
+        else:
+            minus.append(f"peluang 4J {c4:.0f}% naik, harian {cd:.0f}%")
+    fl = (si.get("aliran") or {}).get("skor")
+    if fl is not None and ((fl >= 1) if L else (fl <= -1)):
+        sk += 5
+        plus.append("aliran dana searah")
+    try:
+        import qse_makro as MK
+        if MK.kali_lot(arah) >= 1:
+            sk += 5
+        else:
+            minus.append("tekanan makro AS untuk LONG")
+    except Exception:
+        sk += 5
+    return min(100, sk), arah, plus, minus, bt
+
+
+def sentuh_fib(min_skor=70):
+    """Notif saat harga menyentuh 0.618 Golden Zone Hunter, hanya bila setup layak:
+    sentuhan pertama di kaki fib itu, datang dari sisi 0, skor semua aspek minimal 70 dan backtest GZH koin ini untung.
+    Satu koin paling sering sekali per 24 jam."""
     try:
         with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
             lama = json.load(f)
     except Exception:
         return []
-    cal = [r for r in lama if r.get("tf", "240") == "240" and r["rapor"] != "D buruk" and r.get("gzh")]
+    cal = [r for r in lama if r.get("tf", "240") == "240" and r.get("gzh") and not r["gzh"].get("sudah")]
     if not cal:
         return []
     harga = harga_semua()
@@ -1482,7 +1550,8 @@ def sentuh_fib():
             st = json.load(f)
     except Exception:
         st = {}
-    px_lama, sudah = st.get("px", {}), st.get("sudah", {})
+    px_lama, sudah, koin = st.get("px", {}), st.get("sudah", {}), st.get("koin", {})
+    now = time.time()
     out = []
     for r in cal:
         sym, px = r["symbol"], harga.get(r["symbol"])
@@ -1490,26 +1559,90 @@ def sentuh_fib():
             continue
         g, t = r["gzh"], r["tick"]
         lv = g["levels"]
+        L = g["puncak"]
+        e = lv["0.618"]
         p0 = px_lama.get(sym)
         px_lama[sym] = px
-        if p0 is None:
+        kunci = f"{sym}|{g['start']:.10g}|{g['end']:.10g}"
+        if p0 is None or kunci in sudah:
             continue
-        for key, nama in (("0.618", "0.618"), ("0.65", "0.65")):
-            L = lv[key]
-            kunci = f"{sym}|{key}|{L:.10g}"
-            if (p0 - L) * (px - L) > 0 or kunci in sudah:
-                continue
-            sudah[kunci] = int(time.time())
-            arah = "LONG (pantulan dari koreksi turun)" if g["puncak"] else "SHORT (pantulan dari koreksi naik)"
-            p = r.get("pasar") or {}
-            out.append(f"{'🟢' if g['puncak'] else '🔴'} <b>{sym}</b> menyentuh tepat fib {nama} di {fp(L, t)}\n"
-                       f"↳ kaki fib {fp(g['end'], t)} ke {fp(g['start'], t)} | 0.5 {fp(lv['0.5'], t)} | 0.65 {fp(lv['0.65'], t)} | "
-                       f"batal di 1.0 {fp(lv['1.0'], t)}\n"
-                       f"↳ target extension -0.618 {fp(lv['-0.618'], t)}, -1 {fp(lv['-1.0'], t)} | arah setup {arah}\n"
-                       f"↳ rapor {r['rapor']} | bias robot {p.get('arah', '-')} | tunggu candle konfirmasi, cek /cek {sym.replace('USDT', '')}")
-            break
-    batas = time.time() - 3 * 86400
+        datang = (p0 > e >= px) if L else (p0 < e <= px)
+        if not datang:
+            continue
+        sudah[kunci] = int(now)          # kaki ini sudah tersentuh, tidak dipakai lagi
+        if now - koin.get(sym, 0) < 86400:
+            continue
+        skor, arah, plus, minus, bt = nilai_gzh(r)
+        if skor < min_skor or bt.get("n", 0) < 8 or bt.get("pf", 0) < 1.2:
+            print(f"[GZH] {sym} disentuh tapi tidak dikirim, skor {skor}")
+            continue
+        koin[sym] = int(now)
+        a = g.get("atr") or r["atr"]
+        sl = lv["1.0"] - 0.2 * a if L else lv["1.0"] + 0.2 * a
+        tp1, tp2 = lv["0.0"], lv["-0.236"]
+        risk = abs(e - sl)
+        pc = lambda x: abs(x - e) / e * 100
+        kelas = "LAYAK BANGET DIIKUTI" if skor >= 80 else "LAYAK DIIKUTI"
+        jam = bt.get("jam")
+        out.append(
+            f"{'🟢' if L else '🔴'} <b>{sym} {arah}</b> | skor setup {skor}/100, {kelas}\n"
+            f"Harga baru turun menyentuh fib 0.618 di {fp(e, t)}, ini sentuhan pertama di kaki fib ini. "
+            if L else
+            f"{'🟢' if L else '🔴'} <b>{sym} {arah}</b> | skor setup {skor}/100, {kelas}\n"
+            f"Harga baru naik menyentuh fib 0.618 di {fp(e, t)}, ini sentuhan pertama di kaki fib ini. ")
+        out[-1] += (f"Titik 0 ada di {'atas' if L else 'bawah'} ({fp(lv['0.0'], t)}), jadi harapannya harga "
+                    f"{'mantul naik' if L else 'mantul turun'} lagi ke sana.\n"
+                    f"<pre>Entry {fp(e, t)}\nSL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%\n"
+                    f"TP1   {fp(tp1, t)}  +{abs(tp1 - e) / risk:.2f}R  +{pc(tp1):.1f}%\n"
+                    f"TP2   {fp(tp2, t)}  +{abs(tp2 - e) / risk:.2f}R  +{pc(tp2):.1f}%</pre>\n"
+                    f"Yang bikin yakin: {'; '.join(plus)}\n"
+                    + (f"Yang perlu diwaspadai: {'; '.join(minus)}\n" if minus else "")
+                    + (f"Di sejarah koin ini setup yang sama rata-rata selesai sekitar {jam:.0f} jam.\n" if jam else "")
+                    + f"Saran aku: jangan langsung tangkap pisau. Tunggu candle 4J tutup kembali "
+                    f"{'di atas' if L else 'di bawah'} {fp(e, t)}, baru masuk dengan setengah lot. "
+                    f"Kalau candle tutup tembus {fp(lv['0.786'], t)}, lewati saja. Cek detail: /cek {sym.replace('USDT', '')}")
+    batas = now - 7 * 86400
     with open(fpath + ".tmp", "w") as f:
-        json.dump(dict(px=px_lama, sudah={k: v for k, v in sudah.items() if v > batas}), f)
+        json.dump(dict(px=px_lama, sudah={k: v for k, v in sudah.items() if v > batas},
+                       koin={k: v for k, v in koin.items() if v > batas}), f)
     os.replace(fpath + ".tmp", fpath)
-    return out[:8]
+    return out[:5]
+
+
+def _st_txt(nama, b, tf=""):
+    if not b or not b.get("n"):
+        return f"{nama}: belum pernah muncul di sejarah koin ini"
+    nilai = "untung" if b["pf"] >= 1.2 else "impas" if b["pf"] >= 0.95 else "rugi"
+    return (f"{nama}: {int(b['n'])}x | WR {b['wr']:.0f}% | PF {b['pf']:.2f} | rata {b['avg']:+.2f}R"
+            + (f" ({tf})" if tf else "") + f", {nilai}" + (" (sampel kecil)" if b["n"] < 8 else ""))
+
+
+def backtest_teks(r):
+    """Backtest semua teknik di koin ini, supaya tidak ada koin tanpa data uji."""
+    rows = ["<b>Backtest semua teknik di koin ini</b>"]
+    rows.append(f"Robot v148 (pelacak 5 saran, sama dengan DASBOR): {r['trd']} trade | WR {r['wr']:.0f}% | "
+                f"PF {r['pf']:.2f} | {r['net_r']:+.1f}R"
+                + (", koin ini masih baru jadi pelacak belum sempat entry" if r["trd"] == 0 else ""))
+    pt = r.get("pola_top") or r.get("pola_kecil") or []
+    if pt:
+        rows.append("90 pola terbaik: " + ", ".join(f"{p['pola']} {'B' if p['arah'] == 'LONG' else 'S'} "
+                                                  f"{p['win']}/{p['loss']} {p['net_r']:+.1f}R" for p in pt[:3])
+                    + (" (sampel kecil)" if not r.get("pola_top") else ""))
+    g = r.get("gzh") or {}
+    if g.get("bt"):
+        rows.append(_st_txt("Golden Zone Hunter", g["bt"], g["bt"].get("tf", "4J")))
+        if g.get("bt1j"):
+            rows.append(_st_txt("Golden Zone Hunter", g["bt1j"], "1J, karena sampel 4J sedikit"))
+    ch = (r.get("pola_chart") or {}).get("chart") or {}
+    if ch.get("n"):
+        rows.append(f"Chart pattern {ch['nama']}: {ch['n']}x, berhasil {ch['wr']:.0f}%")
+    try:
+        import qse_uji as QU
+        u = QU.uji_koin(r["symbol"], r["tick"])
+        tf = u.get("tf", "4J")
+        rows += [_st_txt("Zona emas + skill (cadangan)", u["cadangan"], tf), _st_txt("Fib golden pocket", u["fib"], tf),
+                 _st_txt("Siklus pola kembar", u["siklus"], tf)]
+    except Exception as ex:
+        rows.append(f"Uji zona emas, fib, dan siklus gagal dihitung: {str(ex)[:80]}")
+    rows.append("PF di atas 1.2 artinya teknik itu untung di koin ini. Di bawah 1, teknik itu sering rugi di sini.")
+    return "\n".join(rows)

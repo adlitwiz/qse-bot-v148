@@ -192,22 +192,20 @@ def teks(pl):
     return rows
 
 
-def gz_hunter(h, l, c, depth=10, thr=4.0):
-    """Port Golden Zone Hunter (skrip Gabungan, bagian SMC): zigzag pivot kedalaman 10, ambang deviasi
-    4 x ATR(10)/close. Fib digambar dari pivot terakhir (0) ke pivot sebelumnya (1)."""
-    h, l, c = (np.asarray(x, float) for x in (h, l, c))
+def _gz_pivots(h, l, c, depth=10, thr=4.0):
+    """Zigzag Golden Zone Hunter. Return list per bar: (start, end, i_start) kaki fib yang diketahui di akhir bar t
+    (pivot terkonfirmasi depth/2 bar kemudian, tanpa melihat masa depan)."""
     n = len(c)
-    if n < 60:
-        return None
     tr = np.maximum(h[1:] - l[1:], np.maximum(abs(h[1:] - c[:-1]), abs(l[1:] - c[:-1])))
     tr = np.r_[h[0] - l[0], tr]
-    atr = np.empty(n)
-    atr[:10] = np.nan
-    atr[9] = tr[:10].mean()
-    for i in range(10, n):
-        atr[i] = (atr[i - 1] * 9 + tr[i]) / 10
+    atr = np.full(n, np.nan)
+    if n > 10:
+        atr[9] = tr[:10].mean()
+        for i in range(10, n):
+            atr[i] = (atr[i - 1] * 9 + tr[i]) / 10
     ln = depth // 2
-    p_last, hi_last, y1, ada = 0.0, False, None, False
+    p_last, i_last, hi_last, y1, ada = 0.0, 0, False, None, False
+    kaki = [None] * n
     for t in range(2 * ln, n):
         thr_t = (atr[t] / c[t]) * 100 * thr if not np.isnan(atr[t]) else 1e9
         w_h, w_l = h[t - 2 * ln:t + 1], l[t - 2 * ln:t + 1]
@@ -219,14 +217,91 @@ def gz_hunter(h, l, c, depth=10, thr=4.0):
             dev = 100 * (p - p_last) / p if p else 0
             if hi_last == is_high and ada:
                 if (p > p_last) if hi_last else (p < p_last):
-                    p_last = p
+                    p_last, i_last = p, t - ln
             elif abs(dev) > thr_t:
                 y1, ada = p_last, True
-                p_last, hi_last = p, is_high
-    if not ada or not y1:
+                p_last, i_last, hi_last = p, t - ln, is_high
+        if ada and y1:
+            kaki[t] = (p_last, y1, i_last)
+    return kaki, atr
+
+
+def _gz_level(start, end, m):
+    return start + (-1 if start > end else 1) * abs(start - end) * m
+
+
+def gz_hunter(h, l, c, depth=10, thr=4.0, fee_pct=0.055, tf_jam=4, konf=True):
+    """Golden Zone Hunter + backtest di sejarah koin ini.
+    Kaki fib: 0 = pivot terakhir (start), 1 = pivot sebelumnya (end). 0 di atas = koreksi turun, setup LONG.
+    Setup: sentuhan PERTAMA ke 0.618 datang dari sisi 0. Entry 0.618, SL di luar 1.0 plus 0.2 ATR,
+    TP1 di 0 (tutup separuh, SL ke entry), TP2 di extension -0.236. Kaki yang sudah pernah disentuh tidak dipakai lagi."""
+    h, l, c = (np.asarray(x, float) for x in (h, l, c))
+    n = len(c)
+    if n < 60:
         return None
-    start, end = p_last, y1
-    diff = (-1 if start > end else 1) * abs(start - end)
-    lv = {m: start + diff * m for m in (-1.0, -0.618, -0.236, 0.0, 0.5, 0.618, 0.65, 1.0)}
-    return dict(start=float(start), end=float(end), puncak=bool(start > end),
-                levels={str(k): float(v) for k, v in lv.items()})
+    kaki, atr = _gz_pivots(h, l, c, depth, thr)
+    hasil, dipakai, t = [], set(), 1
+    while t < n - 1:
+        k = kaki[t - 1]
+        if not k or np.isnan(atr[t - 1]):
+            t += 1
+            continue
+        start, end, i0 = k
+        if (start, end) in dipakai or t <= i0:
+            t += 1
+            continue
+        L = start > end
+        e = _gz_level(start, end, 0.618)
+        kena = (l[t] <= e < c[t - 1]) if L else (h[t] >= e > c[t - 1])
+        if not kena:
+            t += 1
+            continue
+        dipakai.add((start, end))
+        a = atr[t - 1]
+        if konf:
+            # wajib candle penolakan: candle sentuh tutup kembali di sisi 0 dari 0.618, entry di harga tutup
+            if not ((c[t] > e) if L else (c[t] < e)):
+                t += 1
+                continue
+            e = c[t]
+        sl = end - 0.2 * a if L else end + 0.2 * a
+        tp1, tp2 = start, _gz_level(start, end, -0.236)
+        risk = abs(e - sl)
+        if risk <= 0:
+            t += 1
+            continue
+        fee = 2 * fee_pct / 100 * e / risk
+        r1, r2 = abs(tp1 - e) / risk, abs(tp2 - e) / risk
+        res, j, tp1k = None, t + (1 if konf else 0), False
+        while j < n:
+            stop = e if tp1k else sl
+            if (l[j] <= stop) if L else (h[j] >= stop):
+                res = (0.5 * r1 if tp1k else -1.0) - fee
+                break
+            if not tp1k and ((h[j] >= tp1) if L else (l[j] <= tp1)) and j > t:
+                tp1k = True
+            if tp1k and ((h[j] >= tp2) if L else (l[j] <= tp2)):
+                res = 0.5 * r1 + 0.5 * r2 - fee
+                break
+            j += 1
+        if res is not None:
+            hasil.append(dict(t=int(t), arah="LONG" if L else "SHORT", r=float(res), bar=int(j - t)))
+        t = j + 1
+    # kaki saat ini
+    k = kaki[n - 1]
+    if not k:
+        return None
+    start, end, i0 = k
+    L = start > end
+    e618 = _gz_level(start, end, 0.618)
+    seb = slice(i0 + 1, n)
+    sudah = bool(len(l[seb]) and ((l[seb].min() <= e618) if L else (h[seb].max() >= e618)))
+    lv = {m: _gz_level(start, end, m) for m in (-1.0, -0.618, -0.236, 0.0, 0.5, 0.618, 0.65, 0.786, 1.0)}
+    rs = [x["r"] for x in hasil]
+    win = [x for x in rs if x > 0]
+    rugi = -sum(x for x in rs if x < 0)
+    bt = dict(n=len(rs), wr=len(win) / len(rs) * 100 if rs else 0.0, pf=(sum(win) / rugi if rugi > 0 else (9.9 if win else 0.0)),
+              avg=sum(rs) / len(rs) if rs else 0.0, jam=float(np.median([x["bar"] for x in hasil]) * tf_jam) if hasil else None,
+              tf="4J" if tf_jam == 4 else "1J")
+    return dict(start=float(start), end=float(end), puncak=bool(L), sudah=sudah, atr=float(atr[n - 1]),
+                levels={str(m): float(v) for m, v in lv.items()}, bt=bt)

@@ -429,11 +429,13 @@ def build(df, df1h, dfD, dfW, btc, symbol, mintick, tf="240", df4=None, btc_tf=N
         fvFL[i] = (not np.isnan(fvUB)) and l[i] <= fvUT and l[i] >= fvUB and c[i] > o[i]
         fvFS[i] = (not np.isnan(fvDT)) and h[i] >= fvDB and h[i] <= fvDT and c[i] < o[i]
         obBTa[i], obBBa[i], obSTa[i], obSBa[i] = obBT, obBB, obST, obSB
+        fvUTa[i], fvUBa[i], fvDTa[i], fvDBa[i] = fvUT, fvUB, fvDT, fvDB
     dowUp = p["useDow"] & ~na(ph2) & ~na(pl2) & (ph1 > ph2) & (pl1 > pl2)
     dowDn = p["useDow"] & ~na(ph2) & ~na(pl2) & (ph1 < ph2) & (pl1 < pl2)
     elwU = p["useElw"] & dowUp & (c > ph1) & (rvol >= 1.2)
     elwD = p["useElw"] & dowDn & (c < pl1) & (rvol >= 1.2)
     obBT, obSB = obBTa, obSBa
+    fvUT, fvUB, fvDT, fvDB = fvUTa, fvUBa, fvDTa, fvDBa
     swpL = (l < lo10) & (c > lo10) & (closR > 0.6)
     swpS = (h > hi10) & (c < hi10) & (closR < 0.4)
     fbL = (l < lo10) & (c > lo10) & (rvol >= 1.1) & cdlL

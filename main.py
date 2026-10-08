@@ -248,13 +248,13 @@ def _evaluasi_saran(led, now):
     return "\n".join(rows)
 
 
-def _pin(ids):
-    """Sematkan pesan sinyal. Bila gagal (bot belum admin), kabari sekali sehari dengan cara memperbaikinya."""
+def _pin(ids, baru_4j=True):
+    """Sematkan pesan sinyal. Sinyal 4 jam baru melepas semua pin lama (4 jam dan prospek) supaya tidak menumpuk.
+    Sinyal prospek di tengah candle ditambahkan tanpa melepas sinyal 4 jam. Bila gagal, kabari sekali sehari."""
     if not ids:
         return
     st = _st_load()
-    if st.get("pin_id"):
-        TG.unpin(st["pin_id"])
+    lama = list(st.get("pin_ids") or ([st["pin_id"]] if st.get("pin_id") else []))
     err = TG.pin(ids[0])
     if err:
         if time.time() - st.get("pin_warn", 0) > 86400:
@@ -262,7 +262,11 @@ def _pin(ids):
                      f"<b>Sematkan pesan</b> (Pin messages), lalu sinyal berikutnya otomatis disematkan."])
             _st_update({"pin_warn": time.time()})
         return
-    _st_update({"pin_id": ids[0]})
+    if baru_4j:
+        for m in lama:
+            TG.unpin(m)
+        lama = []
+    _st_update({"pin_ids": (lama + [ids[0]])[-6:], "pin_id": ids[0]})
 
 
 def _konteks_berita(b1):
@@ -1024,7 +1028,7 @@ def cek_cepat(now, paksa=False):
     prospek = [(r, x) for r, x in baru if x.get("golden") or _konfluensi(r, x["arah"], x.get("zona_emas"))[0] >= 3
                or x["mutu"] == "A"]
     if prospek:
-        _pin(TG.send([f"🎯 <b>QSE v148 | SINYAL PROSPEK 4 JAM</b>\n{jam}\nSinyal baru di tengah candle dengan mutu A, "
+        _pin(baru_4j=False, ids=TG.send([f"🎯 <b>QSE v148 | SINYAL PROSPEK 4 JAM</b>\n{jam}\nSinyal baru di tengah candle dengan mutu A, "
                       f"GOLDEN, atau konfluensi tinggi."] +
                      [_blok(i, r, x, f"{x['mutu']} EKSEKUSI, SINYAL BARU", led) for i, (r, x) in enumerate(prospek, 1)]) or [])
     TG.send(blocks)
@@ -1178,7 +1182,9 @@ def scan(now, run4, tfs):
             blocks[0] += f"\nData tidak lengkap: {fail} koin gagal diambil atau dihitung"
         if ada:
             _pin(TG.send(sinyal) or [])
-        TG.send(blocks)
+        ids_lap = TG.send(blocks) or []
+        if not ada and tf == "240":
+            _pin(ids_lap)          # tanpa sinyal, laporan 4 jam yang disematkan supaya pin lama tetap terganti
         for b in sinyal + blocks:
             print(b, "\n")
     FX.antrian_terapkan(led)
@@ -1510,6 +1516,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             if len(SY._selesai()) >= 5:
                 out.append(SY.evaluasi())
     so = []
+    n_awal = len(out)
     if sig or cad or sik or fib or cad2:
         rows = ["📋 <b>RINGKASAN</b>"]
         mst = MD.status()
@@ -1587,7 +1594,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         so.insert(0, f"🎯 <b>QSE v148 | SINYAL {judul}</b>\nCandle {kode} tutup {_jam(tutup)}\n{TG.e(btc_l)}\n"
                      f"Laporan lengkap ada di pesan 📊 berikutnya.")
         return out, so, True
-    return out[:1] + so + out[1:], [], False
+    return out[:n_awal] + so + out[n_awal:], [], False
 
 
 def _dump(results):

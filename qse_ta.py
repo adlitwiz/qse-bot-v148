@@ -178,7 +178,8 @@ def linreg(x, n, off=0):
 
 
 def pivothigh(x, l, r):
-    """Nilai pivot muncul di bar i (pivot di i-r). Kiri wajib lebih rendah, kanan boleh sama."""
+    """Nilai pivot muncul di bar i (pivot di i-r). Sama dengan ta.pivothigh TradingView:
+    kiri boleh sama, kanan wajib lebih rendah (terbukti dari log Pine PENDLE 30/08/26 dan 03/10/26)."""
     x = f64(x)
     out = np.full(len(x), NAN)
     m = l + r + 1
@@ -187,8 +188,8 @@ def pivothigh(x, l, r):
     w = swv(x, m)
     c = w[:, l]
     ok = ~np.isnan(w).any(axis=1)
-    ok &= (w[:, :l] < c[:, None]).all(axis=1)
-    ok &= (w[:, l + 1:] <= c[:, None]).all(axis=1)
+    ok &= (w[:, :l] <= c[:, None]).all(axis=1)
+    ok &= (w[:, l + 1:] < c[:, None]).all(axis=1)
     idx = np.arange(m - 1, len(x))
     out[idx[ok]] = c[ok]
     return out
@@ -203,8 +204,8 @@ def pivotlow(x, l, r):
     w = swv(x, m)
     c = w[:, l]
     ok = ~np.isnan(w).any(axis=1)
-    ok &= (w[:, :l] > c[:, None]).all(axis=1)
-    ok &= (w[:, l + 1:] >= c[:, None]).all(axis=1)
+    ok &= (w[:, :l] >= c[:, None]).all(axis=1)
+    ok &= (w[:, l + 1:] > c[:, None]).all(axis=1)
     idx = np.arange(m - 1, len(x))
     out[idx[ok]] = c[ok]
     return out
@@ -227,25 +228,21 @@ def barssince(cond):
 
 
 def highestbars(x, n):
-    """Offset <=0 ke nilai tertinggi. Seri: yang paling baru menang (loop Pine pakai >)."""
+    """Offset <=0 ke nilai tertinggi. Seri: yang paling LAMA menang (sama dengan ta.highestbars TradingView)."""
     w = _roll(x, n)
-    rev = w[:, ::-1]
-    ok = ~np.isnan(rev).any(axis=1)
-    i = np.argmax(np.where(np.isnan(rev), -np.inf, rev), axis=1)
-    out = -i.astype(np.float64)
+    ok = ~np.isnan(w).any(axis=1)
+    i = np.argmax(np.where(np.isnan(w), -np.inf, w), axis=1)
+    out = -(n - 1 - i).astype(np.float64)
     out[~ok] = NAN
     return out
-
 
 def lowestbars(x, n):
     w = _roll(x, n)
-    rev = w[:, ::-1]
-    ok = ~np.isnan(rev).any(axis=1)
-    i = np.argmin(np.where(np.isnan(rev), np.inf, rev), axis=1)
-    out = -i.astype(np.float64)
+    ok = ~np.isnan(w).any(axis=1)
+    i = np.argmin(np.where(np.isnan(w), np.inf, w), axis=1)
+    out = -(n - 1 - i).astype(np.float64)
     out[~ok] = NAN
     return out
-
 
 def cum(x):
     return np.cumsum(nz(x, 0.0))
