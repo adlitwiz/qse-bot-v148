@@ -11,12 +11,14 @@ import os
 import re
 import time
 import requests
+import qse_newstrade as NT
 from config import STATE_DIR
 
 CACHE = os.path.join(STATE_DIR, "makro.json")
 AKTIF = os.environ.get("QSE_MAKRO", "1") == "1"
 FRED = "https://fred.stlouisfed.org/graph/fredgraph.csv?id="
-RSS = (("Cointelegraph", "https://cointelegraph.com/rss"), ("Cryptonews", "https://cryptonews.com/news/feed/"))
+RSS = (("Cointelegraph", "https://cointelegraph.com/rss"), ("Cryptonews", "https://cryptonews.com/news/feed/"),
+       ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"), ("Decrypt", "https://decrypt.co/feed"))
 UA = {"User-Agent": "Mozilla/5.0 qse-bot"}
 
 
@@ -142,6 +144,8 @@ def berita_baru():
             sudah.add(judul)
             low = " " + judul.lower() + " "
             kat = [k for k, kws in KUNCI.items() if any(w in low for w in kws)]
+            if not kat and NT.relevan(judul):
+                kat = ["Berita koin"]
             if kat and not awal:
                 out.append(dict(sumber=nama, judul=judul, link=(ln.group(1).strip() if ln else ""), kategori=kat))
     c["kirim"] = list(sudah)[-400:]

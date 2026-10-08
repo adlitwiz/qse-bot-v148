@@ -70,9 +70,14 @@ def _tugas_berkala():
             import qse_makro as MK
             bb = MK.berita_baru()
             if bb:
-                TG.send(["📰 <b>QSE v148 | BERITA PENTING</b>\nDisaring kata kunci berdampak besar. Bukan sinyal, cek kondisi pasar.\n\n"
+                import qse_newstrade as NT
+                import qse_berita as BR
+                dl = BR.delisting()
+                TG.send(["📰 <b>QSE v152 | NEWS KE TRADE</b>\nEntry hanya keluar kalau berita dan engine QSE searah.\n\n"
                          + "\n\n".join(f"🗞️ <b>{TG.e(b['judul'])}</b>\n↳ {b['sumber']} | {', '.join(b['kategori'])}"
-                                         + (f"\n↳ {TG.e(b['link'])}" if b["link"] else "") for b in bb)])
+                                         + (f"\n↳ {TG.e(b['link'])}" if b["link"] else "")
+                                         + (("\n" + NT.saran(b["judul"], TG.e, dl)) if NT.saran(b["judul"]) else "")
+                                         for b in bb)])
         except Exception as ex:
             print("[WARN] berita", ex)
         try:
@@ -113,7 +118,7 @@ def _tugas_menit():
     try:
         fb = SY.sentuh_fib()
         if fb:
-            TG.send(["📐 <b>QSE v148 | GOLDEN ZONE HUNTER</b>\nCuma setup yang lolos penilaian semua aspek yang aku kirim.\n\n" + "\n\n".join(fb)])
+            TG.send(["📐 <b>QSE v148 | SENTUH FIB 0.618</b> (Golden Zone Hunter)\n\n" + "\n\n".join(fb)])
     except Exception as ex:
         print("[WARN] fib", ex)
     try:
