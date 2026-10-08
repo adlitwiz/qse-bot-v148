@@ -1625,6 +1625,9 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     head = [f"📊 <b>QSE v148 | LAPORAN {judul}</b>",
             f"Candle {kode} tutup {_jam(tutup)}" if tutup else now.astimezone(WIB).strftime("%d/%m %H:%M WIB"),
             ""]
+    if tutup and time.time() * 1000 - tutup > 20 * 60000:
+        head.insert(2, f"⏰ Laporan susulan, dibuat {now.astimezone(WIB).strftime('%H:%M WIB')} karena jadwal sempat "
+                       f"terlewat. Harga saran sudah dicek ulang ke harga sekarang.")
     bt = next((r for r in results if r["tf"] == "240"), rs[0] if rs else None)
     if bt:
         alt = next((r for r in rs if "BTC" not in r["symbol"]), bt)
@@ -1733,7 +1736,11 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             rows.append(f"{IKON.get(p['arah'], '')} <b>{TG.e(r['symbol'])}</b> rapor {r['rapor']} | bias {p['arah']}, {searah} | "
                         f"konf {SK.konfirmasi(r.get('skill'), p['arah'])[0]}/8\n↳ {TG.e(SY.fib_teks(r))}")
         out.append("\n".join(rows))
-    out += _pantauan(rs, sig + [(r, x) for r, x, _ in cad] + [(r, x) for r, x, _ in sik], kode)
+    if tf == "240":
+        ung = _unggulan(rs, {r["symbol"] for r, _ in sig}, maks=8)
+        out.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN ({len(ung)})</b>\nRapor A+/A/B atau golden moment yang sarannya masih terjangkau dari harga sekarang."
+                   + ("\n\n" + "\n\n".join(ung) if ung else "\nBelum ada koin unggulan yang entry-nya masih terjangkau."))
+    out += _pantauan(rs, sig +[(r, x) for r, x, _ in cad] + [(r, x) for r, x, _ in sik], kode)
     rendah = {}
     for r, x in eks_ab:
         if r["rapor"] not in ("A", "B") and r["symbol"] not in rendah:

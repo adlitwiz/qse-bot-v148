@@ -35,6 +35,24 @@ def unpin(mid):
         _aksi("unpinChatMessage", message_id=mid)
 
 
+_RAPAT = ("↳", "━", "SL:", "TP1:", "TP2:", "TP:")
+
+
+def _rapi(b):
+    """Beri baris kosong di antara kalimat supaya enak dibaca. Baris lanjutan (↳), garis, dan SL/TP tetap
+    menempel ke baris atasnya. Isi <code>/<pre> yang memanjang beberapa baris tidak diubah."""
+    out, dalam = [], 0
+    for ln in b.split("\n"):
+        s = ln.strip()
+        if (out and s and out[-1].strip() and not dalam and not s.startswith(_RAPAT)
+                and not out[-1].strip().startswith("━")):
+            out.append("")
+        out.append(ln)
+        dalam += ln.count("<code>") + ln.count("<pre>") - ln.count("</code>") - ln.count("</pre>")
+        dalam = max(dalam, 0)
+    return "\n".join(out)
+
+
 def send(blocks, token=None, chat_id=None):
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
@@ -42,7 +60,16 @@ def send(blocks, token=None, chat_id=None):
         print("[INFO] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID kosong, pesan hanya dicetak.")
         return
     msgs, cur = [], ""
+    pecah = []
     for b in blocks:
+        b = _rapi(b)
+        while len(b) > 3800:                      # blok kepanjangan: potong di batas baris
+            k = b.rfind("\n", 0, 3800)
+            k = k if k > 0 else 3800
+            pecah.append(b[:k])
+            b = b[k:].lstrip("\n")
+        pecah.append(b)
+    for b in pecah:
         if len(cur) + len(b) + 2 > 3800 and cur:
             msgs.append(cur)
             cur = ""

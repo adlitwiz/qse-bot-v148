@@ -87,6 +87,11 @@ def _tugas_berkala():
         except Exception as ex:
             print("[WARN] momentum", ex)
     _jaga_main(now)
+    tutup4 = int(now // 14400) * 14400
+    if now - tutup4 >= 120 and st.get("scan4", 0) < tutup4 * 1000 and now - st.get("susul_coba", 0) >= 900:
+        # laporan 4 jam terakhir belum pernah jadi (bot mati, update, atau gagal): susulkan sekarang
+        _st({"susul_coba": now})
+        _jalankan_main(now)
     jam = int(now // 3600)
     if time.gmtime(now).tm_min >= 2 and st.get("jam_main") != jam:
         _st({"jam_main": jam})
