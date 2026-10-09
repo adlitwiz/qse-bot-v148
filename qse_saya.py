@@ -1203,6 +1203,22 @@ def info_zona(r, px=None):
                  f"TP2 {fp(tp2, t)} | lot {lot_jalur('manual'):g}x")
     else:
         teks += f"\nCandle: {alasan_c}" + ("" if p.get("btc_ok") else " | BTC belum mengizinkan arah ini")
+        # rencana harga tetap diberikan supaya jelas: LIMIT di tengah golden pocket, SL di bawah batas batal
+        e = (glo + ghi) / 2
+        if posisi:
+            e = c
+        base = p["batal"] - a * 0.45 if L else p["batal"] + a * 0.45
+        dist = (e - base) if L else (base - e)
+        dist = min(max(dist if dist > 0 else a * 1.5, a * 1.0), a * 2.5)
+        sl = e - dist if L else e + dist
+        tp1 = e + 0.8 * dist if L else e - 0.8 * dist
+        lv = (r.get("skill") or {}).get("res" if L else "sup") or []
+        tp2 = next((x for x in lv if 1.2 * dist <= (x - e if L else e - x) <= 3 * dist), e + 1.8 * dist if L else e - 1.8 * dist)
+        out.update(rencana=dict(order="MARKET" if posisi else "LIMIT", entry=e, sl=sl, tp1=tp1, tp2=tp2))
+        teks += (f"\nRencana {'MARKET' if posisi else 'LIMIT'} {arah}: entry {fp(e, t)} | SL {fp(sl, t)} | "
+                 f"TP1 {fp(tp1, t)} | TP2 {fp(tp2, t)}"
+                 f"\n↳ pasang hanya setelah candle konfirmasi searah"
+                 + ("" if p.get("btc_ok") else " dan BTC mengizinkan") + ". Kalau candle tutup tembus batal, lewati.")
     out["teks"] = teks
     return out
 
@@ -1381,9 +1397,17 @@ def _ema(xs, n):
 
 
 def peringatan_dini():
+    """Dipanggil listener tiap menit. Tiap trade jalan dinilai bertingkat, tiap tingkat dikirim sekali:
+    1 = mulai melawan (0.25 ATR atau 0.8%) dan ada tanda balik arah 15 menit / 1 jam / BTC
+    2 = sudah 40% jalan ke SL atau minus 1.5%, apa pun alasannya
+    3 = sudah 70% jalan ke SL. Kalau harga balik untung 0.3 ATR, tingkat direset."""
     d = _load()
     jalan = [it for it in d["open"].values() if it["status"] in ("TERISI", "TP1")]
     pesan = []
+    if not jalan:
+        if d.get("btc_1j") is not None:
+            ubah(lambda dd: dd.update(btc_1j=None))
+        return pesan
     try:
         btc = _kline("BTCUSDT", "60", 60)
         cls = [x[3] for x in btc[:-1]]
@@ -1399,19 +1423,43 @@ def peringatan_dini():
             pesan.append(f"⚠️ <b>BTC 1 JAM BERBALIK {'NAIK' if btc_naik else 'TURUN'}</b> (3 jam terakhir {ch3:+.1f}%)\n↳ posisi "
                          + ", ".join(f"{it['sym']} {it['arah']}" for it in kena)
                          + " jadi lebih berisiko. Pertimbangkan geser SL ke entry kalau sudah untung, atau kurangi lot.")
-    ganti = {"btc_1j": btc_naik}
+    try:
+        b15 = _kline("BTCUSDT", "15", 8)[:-1]
+        btc15 = (b15[-1][3] / b15[-4][3] - 1) * 100 if len(b15) >= 4 else 0.0
+    except Exception:
+        btc15 = 0.0
+    ganti = {}
     for it in jalan:
-        if it.get("dini"):
-            continue
         px = harga_live(it["sym"])
         a = it.get("atr") or 0
         if not px or a <= 0:
             continue
+        kunci = it.get("id", it["sym"])
         L = it["arah"] == "LONG"
-        lawan = ((it["entry"] - px) if L else (px - it["entry"])) / a
-        if lawan < 0.5:
+        rugi = (it["entry"] - px) if L else (px - it["entry"])      # positif = harga melawan posisi
+        lv_lama = it.get("dini_lv", 1 if it.get("dini") else 0)
+        if rugi <= -0.3 * a:
+            if lv_lama:
+                ganti[kunci] = 0              # harga balik ke arah untung: peringatan berikutnya boleh keluar lagi
             continue
+        if rugi <= 0:
+            continue
+        lawan = rugi / a
+        pct = rugi / it["entry"] * 100
+        risk = it.get("risk0") or abs(it["entry"] - it["sl"]) or a
+        ke_sl = rugi / risk
         alasan = []
+        try:
+            k15 = _kline(it["sym"], "15", 10)[:-1]          # hanya candle 15 menit yang sudah tutup
+            if len(k15) >= 5:
+                c0, c1, c2 = k15[-1][3], k15[-2][3], k15[-3][3]
+                lo4, hi4 = min(x[2] for x in k15[-5:-1]), max(x[1] for x in k15[-5:-1])
+                if (L and c0 < lo4) or ((not L) and c0 > hi4):
+                    alasan.append("struktur 15 menit patah")
+                if (L and c0 < c1 < c2) or ((not L) and c0 > c1 > c2):
+                    alasan.append("2 candle 15 menit berturut melawan")
+        except Exception:
+            pass
         try:
             k1 = _kline(it["sym"], "60", 8)[:-1]
             if len(k1) >= 4:
@@ -1420,22 +1468,42 @@ def peringatan_dini():
                     alasan.append("struktur 1 jam patah")
         except Exception:
             pass
-        if btc_naik is not None and btc_naik != L:
+        if (L and btc15 <= -0.3) or ((not L) and btc15 >= 0.3):
+            alasan.append(f"BTC 45 menit {btc15:+.2f}%")
+        elif btc_naik is not None and btc_naik != L:
             alasan.append(f"BTC 1 jam melawan ({ch3:+.1f}% 3 jam)")
-        if not alasan:
+        if ke_sl >= 0.7:
+            lv = 3
+        elif ke_sl >= 0.4 or pct >= 1.5:
+            lv = 2
+        elif (lawan >= 0.25 or pct >= 0.8) and alasan:
+            lv = 1
+        else:
+            lv = 0
+        if lv <= lv_lama:
             continue
-        pct = lawan * a / it["entry"] * 100
-        pesan.append(f"⚠️ <b>PERINGATAN DINI {it['sym']} {it['arah']}</b>\n↳ harga melawan {lawan:.1f} ATR (-{pct:.1f}%), "
-                     + ", ".join(alasan) + f". Jangan tunggu SL penuh: pertimbangkan /sl {it['sym'].replace('USDT', '')} "
-                     f"{it['arah'].lower()} 50% atau geser SL lebih dekat.")
-        ganti[it["id"] if "id" in it else it["sym"]] = True
+        kd = it["sym"].replace("USDT", "")
+        sar = {1: f"Tanda balik arah muncul. Siapkan rencana keluar, geser SL lebih dekat kalau struktur makin rusak.",
+               2: f"Sudah {ke_sl * 100:.0f}% jalan ke SL. Pertimbangkan /sl {kd} {it['arah'].lower()} 50% sekarang, "
+                  f"jangan tunggu minus besar.",
+               3: f"Sudah {ke_sl * 100:.0f}% jalan ke SL. Keluar sekarang dengan /sl {kd} {it['arah'].lower()}, "
+                  f"atau biarkan SL bekerja. Jangan geser SL menjauh."}[lv]
+        judul = {1: "PERINGATAN DINI", 2: "PERINGATAN DINI TINGKAT 2", 3: "BAHAYA, DEKAT SL"}[lv]
+        pesan.append(f"{'⚠️' if lv < 3 else '🚨'} <b>{judul} {it['sym']} {it['arah']}</b>\n"
+                     f"↳ harga {px:.6g} melawan {lawan:.2f} ATR (-{pct:.2f}%)"
+                     + (", " + ", ".join(alasan) if alasan else "") + f".\n↳ {sar}")
+        ganti[kunci] = lv
 
-    def f(dd):
-        dd["btc_1j"] = ganti.pop("btc_1j")
-        for k, v in dd["open"].items():
-            if ganti.get(v.get("id", v["sym"])):
-                v["dini"] = True
-    ubah(f)
+    if (btc_naik is not None and btc_naik != st_btc) or ganti:
+        def f(dd):
+            if btc_naik is not None:
+                dd["btc_1j"] = btc_naik
+            for v in dd["open"].values():
+                k = v.get("id", v["sym"])
+                if k in ganti:
+                    v["dini_lv"] = ganti[k]
+                    v["dini"] = ganti[k] > 0
+        ubah(f)
     return pesan
 
 

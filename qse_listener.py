@@ -60,30 +60,28 @@ def _tugas_berkala():
     if now - st.get("t15", 0) >= 900:
         _st({"t15": now})
         try:
-            pesan = SY.peringatan_dini()
-            if pesan:
-                TG.send(["⚠️ <b>QSE v148 | PERINGATAN</b>\n\n" + "\n\n".join(pesan)])
+            import qse_news as NW
+            with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
+                simbol = {r["symbol"] for r in json.load(f)}
+            nb = NW.cek(simbol)
+            if nb:
+                TG.send(["📰 <b>QSE v148 | NEWS KE TRADE</b>\nBerita dari media kripto, Google News, dan Reddit, "
+                         "disambungkan ke engine QSE. Entry hanya keluar kalau berita dan engine searah."]
+                        + nb)
         except Exception as ex:
-            print("[WARN] dini", ex)
-        try:
-            import qse_makro as MK
-            bb = MK.berita_baru()
-            if bb:
-                TG.send(["📰 <b>QSE v148 | BERITA PENTING</b>\nDisaring kata kunci berdampak besar. Bukan sinyal, cek kondisi pasar.\n\n"
-                         + "\n\n".join(f"🗞️ <b>{TG.e(b['judul'])}</b>\n↳ {b['sumber']} | {', '.join(b['kategori'])}"
-                                         + (f"\n↳ {TG.e(b['link'])}" if b["link"] else "") for b in bb)])
-        except Exception as ex:
-            print("[WARN] berita", ex)
+            print("[WARN] news", ex)
         try:
             import qse_momentum as MO
             with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
                 lama = json.load(f)
             bias = {r["symbol"]: (r.get("pasar") or {}).get("arah") for r in lama
                     if r.get("tf", "240") == "240" and r["rapor"] in ("A", "B")}
+            info = {r["symbol"]: dict(rapor=r["rapor"], tick=r.get("tick")) for r in lama if r.get("tf", "240") == "240"}
             pos = {it["sym"]: it["arah"] for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")}
-            pesan = MO.scan(list(dict.fromkeys(list(pos) + list(bias))), bias, pos)
+            pesan = MO.scan(list(dict.fromkeys(list(pos) + list(bias))), bias, pos, info)
             if pesan:
-                TG.send(["⚡ <b>QSE v148 | MOMENTUM 15/30 MENIT</b>\n\n" + "\n\n".join(pesan)])
+                TG.send(["⚡ <b>QSE v148 | MOMENTUM 15/30 MENIT</b>\nHanya momentum yang lolos penilaian semua aspek "
+                         "yang jadi saran.\n\n" + "\n\n".join(pesan)])
         except Exception as ex:
             print("[WARN] momentum", ex)
     _jaga_main(now)
@@ -184,6 +182,17 @@ BATAS_PERINTAH = 180      # loop perintah macet lebih dari 3 menit -> restart pa
 BATAS_KERJA = 1500        # tugas berkala macet lebih dari 25 menit -> restart paksa
 
 
+def _pin_dini(ids):
+    """Slot pin kedua: peringatan dini trade kamu. Pin lama slot ini dilepas, pin laporan 4 jam tidak disentuh."""
+    if not ids or not ids[0]:
+        return
+    lama = _st().get("pin_dini")
+    if TG.pin(ids[0]) is None:
+        if lama and lama != ids[0]:
+            TG.unpin(lama)
+        _st({"pin_dini": ids[0]})
+
+
 def _tugas_menit():
     try:
         pesan = SY.pantau()
@@ -191,6 +200,15 @@ def _tugas_menit():
             TG.send(["👤 <b>QSE v148 | TRADE KAMU</b>\n\n" + "\n".join(pesan)])
     except Exception as ex:
         print("[WARN] pantau", ex)
+    try:
+        pesan = SY.peringatan_dini()
+        if pesan:
+            _pin_dini(TG.send(["⚠️ <b>QSE v148 | PERINGATAN DINI TRADE KAMU</b>\n\n" + "\n\n".join(pesan)]) or [])
+        elif _st().get("pin_dini") and not any(it["status"] in ("TERISI", "TP1") for it in SY.lihat()["open"].values()):
+            TG.unpin(_st()["pin_dini"])           # semua posisi sudah tutup: lepas pin peringatan
+            _st({"pin_dini": None})
+    except Exception as ex:
+        print("[WARN] dini", ex)
     try:
         fb = SY.sentuh_fib()
         if fb:

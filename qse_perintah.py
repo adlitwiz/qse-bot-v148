@@ -31,6 +31,35 @@ def mulai_scan():
             "Hasilnya terkirim dalam 1 sampai 3 menit.")
 
 
+def mulai_laporan4j():
+    """Paksa laporan 4 jam sekarang (laporan susulan) di proses terpisah."""
+    import fcntl
+    import subprocess
+    import sys
+    try:
+        with open(os.path.join(STATE_DIR, ".main.lock"), "a") as f:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(f, fcntl.LOCK_UN)
+    except OSError:
+        return "Laporan 4 jam sedang dibuat. Hasilnya otomatis terkirim begitu selesai."
+    tanda = os.path.join(STATE_DIR, ".laporan_terakhir")
+    try:
+        if time.time() - os.path.getmtime(tanda) < 900:
+            return "Laporan 4 jam baru saja diminta. Tunggu hasilnya dulu, paling lama 20 menit."
+    except OSError:
+        pass
+    open(tanda, "w").close()
+    folder = os.path.dirname(os.path.abspath(__file__))
+    log = open(os.path.join(STATE_DIR, "main.log"), "a")
+    log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} /laporan4j =====\n")
+    log.flush()
+    subprocess.Popen([sys.executable, "-u", "main.py", "semua"], cwd=folder, env=os.environ.copy(),
+                     stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    log.close()
+    return ("Laporan 4 jam susulan dimulai. Robot memindai semua koin dengan harga sekarang. "
+            "Hasilnya terkirim dalam 10 sampai 20 menit dan otomatis disematkan.")
+
+
 BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "<b>Catat entry</b>\n"
            "/entry long market AUSDT = entry MARKET di harga sekarang\n"
@@ -59,7 +88,9 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "<b>Sinyal</b>\n"
            "/sinyal4j = saran TF 4 jam yang masih aktif, dengan harga sekarang\n"
            "/sinyal1j = saran TF 1 jam yang masih aktif\n"
-           "/scan = scan sekarang dengan harga terkini, hasil dalam 1 sampai 3 menit\n\n"
+           "/scan = scan sekarang dengan harga terkini, hasil dalam 1 sampai 3 menit\n"
+           "/laporan4j = buat ulang laporan 4 jam sekarang (laporan susulan), hasil dalam 10 sampai 20 menit\n"
+           "/berita = uji news ke trade: sumber berita, terjemahan, harga Bybit\n\n"
            "<b>Info</b>\n"
            "/cek AUSDT = analisa lengkap koin: kesimpulan, saran robot, teknikal, siklus, skill, fundamental, derivatif, kalender\n"
            "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
@@ -149,6 +180,11 @@ def balas(cmd, args, dari_main=False):
         return SY.saran_aktif("60")
     if cmd == "/scan":
         return mulai_scan()
+    if cmd in ("/laporan4j", "/laporan", "/susul"):
+        return mulai_laporan4j()
+    if cmd in ("/berita", "/news"):
+        import qse_news as NW
+        return NW.tes()
     if cmd == "/modal":
         import qse_modal as MD
         return MD.perintah(args)
@@ -198,7 +234,7 @@ def proses(cmds, dari_main=False):
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
-                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/sinyal4j": "📡", "/sinyal4": "📡",
+                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"

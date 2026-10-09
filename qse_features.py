@@ -97,8 +97,15 @@ def build(df, df1h, dfD, dfW, btc, symbol, mintick, tf="240", df4=None, btc_tf=N
     isSpk = brange > avgRng * p["spikeX"]
     mktOk = (~isSpk) & (nz(T.barssince(isSpk), 999) > 5) & (atrPc <= 92) & (atrPc >= 8)
     with np.errstate(divide="ignore", invalid="ignore"):
-        bodyR = np.where(brange > 0, np.abs(c - o) / brange, 0.0)
-        closR = np.where(brange > 0, (c - l) / brange, 0.5)
+        # TradingView menghitung harga sebagai kelipatan tick (rasio tepat 0.5 tetap 0.5), jadi hitung dalam tick
+        if mintick and mintick > 0:
+            tk = lambda x: np.round(x / mintick)
+            brT = tk(h) - tk(l)
+            bodyR = np.where(brT > 0, np.abs(tk(c) - tk(o)) / brT, 0.0)
+            closR = np.where(brT > 0, (tk(c) - tk(l)) / brT, 0.5)
+        else:
+            bodyR = np.where(brange > 0, np.abs(c - o) / brange, 0.0)
+            closR = np.where(brange > 0, (c - l) / brange, 0.5)
     ema20, ema50, ema200 = T.ema(c, 20), T.ema(c, 50), T.ema(c, 200)
     tUp = (c > ema50) & (ema50 > ema200)
     tDn = (c < ema50) & (ema50 < ema200)

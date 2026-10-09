@@ -317,6 +317,10 @@ def main():
             if CEK_1J:
                 cek_1j(now)
             uji_mingguan()
+        try:
+            _pin_rapikan()          # lepas pin saran yang sudah tidak berlaku (batal, kena SL, selesai)
+        except Exception as ex:
+            print("[WARN] rapikan pin", ex)
         _st_update({"main_ok": time.time()})
     except SystemExit:
         raise
@@ -361,13 +365,39 @@ def _evaluasi_saran(led, now):
     return "\n".join(rows)
 
 
-def _pin(ids, baru_4j=True):
-    """Sematkan pesan sinyal. Sinyal 4 jam baru melepas semua pin lama (4 jam dan prospek) supaya tidak menumpuk.
-    Sinyal prospek di tengah candle ditambahkan tanpa melepas sinyal 4 jam. Bila gagal, kabari sekali sehari."""
-    if not ids:
+def _pin_berlaku(isi, led):
+    """Pin saran masih berlaku selama salah satu saran di dalamnya masih tercatat terbuka (menunggu, terisi, TP1)."""
+    if isi == "lap":
+        return True
+    buka = {(v["sym"], v["arah"]) for v in led["open"].values()}
+    return any(tuple(p) in buka for p in isi)
+
+
+def _pin_rapikan(led=None):
+    """Lepas pin saran (4 jam atau prospek) yang semua sarannya sudah batal, kena SL, atau selesai."""
+    meta = dict(_st_load().get("pin_meta") or {})
+    if not meta:
+        return
+    led = led or FX.load()
+    for m, isi in list(meta.items()):
+        if not _pin_berlaku(isi, led):
+            TG.unpin(int(m))
+            meta.pop(m)
+    _st_update({"pin_meta": meta})
+
+
+def _pin(ids, jenis="saran4", isi=None, led=None):
+    """Slot pin saran. jenis:
+    saran4 = laporan 4 jam yang ada sarannya: SEMUA pin saran lama dilepas, pin ini dipasang
+    lap4   = laporan 4 jam tanpa saran: hanya pin laporan lama dan pin saran yang sudah tidak berlaku yang dilepas
+    prospek = sinyal prospek atau saran 1 jam: ditambahkan, tidak melepas apa pun
+    Pin peringatan dini trade kamu (pin_dini) diurus listener dan tidak pernah disentuh di sini."""
+    if not ids or not ids[0]:
         return
     st = _st_load()
-    lama = list(st.get("pin_ids") or ([st["pin_id"]] if st.get("pin_id") else []))
+    meta = dict(st.get("pin_meta") or {})
+    for m in (st.get("pin_ids") or []):                 # pin dari versi lama: anggap pin saran 4 jam
+        meta.setdefault(str(m), "lap")
     err = TG.pin(ids[0])
     if err:
         if time.time() - st.get("pin_warn", 0) > 86400:
@@ -375,11 +405,13 @@ def _pin(ids, baru_4j=True):
                      f"<b>Sematkan pesan</b> (Pin messages), lalu sinyal berikutnya otomatis disematkan."])
             _st_update({"pin_warn": time.time()})
         return
-    if baru_4j:
-        for m in lama:
-            TG.unpin(m)
-        lama = []
-    _st_update({"pin_ids": (lama + [ids[0]])[-6:], "pin_id": ids[0]})
+    led = (led or FX.load()) if jenis == "lap4" else None
+    for m, lama in list(meta.items()):
+        if (jenis == "saran4" or (jenis == "lap4" and (lama == "lap" or not _pin_berlaku(lama, led)))):
+            TG.unpin(int(m))
+            meta.pop(m)
+    meta[str(ids[0])] = "lap" if jenis == "lap4" else [list(p) for p in (isi or [])]
+    _st_update({"pin_meta": meta, "pin_ids": [], "pin_id": ids[0]})
 
 
 def _konteks_berita(b1):
@@ -1188,9 +1220,11 @@ def cek_cepat(now, paksa=False):
     prospek = [(r, x) for r, x in baru if x.get("golden") or _konfluensi(r, x["arah"], x.get("zona_emas"))[0] >= 3
                or x["mutu"] == "A"]
     if prospek:
-        _pin(baru_4j=False, ids=TG.send([f"🎯 <b>QSE v148 | SINYAL PROSPEK 4 JAM</b>\n{jam}\nSinyal baru di tengah candle dengan mutu A, "
+        # disematkan sampai ada laporan 4 jam bersaran baru, atau sampai semua sarannya tidak berlaku lagi
+        _pin(TG.send([f"🎯 <b>QSE v148 | SINYAL PROSPEK 4 JAM</b>\n{jam}\nSinyal baru di tengah candle dengan mutu A, "
                       f"GOLDEN, atau konfluensi tinggi."] +
-                     [_blok(i, r, x, f"{x['mutu']} EKSEKUSI, SINYAL BARU", led) for i, (r, x) in enumerate(prospek, 1)]) or [])
+                     [_blok(i, r, x, f"{x['mutu']} EKSEKUSI, SINYAL BARU", led) for i, (r, x) in enumerate(prospek, 1)])
+             or [], "prospek", [(r["symbol"], x["arah"]) for r, x in prospek])
     if paksa:
         _SCAN["4j"] = dict(blocks=blocks, results=results, sel=sel, baru=baru, masih=masih, cad=cad, sik=sik,
                            fib=fib, cad2=cad2, alarm=alarm, ctx=ctx, b1=b1, led=led)
@@ -1344,11 +1378,14 @@ def scan(now, run4, tfs):
                                         fib, cad2)
         if fail > max(5, 0.05 * len(order)):
             blocks[0] += f"\nData tidak lengkap: {fail} koin gagal diambil atau dihitung"
+        isi = [(r["symbol"], x["arah"]) for r, x in sel if r.get("tf", "240") == tf]
+        isi += [(r["symbol"], x["arah"]) for lst in (cad, sik, fib, cad2) for r, x, _ in lst if r.get("tf", "240") == tf]
         if ada:
-            _pin(TG.send(sinyal) or [])
+            jenis = ("saran4" if tf == "240" else "prospek") if isi else "lap4"
+            _pin(TG.send(sinyal) or [], jenis, isi, led)
         ids_lap = TG.send(blocks) or []
         if not ada and tf == "240":
-            _pin(ids_lap)          # tanpa sinyal, laporan 4 jam yang disematkan supaya pin lama tetap terganti
+            _pin(ids_lap, "lap4", led=led)     # tanpa saran: pin saran lama yang masih berlaku tetap disematkan
         for b in sinyal + blocks:
             print(b, "\n")
     FX.antrian_terapkan(led)
