@@ -180,8 +180,9 @@ def _radar(results, sudah, maks=6):
         jam = SY.estimasi_jam(c - x["entry"], r["atr"], 4)
         v = "EKSEKUSI" if x["eksekusi"] else "TAHAN, " + x["alasan"]
         rows.append(f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {r['rapor']} | {TG.e(x['pola'])} "
-                    f"mutu {x['mutu']}\nEntry {TG.fp(x['entry'], t)} | jarak {abs(c - x['entry']) / c * 100:.2f}% | "
-                    f"perkiraan tersentuh {SY.teks_waktu(jam)}\n↳ DASBOR: {TG.e(v)}")
+                    f"mutu {x['mutu']}\n{x['order']} {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | "
+                    f"TP1 {TG.fp(x['tp1'], t)} | TP2 {TG.fp(x['tp2'], t)}\n"
+                    f"Jarak {abs(c - x['entry']) / c * 100:.2f}% | perkiraan tersentuh {SY.teks_waktu(jam)}\n↳ DASBOR: {TG.e(v)}")
     return rows
 
 
@@ -1063,7 +1064,14 @@ def _kartu_jam(results, b1, led):
             bag.append(f"{it['sym']} {it['arah']} " + (f"{fl['pct']:+.1f}% ({fl['r']:+.2f}R)" if fl else "-"))
         rows.append("👤 Posisi: " + " | ".join(bag))
     aktif = [v for v in led["open"].values() if v["status"] == "MENUNGGU"]
-    rows.append(f"📡 Saran LIMIT aktif: {len(aktif)} (ketik /sinyal4j)")
+    rows.append(f"📡 Saran LIMIT aktif: {len(aktif)}" + (" (ketik /sinyal4j)" if aktif else ""))
+    peta_px = {r["symbol"]: (r.get("live") or r["close"], r["tick"]) for r in results}
+    for v in sorted(aktif, key=lambda v: abs((peta_px.get(v["sym"], (v["entry"], 0))[0] - v["entry"]) / v["entry"]))[:5]:
+        px, t = peta_px.get(v["sym"], (None, 0.0001))
+        rows.append(f"↳ {v['sym']} {v['arah']} entry {TG.fp(v['entry'], t)}"
+                    + (f", harga {TG.fp(px, t)}, jarak {abs(px - v['entry']) / v['entry'] * 100:.2f}%" if px else ""))
+    sisa = (H4 - int(time.time() * 1000) % H4) / 60000
+    rows.append(f"⏳ Laporan 4 jam berikutnya {int(sisa // 60)} jam {int(sisa % 60)} menit lagi")
     gerak = []
     for r in results:
         o = ((r.get("pasar") or {}).get("k_now") or (0,))[0]
@@ -1186,6 +1194,19 @@ def cek_cepat(now, paksa=False):
                           "Yang belum masuk sinyal valid ditulis alasannya.\n\n" + "\n\n".join(ung))
     if paksa and not (baru or masih or cad or sik or fib or cad2):
         blocks.append("Belum ada saran 4J baru yang lolos semua syarat di harga sekarang.")
+    if not paksa:
+        # notif per jam selalu punya isi yang bisa dipakai: koin unggulan dan setup terdekat, lengkap dengan harga
+        sudah_j = {r["symbol"] for r, _ in sel} | {r["symbol"] for r, _, _ in cad} | {r["symbol"] for r, _, _ in sik}
+        ung = _unggulan(results, sudah_j, maks=3)
+        if ung:
+            blocks.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN JAM INI ({len(ung)})</b>\nSaran EKSEKUSI yang entry-nya masih "
+                          "terjangkau dari harga sekarang.\n\n" + "\n\n".join(ung))
+        rad = _radar(results, sudah_j | {r["symbol"] for r, _ in sel}, maks=3)
+        if rad:
+            blocks.append(f"{GARIS}\n🎯 <b>SETUP TERDEKAT ({len(rad)})</b>\nEntry belum tersentuh. Pasang alarm, jangan "
+                          "masuk sebelum harga sampai.\n\n" + "\n\n".join(rad))
+        if not (ung or rad or baru or cad or sik or fib or cad2 or alarm):
+            blocks.append("Belum ada setup dekat yang layak. Robot tetap memantau tiap jam.")
     if masih:
         blocks.append(f"{GARIS}\n✅ <b>SARAN 4J MASIH VALID ({len(masih)})</b>")
         blocks += [_blok(i, r, x, f"{x['mutu']} EKSEKUSI, masih valid", led) for i, (r, x) in enumerate(masih, 1)]
@@ -1708,6 +1729,14 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     out = ["\n".join(head)]
     if rb and tf == "240":
         out.append(_blok_ramal(rb))
+    if tf == "240":
+        try:
+            import qse_altseason as AS
+            t_alt = AS.teks()
+            if t_alt:
+                out.append(t_alt)
+        except Exception as ex:
+            print("[WARN] altseason", ex)
     tutup_dt = dt.datetime.fromtimestamp(tutup / 1000, dt.timezone.utc) if tutup else now
     if tf == "240" and tutup_dt.hour == 0:
         out.append(_rekap(SY.lihat(), tutup_dt, 1, "REKAP TRADE KAMU KEMARIN", ("SL", "BE", "TP2", "TUTUP")))

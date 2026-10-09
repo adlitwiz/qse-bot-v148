@@ -90,7 +90,10 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/sinyal1j = saran TF 1 jam yang masih aktif\n"
            "/scan = scan sekarang dengan harga terkini, hasil dalam 1 sampai 3 menit\n"
            "/laporan4j = buat ulang laporan 4 jam sekarang (laporan susulan), hasil dalam 10 sampai 20 menit\n"
-           "/berita = uji news ke trade: sumber berita, terjemahan, harga Bybit\n\n"
+           "/berita = uji news ke trade: sumber berita, terjemahan, harga Bybit\n"
+           "/ujimomentum = backtest saran momentum 15/30 menit di koin rapor A/B (atau /ujimomentum SOL)\n"
+           "/jalur = hasil live saran momentum, news searah, dan news mandiri\n"
+           "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n\n"
            "<b>Info</b>\n"
            "/cek AUSDT = analisa lengkap koin: kesimpulan, saran robot, teknikal, siklus, skill, fundamental, derivatif, kalender\n"
            "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
@@ -182,6 +185,23 @@ def balas(cmd, args, dari_main=False):
         return mulai_scan()
     if cmd in ("/laporan4j", "/laporan", "/susul"):
         return mulai_laporan4j()
+    if cmd in ("/jalur", "/rekapjalur"):
+        import qse_catat as CT
+        return CT.teks()
+    if cmd in ("/altseason", "/alt"):
+        import qse_altseason as AS
+        return AS.teks() or "Data altcoin gagal diambil, coba lagi nanti."
+    if cmd in ("/ujimomentum", "/ujimom"):
+        import qse_momentum as MO
+        try:
+            with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
+                lama = json.load(f)
+        except Exception:
+            return "Belum ada hasil scan 4 jam. Coba lagi setelah laporan 4 jam keluar."
+        sym = [r["symbol"] for r in lama if r.get("tf", "240") == "240" and r["rapor"] in ("A", "B")]
+        if args:
+            sym = [a.upper() if a.upper().endswith("USDT") else a.upper() + "USDT" for a in args]
+        return MO.uji(sym) if sym else "Belum ada koin rapor A/B untuk diuji."
     if cmd in ("/berita", "/news"):
         import qse_news as NW
         return NW.tes()
@@ -234,7 +254,7 @@ def proses(cmds, dari_main=False):
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
-                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
+                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"

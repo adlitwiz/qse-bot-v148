@@ -66,10 +66,19 @@ def _tugas_berkala():
             nb = NW.cek(simbol)
             if nb:
                 TG.send(["📰 <b>QSE v148 | NEWS KE TRADE</b>\nBerita dari media kripto, Google News, dan Reddit, "
-                         "disambungkan ke engine QSE. Entry hanya keluar kalau berita dan engine searah."]
+                         "dinilai dengan sejarah reaksi BTC 2022-2026 lalu disambungkan ke engine QSE. Entry keluar kalau "
+                         "berita dan engine searah, atau kalau sejarah jenis berita itu cukup kuat untuk melawan engine."]
                         + nb)
         except Exception as ex:
             print("[WARN] news", ex)
+        try:
+            import qse_catat as CT
+            hasil = CT.cek()
+            if hasil:
+                TG.send(["📒 <b>QSE v148 | HASIL SARAN JALUR TAMBAHAN</b>\nDicatat otomatis untuk menilai jalur momentum "
+                         "dan news. Ketik /jalur untuk rekap.\n\n" + "\n".join(hasil)])
+        except Exception as ex:
+            print("[WARN] catat", ex)
         try:
             import qse_momentum as MO
             with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
