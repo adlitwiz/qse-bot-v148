@@ -292,6 +292,19 @@ def main():
         raise TimeoutError("main.py jalan lebih dari 50 menit, dihentikan supaya jadwal berikutnya tidak terkunci")
     signal.signal(signal.SIGALRM, _kelamaan)
     signal.alarm(50 * 60)
+
+    def _penjaga_keras():
+        # cadangan bila SIGALRM tidak bisa memutus (macet di thread lain atau saat Python menutup pool)
+        time.sleep(52 * 60)
+        print("[FATAL] main.py lewat 52 menit, keluar paksa supaya kunci jadwal lepas", flush=True)
+        try:
+            TG.send(["⚠️ <b>QSE v148 | SCAN TERLALU LAMA</b>\nmain.py lewat 52 menit dan aku hentikan paksa. "
+                     "Jadwal berikutnya tetap jalan. Log: ~/qse_state/main.log"])
+        except Exception:
+            pass
+        os._exit(3)
+    import threading
+    threading.Thread(target=_penjaga_keras, daemon=True).start()
     _st_update({"main_mulai": time.time()})
     semua =len(sys.argv) > 1 and sys.argv[1] == "semua"
     tutup4 = (int(time.time() * 1000) // H4) * H4          # jam tutup candle 4J terakhir
@@ -1856,4 +1869,22 @@ def _dump(results):
 
 
 if __name__ == "__main__":
-    main()
+    _kode = 0
+    try:
+        main()
+    except SystemExit as _e:
+        _kode = _e.code if isinstance(_e.code, int) else (0 if _e.code is None else 1)
+    except BaseException:
+        traceback.print_exc()
+        _kode = 1
+    finally:
+        # keluar tegas: jangan menunggu thread jaringan atau pool yang macet saat Python menutup diri
+        try:
+            import multiprocessing as _mp
+            for _c in _mp.active_children():
+                _c.kill()
+        except Exception:
+            pass
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(_kode)
