@@ -224,8 +224,10 @@ def build(df, df1h, dfD, dfW, btc, symbol, mintick, tf="240", df4=None, btc_tf=N
     btcMom = bC > bC1
     btcKuat = np.abs(bC - bC1) / np.maximum(bC1, mintick) * 100 >= 0.4
     gate = p["btcGate"]
-    btcOkL = (not gate) | (not btcAlt) | ~(btcDn & ~btcMom)
-    btcOkS = (not gate) | (not btcAlt) | ~(btcUp & btcMom)
+    kt = int(p.get("btcKetat", 0))
+    # btcKetat 1: SHORT diblok selama BTC 4J tren naik, 2: juga LONG diblok selama BTC 4J tren turun
+    btcOkL = (not gate) | (not btcAlt) | ~((btcDn if kt >= 2 else (btcDn & ~btcMom)))
+    btcOkS = (not gate) | (not btcAlt) | ~((btcUp if kt >= 1 else (btcUp & btcMom)))
     btcOkL = np.broadcast_to(btcOkL, (n,)).copy()
     btcOkS = np.broadcast_to(btcOkS, (n,)).copy()
     if tf == "60" and btc_tf is not None:

@@ -1599,6 +1599,9 @@ def nilai_gzh(r):
     return min(100, sk), arah, plus, minus, bt
 
 
+GZH_DEKAT_ATR = 0.5      # peringatan GZH MENDEKAT saat harga tinggal 0.5 ATR dari 0.618
+
+
 def sentuh_fib(min_skor=70):
     """Notif saat harga menyentuh 0.618 Golden Zone Hunter, hanya bila setup layak:
     sentuhan pertama di kaki fib itu, datang dari sisi 0, skor semua aspek minimal 70 dan backtest GZH koin ini untung.
@@ -1619,6 +1622,7 @@ def sentuh_fib(min_skor=70):
     except Exception:
         st = {}
     px_lama, sudah, koin = st.get("px", {}), st.get("sudah", {}), st.get("koin", {})
+    dekat = st.get("dekat", {})
     now = time.time()
     out = []
     for r in cal:
@@ -1632,6 +1636,16 @@ def sentuh_fib(min_skor=70):
         p0 = px_lama.get(sym)
         px_lama[sym] = px
         kunci = f"{sym}|{g['start']:.10g}|{g['end']:.10g}"
+        if kunci not in sudah and kunci not in dekat and now - koin.get(sym, 0) >= 86400:
+            a0 = g.get("atr") or r["atr"]
+            jr = ((px - e) if L else (e - px)) / a0 if a0 else 99.0
+            if 0 < jr <= GZH_DEKAT_ATR:          # peringatan persiapan, sekali per kaki fib
+                dekat[kunci] = int(now)
+                sk0, ar0, _, _, bt0 = nilai_gzh(r)
+                if sk0 >= min_skor and bt0.get("n", 0) >= 8 and bt0.get("pf", 0) >= 1.2:
+                    out.append(f"👀 <b>GZH MENDEKAT {sym} {ar0}</b> | skor setup {sk0}/100\n"
+                               f"Harga {fp(px, t)}, tinggal {jr:.1f} ATR ({abs(px - e) / px * 100:.1f}%) dari fib 0.618 di "
+                               f"{fp(e, t)}. Siapkan order. Aku kabari lagi saat harga menyentuh dan saat candle 4J tutup.")
         if p0 is None or kunci in sudah:
             continue
         datang = (p0 > e >= px) if L else (p0 < e <= px)
@@ -1666,12 +1680,23 @@ def sentuh_fib(min_skor=70):
                     f"Yang bikin yakin: {'; '.join(plus)}\n"
                     + (f"Yang perlu diwaspadai: {'; '.join(minus)}\n" if minus else "")
                     + (f"Di sejarah koin ini setup yang sama rata-rata selesai sekitar {jam:.0f} jam.\n" if jam else "")
-                    + f"Saran aku: jangan langsung tangkap pisau. Tunggu candle 4J tutup kembali "
-                    f"{'di atas' if L else 'di bawah'} {fp(e, t)}, baru masuk dengan setengah lot. "
-                    f"Kalau candle tutup tembus {fp(lv['0.786'], t)}, lewati saja. Cek detail: /cek {sym.replace('USDT', '')}")
+                    + (f"Bias robot dan BTC 4J searah {arah}: boleh serok 1/4 lot sekarang di {fp(e, t)} dengan SL di atas. "
+                       f"Sisanya masuk saat GZH TERKONFIRMASI, tutup yang 1/4 kalau GZH BATAL.\n"
+                       if (r.get("pasar") or {}).get("arah") == arah
+                       and (r.get("izin", "") == "LONG dan SHORT" or r.get("izin", "").startswith(arah))
+                       else "Bias robot atau BTC belum searah, jangan serok dulu.\n")
+                    + f"Aku pantau candle 4J ini. Begitu tutup, aku kirim GZH TERKONFIRMASI "
+                    f"(tutup {'di atas' if L else 'di bawah'} {fp(e, t)}, langsung masuk) atau GZH BATAL. "
+                    f"Cek detail: /cek {sym.replace('USDT', '')}")
+        try:
+            import qse_alarm as _AL
+            _AL.tambah_gzh(sym, L, e, sl, tp1, tp2, t)
+        except Exception as ex:
+            print("[WARN] gzh tunggu", ex)
     batas = now - 7 * 86400
     with open(fpath + ".tmp", "w") as f:
         json.dump(dict(px=px_lama, sudah={k: v for k, v in sudah.items() if v > batas},
+                       dekat={k: v for k, v in dekat.items() if v > batas},
                        koin={k: v for k, v in koin.items() if v > batas}), f)
     os.replace(fpath + ".tmp", fpath)
     return out[:5]

@@ -84,7 +84,9 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "<b>Alarm harga</b>\n"
            "/alert BTC 60000 = kabari saat harga menyentuh 60000, bisa ditambah catatan\n"
            "/alert = daftar alarm aktif\n"
-           "/alert hapus BTC atau /alert hapus semua = hapus alarm\n\n"
+           "/alert hapus BTC atau /alert hapus semua = hapus alarm\n"
+           "/tunggu SOL atas 150 4j = kabari saat candle 4J TUTUP di atas 150 (bawah juga bisa, TF 15m, 1j, 4j, 1d)\n"
+           "/tunggu = daftar, /tunggu hapus SOL = hapus. Sentuhan GZH otomatis dipantau sampai candle 4J tutup\n\n"
            "<b>Sinyal</b>\n"
            "/sinyal4j = saran TF 4 jam yang masih aktif, dengan harga sekarang\n"
            "/sinyal1j = saran TF 1 jam yang masih aktif\n"
@@ -93,7 +95,8 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/berita = uji news ke trade: sumber berita, terjemahan, harga Bybit\n"
            "/ujimomentum = backtest saran momentum 15/30 menit di koin rapor A/B (atau /ujimomentum SOL)\n"
            "/jalur = hasil live saran momentum, news searah, dan news mandiri\n"
-           "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n\n"
+           "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n"
+           "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n\n"
            "<b>Info</b>\n"
            "/cek AUSDT = analisa lengkap koin: kesimpulan, saran robot, teknikal, siklus, skill, fundamental, derivatif, kalender\n"
            "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
@@ -177,6 +180,8 @@ def balas(cmd, args, dari_main=False):
         return SY.ubah_level(args)
     if cmd in ("/alert", "/alarm"):
         return AL.perintah(args)
+    if cmd in ("/tunggu", "/close"):
+        return AL.tunggu(args)
     if cmd in ("/sinyal4j", "/sinyal4", "/sinyal"):
         return SY.saran_aktif("240")
     if cmd in ("/sinyal1j", "/sinyal1"):
@@ -188,6 +193,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/jalur", "/rekapjalur"):
         import qse_catat as CT
         return CT.teks()
+    if cmd in ("/ichimoku", "/ichi"):
+        import qse_ichimoku as IC
+        return IC.teks()
     if cmd in ("/altseason", "/alt"):
         import qse_altseason as AS
         return AS.teks() or "Data altcoin gagal diambil, coba lagi nanti."
@@ -253,8 +261,8 @@ def proses(cmds, dari_main=False):
         except Exception as ex:
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
-            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/evaluasi": "📚",
-                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
+            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
+                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"

@@ -33,7 +33,7 @@ P = dict(
     banAfter=8, banNetR=-4.0, brkBars=40, allowAnti=False, antiMinR=8.0, biasHold=3, needCdl=True,
     antiMBar=3, antiMATR=0.9, needSlope=True, maxFar=3.5, mktTol=0.10, farPen=6.0, usePsy=True,
     psyTol=0.30, useGap=True, gapMin=0.30, usePat=True, patTol=0.50, useChan=True, useFan=True,
-    useDow=True, useCRS=True, btcGate=True, useRW=True, useSuic=True, suicZ=2.5, useElw=True,
+    useDow=True, useCRS=True, btcGate=True, btcKetat=_env("QSE_BTC_KETAT", 0, int), useRW=True, useSuic=True, suicZ=2.5, useElw=True,
     memCap=8.0, memBon=20.0, rgBon=14.0, minHelp=4, vlExpB=60, r1MinN=5, tlPer=10, tlTol=0.35,
     scEvery=8, selEvery=4, kMode="Skor (lunak)", kMinSc=2, d1Thr=0.015, d2Thr=0.010, useTpX=True,
     priorK=8.0, tpReach=1.4, tp1Mul=0.8, tp1Rch=0.7, wickLb=10, wickMul=1.15, minRR=1.0,

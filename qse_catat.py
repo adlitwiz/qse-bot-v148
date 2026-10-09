@@ -11,10 +11,12 @@ import requests
 from config import STATE_DIR, BYBIT_URL
 
 FILE = os.path.join(STATE_DIR, "catat_jalur.json")
-NAMA = {"momentum": "Momentum 15/30 menit", "news_searah": "News searah engine", "news_mandiri": "News mandiri (sejarah kuat)"}
+NAMA = {"momentum": "Momentum 15/30 menit", "news_searah": "News searah engine", "news_mandiri": "News mandiri (sejarah kuat)",
+        "ichimoku": "Ichimoku tren 4J (trailing)"}
 BIAYA = 0.08
 TAHAN_JAM = 24
 MIN_N, MIN_PF = 15, 1.0
+MIN_N_JALUR = {"ichimoku": 40}     # jalur tren WR rendah butuh sampel lebih banyak sebelum dinilai
 
 
 def _ubah(fn):
@@ -147,7 +149,7 @@ def statistik(jalur):
 
 def mati(jalur):
     s = statistik(jalur)
-    return s["n"] >= MIN_N and s["pf"] < MIN_PF
+    return s["n"] >= MIN_N_JALUR.get(jalur, MIN_N) and s["pf"] < MIN_PF
 
 
 def teks():
@@ -156,11 +158,18 @@ def teks():
     for j, nama in NAMA.items():
         s = statistik(j)
         buka = sum(1 for it in d["open"] if it["jalur"] == j)
+        if j == "ichimoku":
+            try:
+                import qse_ichimoku as IC
+                buka = len(IC.lihat()["open"])
+            except Exception:
+                pass
         batal = sum(1 for it in d["closed"] if it["jalur"] == j and it.get("status") == "BATAL")
         if s["n"]:
             rows.append(f"{'⛔' if mati(j) else '✅'} {nama}: {s['n']} trade | WR {s['wr']:.0f}% | PF {s['pf']:.2f} | "
                         f"rata {s['avg']:+.2f}R | total {s['net']:+.1f}R | berjalan {buka} | tidak terisi {batal}")
         else:
             rows.append(f"⚪ {nama}: belum ada trade selesai | berjalan {buka} | tidak terisi {batal}")
-    rows.append(f"Jalur dengan minimal {MIN_N} trade dan PF di bawah {MIN_PF:g} otomatis berhenti mengirim saran.")
+    rows.append(f"Jalur dengan minimal {MIN_N} trade (Ichimoku {MIN_N_JALUR['ichimoku']} trade) dan PF di bawah {MIN_PF:g} "
+                "otomatis berhenti mengirim saran.")
     return "\n".join(rows)

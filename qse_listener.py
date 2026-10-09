@@ -90,6 +90,17 @@ def _tugas_berkala():
                          "yang jadi saran.\n\n" + "\n\n".join(pesan)])
         except Exception as ex:
             print("[WARN] momentum", ex)
+    t4 = int(now // 14400) * 14400
+    if now - t4 >= 150 and st.get("ichi4", 0) < t4:
+        # jalur Ichimoku tren: kelola trailing SL dan cari sinyal baru sekali tiap candle 4J tutup
+        _st({"ichi4": t4})
+        try:
+            import qse_ichimoku as IC
+            pesan = IC.jalankan(baru_ok=now - t4 <= 1800)
+            if pesan:
+                TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(pesan)])
+        except Exception as ex:
+            print("[WARN] ichimoku", ex)
     _jaga_main(now)
     tutup4 = int(now // 14400) * 14400
     if now - tutup4 >= 120 and st.get("scan4", 0) < tutup4 * 1000 and now - st.get("susul_coba", 0) >= 900:
@@ -228,7 +239,7 @@ def _tugas_menit():
     try:
         kena = AL.cek()
         if kena:
-            TG.send(["🔔 <b>QSE v148 | ALARM HARGA</b>\n\n" + "\n\n".join(kena)])
+            TG.send(["🔔 <b>QSE v148 | ALARM</b>\n\n" + "\n\n".join(kena)])
     except Exception as ex:
         print("[WARN] alarm", ex)
 
