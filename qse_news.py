@@ -363,10 +363,9 @@ def _saran(sym, arah, now, kat=None, pub=None):
     if eng == arah:
         gp = (r.get("pasar") or {}).get("gp")
         zona = f" Zona tunggu {TG.fp(min(gp), t)} sampai {TG.fp(max(gp), t)}." if gp else ""
-        return (f"🟡 {arah} {sym} searah bias engine, tapi belum ada saran valid (rapor {r['rapor']}).{zona} "
-                f"Entry hanya kalau harga masuk zona dan ada candle konfirmasi searah, sebelum {batas}.")
-    return (f"⛔ Engine {sym} condong {eng or '-'}, berlawanan dengan berita, dan sejarah jenis berita ini tidak cukup "
-            f"konsisten untuk melawan engine. Jangan entry dari berita ini.")
+        return (f"🟡 Searah engine, belum ada saran valid.{zona} Masuk hanya kalau harga sampai zona "
+                f"dan ada candle konfirmasi {arah}, sebelum {batas}.")
+    return f"⛔ Engine condong {eng or '-'}, berlawanan dengan berita. Jangan entry dari berita ini."
 
 
 def tes():
@@ -390,10 +389,50 @@ def tes():
     return out
 
 
-def cek(simbol, maks=4):
-    """simbol = set simbol Bybit (mis. {'BTCUSDT', ...}). Return daftar pesan siap kirim."""
+UMUR_MAKS = 3 * 3600      # berita lebih tua dari 3 jam tidak dikirim
+JEDA_TOPIK = 6 * 3600     # topik sama (jenis berita + koin) paling sering sekali per 6 jam
+GERAK_MIN = 1.0           # berita baru tanpa sejarah: harga harus sudah bergerak minimal 1% ...
+GERAK_ATR = 1.5           # ... dan minimal 1.5 ATR 1 jam searah berita
+
+
+def sejarah_singkat(k):
+    d = DAMPAK.get(k)
+    if not d:
+        return ""
+    alt = (" Alt biasanya kena lebih parah, hindari LONG alt." if d["alt24"] <= -1.5 else
+           " Alt biasanya naik lebih kuat dari BTC." if d["alt24"] >= 1.5 else "")
+    return (f"📚 Sejarah {d['n']} kejadian: BTC 24 jam {d['b24']:+.1f}%, naik di {d['naik']}% kejadian.{alt}")
+
+
+def _lolos(kat, kuat, arah, koin, pub, now):
+    """Saring berita. Return alasan lolos (teks) atau None.
+    Lolos kalau (1) jenis berita ada di sejarah dan dampaknya besar, atau
+    (2) berita baru tanpa sejarah, kata kuncinya kuat, dan harga sudah bergerak jelas searah berita."""
+    if pub and now - pub > UMUR_MAKS:
+        return None
+    if kat:
+        d = DAMPAK.get(kat, {})
+        if arah_sejarah(kat) != 0 and (kuat_mandiri(kat) or (d.get("n", 0) >= 5 and abs(d.get("b24", 0)) >= 1.0)
+                                       or abs(d.get("b24", 0)) >= 2.5):    # kejadian langka tapi besar
+            return "sejarah"
+    if kuat != "KUAT":
+        return None
+    m = _atr1j(koin[0] + "USDT", pub, now)
+    if not m:
+        return None
+    atr, gerak, px = m
+    g = gerak if arah > 0 else -gerak
+    if g >= GERAK_MIN and g / 100 * px >= GERAK_ATR * atr:
+        return f"harga sudah bergerak {gerak:+.1f}% sejak berita"
+    return None
+
+
+def cek(simbol, maks=2):
+    """simbol = set simbol Bybit (mis. {'BTCUSDT', ...}). Return daftar pesan siap kirim.
+    Hanya berita yang terbukti berdampak (sejarah kuat) atau baru keluar dan sudah menggerakkan harga."""
     c = _load()
     sudah = set(c.get("kirim", []))
+    topik = c.get("topik", {})
     awal = not sudah
     now = time.time()
     out = []
@@ -405,45 +444,39 @@ def cek(simbol, maks=4):
             sudah.add(kunci)
             if awal or len(out) >= maks:
                 continue
-            teks = b["judul"] + " " + b["isi"][:200]
+            isi = "" if "google" in b["sumber"].lower() else b["isi"]   # ringkasan Google News isinya cuma link
+            teks = b["judul"] + " " + isi[:200]
             kat = kategori(teks)
             arah, kuat = _nilai(teks)
             if kat:
                 arah = arah_sejarah(kat) or arah
-                dk = DAMPAK.get(kat, {})
-                kuat = "KUAT" if kuat_mandiri(kat) else ("SEDANG" if abs(dk.get("b24", 0)) >= 1 else "LEMAH")
             if not arah:
                 continue
             koin = _koin(teks, simbol) or (["BTC"] if kat and "BTCUSDT" in simbol else [])
             if not koin:
                 continue
-            inti = terjemah(b["judul"])
-            ringkas = terjemah(b["isi"][:300]) if b["isi"] and len(b["isi"]) > 40 else ""
+            tk = f"{kat or 'KW' + str(arah)}|{koin[0]}"
+            if now - topik.get(tk, 0) < JEDA_TOPIK:
+                continue
+            alasan = _lolos(kat, kuat, arah, koin, b.get("pub"), now)
+            if not alasan:
+                continue
+            topik[tk] = now
             arah_t = "LONG" if arah > 0 else "SHORT"
-            umur = f" | terbit {(now - b['pub']) / 60:.0f} menit lalu" if b.get("pub") and now >= b["pub"] else ""
-            rows = [f"🗞️ <b>{TG.e(inti)}</b>",
-                    f"↳ {TG.e(b['sumber'])}{umur} | dampak {'POSITIF' if arah > 0 else 'NEGATIF'} {kuat} untuk {', '.join(koin)}"
-                    + (f" | jenis: {LABEL.get(kat, kat)}" if kat else "")]
-            if ringkas:
-                rows.append(f"↳ Intinya: {TG.e(ringkas[:280])}")
+            judul = TG.e(terjemah(b["judul"])[:160])
             if b["link"]:
-                rows.append(f"↳ {TG.e(b['link'])}")
-            if kat:
-                rows.append(sejarah_teks(kat))
-                a24 = DAMPAK.get(kat, {}).get("alt24", 0)
-                if a24 <= -1.5:
-                    rows.append("↳ Di sejarah, altcoin biasanya kena lebih parah dari BTC. Hindari LONG alt dulu.")
-                elif a24 >= 1.5:
-                    rows.append("↳ Di sejarah, altcoin biasanya naik lebih kuat dari BTC setelah berita jenis ini.")
-            else:
-                rows.append("📚 Jenis berita ini belum ada di sejarah 2022-2026, penilaian hanya dari kata kunci.")
-            for base in koin:
-                sym = base + "USDT"
-                hp = _harga(sym)
-                rows.append((f"💲 {sym} sekarang {TG.fp(hp, (_hasil(sym) or {}).get('tick', 0.0001))}. " if hp else "")
-                            + f"Arah dari berita: {arah_t}.")
-                rows.append(_saran(sym, arah_t, now, kat, b.get("pub")))
+                judul = f'<a href="{html.escape(b["link"], quote=True)}">{judul}</a>'
+            umur = f", {(now - b['pub']) / 60:.0f} menit lalu" if b.get("pub") and now >= b["pub"] else ""
+            rows = [f"🗞️ <b>{judul}</b>",
+                    f"↳ {TG.e(b['sumber'])}{umur} | {'🟢 POSITIF' if arah > 0 else '🔴 NEGATIF'} untuk {', '.join(koin)}"
+                    + (f" | {LABEL.get(kat, kat)}" if kat else "")
+                    + ("" if alasan == "sejarah" else f" | {alasan}")]
+            if alasan == "sejarah":
+                rows.append(sejarah_singkat(kat))
+            for base in koin[:1]:
+                rows.append(_saran(base + "USDT", arah_t, now, kat, b.get("pub")))
             out.append("\n".join(rows))
     c["kirim"] = list(sudah)[-1500:]
+    c["topik"] = {k: v for k, v in topik.items() if now - v < 86400}
     _save(c)
     return out

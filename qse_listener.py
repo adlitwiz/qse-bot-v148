@@ -65,10 +65,7 @@ def _tugas_berkala():
                 simbol = {r["symbol"] for r in json.load(f)}
             nb = NW.cek(simbol)
             if nb:
-                TG.send(["📰 <b>QSE v148 | NEWS KE TRADE</b>\nBerita dari media kripto, Google News, dan Reddit, "
-                         "dinilai dengan sejarah reaksi BTC 2022-2026 lalu disambungkan ke engine QSE. Entry keluar kalau "
-                         "berita dan engine searah, atau kalau sejarah jenis berita itu cukup kuat untuk melawan engine."]
-                        + nb)
+                TG.send(["📰 <b>QSE v148 | NEWS PENTING</b>\n\n" + "\n\n".join(nb)])
         except Exception as ex:
             print("[WARN] news", ex)
         try:
@@ -166,8 +163,12 @@ def _jaga_main(now):
 def _jalankan_main(now):
     import subprocess
     st = _st()
-    if (MAIN["p"] is not None and MAIN["p"].poll() is None) or _main_terkunci():
-        if now - st.get("main_mulai", 0) > 55 * 60:
+    jalan = MAIN["p"] is not None and MAIN["p"].poll() is None
+    if jalan or _main_terkunci():
+        # main_mulai baru ditulis main.py beberapa detik setelah start, jadi untuk proses milik listener
+        # pakai MAIN["t"]. Tanpa ini run yang baru 2 detik jalan ikut dibunuh (laporan nyangkut palsu).
+        mulai = max(MAIN["t"] if jalan else 0.0, st.get("main_mulai", 0))
+        if now - mulai > 55 * 60:
             _bunuh_main("main.py sebelumnya nyangkut dan mengunci jadwal")
         else:
             return
