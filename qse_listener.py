@@ -101,6 +101,15 @@ def _tugas_berkala():
                 TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(pesan)])
         except Exception as ex:
             print("[WARN] ichimoku", ex)
+    hari = int(now // 86400) * 86400
+    if now - hari >= 300 and st.get("arah_hari", 0) < hari and now - hari <= 6 * 3600:
+        # 07:05 WIB, candle harian baru tutup: kirim arah pasar otomatis (BTC, ETH, posisi kamu, berita hari ini)
+        _st({"arah_hari": hari})
+        try:
+            import qse_arah as AR
+            TG.send(["🧭 <b>QSE v148 | ARAH PASAR HARIAN</b>\n\n" + AR.harian()])
+        except Exception as ex:
+            print("[WARN] arah harian", ex)
     _jaga_main(now)
     tutup4 = int(now // 14400) * 14400
     if now - tutup4 >= 120 and st.get("scan4", 0) < tutup4 * 1000 and now - st.get("susul_coba", 0) >= 900:

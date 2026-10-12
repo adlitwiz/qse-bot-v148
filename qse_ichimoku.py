@@ -1,6 +1,8 @@
 """QSE v148 - JALUR ICHIMOKU TREN (TK cross di luar awan + trailing stop), candle 4J.
-Backtest 30 koin likuid 2022-2026, entry open candle berikutnya, biaya 0.15% pulang pergi:
-4843 trade, WR 38%, PF 1.33, rata +0.15R. 2022-2024 PF 1.35, 2025-2026 PF 1.29, tiap tahun PF 1.13 sampai 1.56.
+Backtest entry open candle berikutnya, biaya 0.15% pulang pergi:
+30 koin awal: 4843 trade, WR 38%, PF 1.33. 82 koin baru yang tidak dipakai memilih aturan: 13730 trade, PF 1.17.
+Gabungan 112 koin: PF 1.21, SHORT PF 1.30, LONG PF 1.10. Filter BTC 1J, ramalan BTC 4J, tren harian,
+kekuatan relatif, dan volume sudah diuji: tidak ada yang menaikkan PF di 82 koin baru, jadi tidak dipakai.
 Aturan (sama dengan backtest dan Pine "QSE Ichimoku TK Awan Trail"):
   LONG : close di atas awan dan Tenkan memotong Kijun ke atas. SHORT kebalikannya.
   SL awal 2 ATR dari entry. Tiap candle 4J tutup: cek SL kena dulu, lalu SL digeser ke puncak - 3 ATR (tidak pernah mundur).
@@ -23,7 +25,9 @@ TOP_KOIN = 150          # koin paling likuid yang dipantau (backtest memakai koi
 MAKS_BARU = 5           # sinyal baru paling banyak per candle 4J
 MAKS_BUKA = 8           # posisi jalur ini paling banyak terbuka bersamaan
 BIAYA = 0.0015
-BT = "4843 trade, WR 38%, PF 1.33, rata +0.15R (2022-2026)"
+BT = ("112 koin 2022-2026: 18573 trade, WR 37%, PF 1.21, rata +0.10R (SHORT PF 1.30, LONG PF 1.10). "
+      "Dengan batas 8 posisi: PF 1.19, turun terdalam 61R, rugi beruntun terpanjang 32")
+BT_PENDEK = "112 koin 2022-2026: WR 37%, PF 1.21, rata +0.10R per trade"
 
 
 def _ubah(fn):
@@ -214,6 +218,12 @@ def jalankan(baru_ok=True):
         return sym, arah, a, df
     with ThreadPoolExecutor(8) as ex:
         hasil_s = [x for x in ex.map(cek, koin) if x[1]]
+    import qse_saya as SY
+    tahan = {x[0]: SY.cek_lintas(x[0], x[1]) for x in hasil_s}
+    for sym, why in tahan.items():
+        if why:
+            print(f"[ICHIMOKU] {sym} ditahan: {why}")
+    hasil_s = [x for x in hasil_s if not tahan[x[0]]]
     now = time.time()
     baru = []
     for sym, arah, a, df in hasil_s[:slot]:          # sudah urut dari koin paling likuid
@@ -234,7 +244,7 @@ def jalankan(baru_ok=True):
                    f"<pre>MARKET {TG.fp(px, t)}\nSL     {TG.fp(sl, t)}  -1.00R  -{risk / px * 100:.1f}%\nTP     tidak ada, SL digeser tiap candle 4J</pre>\n"
                    + (f"{lot}\n" if lot else "")
                    + f"↳ Masuk sekarang. Jangan pasang TP. Aku kirim posisi SL baru tiap candle 4J, tutup paksa setelah 10 hari.\n"
-                   f"↳ Backtest: {BT}. WR rendah itu wajar, untungnya dari sedikit trade yang lari jauh.")
+                   f"↳ Backtest: {BT_PENDEK}. WR rendah itu wajar, untungnya dari sedikit trade yang lari jauh.")
 
     def simpan_baru(dd):
         for it in baru:

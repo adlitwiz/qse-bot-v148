@@ -60,9 +60,10 @@ def mulai_laporan4j():
             "Hasilnya terkirim dalam 10 sampai 20 menit dan otomatis disematkan.")
 
 
-BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
+BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
            "<b>Catat entry</b>\n"
            "/entry long market AUSDT = entry MARKET di harga sekarang\n"
+           "/entry long market AUSDT sl 0.99 tp1 1.05 tp2 1.08 = TP dan SL sendiri. Tanpa itu robot pakai sinyal terakhir koin ini\n"
            "/entry long limit AUSDT 1.022 = order LIMIT yang menunggu terisi\n"
            "/entry long limit AUSDT 1.022 terisi 02:00 = lupa catat, sudah terisi jam 02:00 WIB\n"
            "Tambahan opsional: sl 0.99 tp1 1.05 tp2 1.08 lev 10\n\n"
@@ -71,10 +72,11 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/sl AUSDT 50% = cut loss 50% posisi di harga sekarang\n"
            "/sl AUSDT short 100% = tutup hanya posisi SHORT (kalau ada LONG dan SHORT di koin yang sama)\n"
            "/serok AUSDT long 0.95 = tambah posisi di harga lebih baik, lot dibatasi supaya rugi total di SL maks 1.5R\n"
-           "/hapus AUSDT short = hapus catatan trade selesai terakhir yang salah\n"
+           "/hapus AUSDT short = hapus trade terbuka yang salah entry, kalau tidak ada hapus catatan selesai terakhir\n"
            "/tp AUSDT 50% 1.050 = sama, tapi di harga yang kamu tulis\n"
-           "/ubah AUSDT sl 0.99 tp1 1.05 tp2 1.08 = ubah level SL atau TP\n"
-           "/ubah AUSDT sl entry = geser SL ke titik impas\n"
+           "/modify AUSDT sl 0.99 tp1 1.05 tp2 1.08 = geser SL atau TP (sama dengan /ubah)\n"
+           "/modify AUSDT sl entry = geser SL ke titik impas\n"
+           "Entry kedua di koin dan arah yang sama otomatis digabung jadi satu posisi, sama seperti di Bybit\n"
            "/tutup AUSDT = tutup semua sisa posisi di harga sekarang\n"
            "/batal AUSDT = batalkan order yang belum terisi\n\n"
            "<b>Modal dan risiko</b>\n"
@@ -96,7 +98,8 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/ujimomentum = backtest saran momentum 15/30 menit di koin rapor A/B (atau /ujimomentum SOL)\n"
            "/jalur = hasil live saran momentum, news searah, dan news mandiri\n"
            "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n"
-           "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n\n"
+           "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n"
+           "/arah SOL = tren 15m sampai 1W, tanggal yang sama tahun lalu, pola kembar, dan riwayat pola robot di koin ini\n\n"
            "<b>Info</b>\n"
            "/cek AUSDT = analisa lengkap koin: kesimpulan, saran robot, teknikal, siklus, skill, fundamental, derivatif, kalender\n"
            "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
@@ -105,6 +108,25 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/tespin = cek apakah bot sudah bisa menyematkan pesan\n"
            "/status = trade kamu, floating, dan WR\n"
            "/bantuan = daftar perintah ini")
+
+
+BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
+           "Robot berjalan otomatis: scan 4 jam dan per jam, sinyal semua jalur, pemantauan posisi tiap menit, "
+           "peringatan dini, gabung posisi, berita, dan arah pasar tiap pagi jam 07:05 WIB. "
+           "Perintah di bawah hanya untuk hal yang perlu kamu putuskan sendiri.\n\n"
+           "<b>Catat dan kelola trade</b>\n"
+           "/entry long market SOL = catat entry (tambah sl tp1 tp2 kalau mau level sendiri)\n"
+           "/modify SOL sl 140 tp1 160 = geser SL atau TP\n"
+           "/tp SOL 50% atau /sl SOL 100% = ambil profit atau cut loss sebagian\n"
+           "/tutup SOL = tutup semua sisa posisi\n"
+           "/hapus SOL long = hapus catatan yang salah\n\n"
+           "<b>Lihat</b>\n"
+           "/status = posisi, jarak TP SL, analisa, dan WR\n"
+           "/cek SOL = analisa lengkap satu koin\n"
+           "/arah SOL = tren 15m sampai 1W dan pola sejarah koin\n\n"
+           "<b>Atur</b>\n"
+           "/modal 1000 risk 0.5 = modal dan risiko per trade\n"
+           "/bantuan semua = daftar semua perintah")
 
 
 def _sym(a):
@@ -176,7 +198,7 @@ def balas(cmd, args, dari_main=False):
         return SY.serok(args)
     if cmd == "/hapus":
         return SY.hapus(args)
-    if cmd == "/ubah":
+    if cmd in ("/ubah", "/modify", "/modif", "/edit"):
         return SY.ubah_level(args)
     if cmd in ("/alert", "/alarm"):
         return AL.perintah(args)
@@ -193,6 +215,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/jalur", "/rekapjalur"):
         import qse_catat as CT
         return CT.teks()
+    if cmd in ("/arah", "/tren"):
+        import qse_arah as AR
+        return AR.teks(args)
     if cmd in ("/ichimoku", "/ichi"):
         import qse_ichimoku as IC
         return IC.teks()
@@ -247,7 +272,7 @@ def balas(cmd, args, dari_main=False):
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
         return "📊 <b>QSE v148 | STATUS</b>\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
     if cmd in ("/bantuan", "/help", "/start"):
-        return BANTUAN
+        return BANTUAN_SEMUA if args and args[0] in ("SEMUA", "ALL", "LENGKAP") else BANTUAN
     return ""
 
 
@@ -261,8 +286,8 @@ def proses(cmds, dari_main=False):
         except Exception as ex:
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
-            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
-                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
+            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
+                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"

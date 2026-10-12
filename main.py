@@ -167,6 +167,9 @@ def _radar(results, sudah, maks=6):
             L = x["arah"] == "LONG"
             if (L and c <= x["sl"]) or ((not L) and c >= x["sl"]) or (L and c >= x["tp1"]) or ((not L) and c <= x["tp1"]):
                 continue
+            x = dict(x, skor=_skor(r, x, SY.ramal_btc4()))
+            if _gerbang(r, x):
+                continue          # skor di bawah batas, BTC, atau berita melawan: jangan dipajang sebagai setup
             jarak = abs(c - x["entry"]) / r["atr"]
             if best is None or jarak < best[0]:
                 best = (jarak, x)
@@ -180,7 +183,7 @@ def _radar(results, sudah, maks=6):
         jam = SY.estimasi_jam(c - x["entry"], r["atr"], 4)
         v = "EKSEKUSI" if x["eksekusi"] else "TAHAN, " + x["alasan"]
         rows.append(f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {r['rapor']} | {TG.e(x['pola'])} "
-                    f"mutu {x['mutu']}\n{x['order']} {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | "
+                    f"mutu {x['mutu']} | skor setup {x['skor']}/100\n{x['order']} {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | "
                     f"TP1 {TG.fp(x['tp1'], t)} | TP2 {TG.fp(x['tp2'], t)}\n"
                     f"Jarak {abs(c - x['entry']) / c * 100:.2f}% | perkiraan tersentuh {SY.teks_waktu(jam)}\n↳ DASBOR: {TG.e(v)}")
     return rows
@@ -444,7 +447,92 @@ def _konteks_berita(b1):
                 tahan=tahan if now_ms < tahan else 0, guncang=g, kirim_guncang=kirim)
 
 
-def _saring_berita(sel, ctx):
+SKOR_MIN = int(os.environ.get("QSE_SKOR_MIN", "50"))
+GERBANG_BTC = os.environ.get("QSE_GERBANG_BTC", "1") != "0"
+BERITA_DEPAN_JAM = 3
+
+
+SKOR_LONGGAR = int(os.environ.get("QSE_SKOR_LONGGAR", "45"))
+JAM_LONGGAR = 12          # WIB: kalau sampai jam ini belum ada sinyal sama sekali, saringan dilonggarkan sedikit
+JAM_LONGGAR2 = 18         # WIB: masih sepi juga, batas skor turun lagi supaya hari itu tetap ada satu sinyal
+SKOR_LONGGAR2 = 40
+
+
+def _batas_longgar():
+    jam = (int(time.time()) + 7 * 3600) % 86400 // 3600
+    return SKOR_LONGGAR2 if jam >= JAM_LONGGAR2 else SKOR_LONGGAR
+
+
+def _hari0_ms():
+    now = int(time.time() * 1000)
+    return (now + 7 * 3600000) // 86400000 * 86400000 - 7 * 3600000
+
+
+def _ada_sinyal_hari_ini(led):
+    """Sudah ada sinyal apa pun hari ini (WIB)? Cek semua jalur: robot, cadangan, fib, siklus, 1J, momentum, news,
+    Ichimoku, dan Golden Zone Hunter."""
+    h0 = _hari0_ms()
+    for it in list(led["open"].values()) + led["closed"][-300:]:
+        if (it.get("start_ts") or it.get("sent_ts") or 0) >= h0:
+            return True
+    try:
+        import qse_catat as CT
+        d = CT._baca()
+        if any(it.get("t", 0) * 1000 >= h0 for it in d["open"] + d["closed"][-300:]):
+            return True
+    except Exception:
+        pass
+    try:
+        import qse_ichimoku as IC
+        d = IC.lihat()
+        if any(it.get("t", 0) * 1000 >= h0 for it in list(d["open"].values()) + d["closed"][-100:]):
+            return True
+    except Exception:
+        pass
+    try:
+        with open(os.path.join(STATE_DIR, "sentuh_fib.json")) as f:
+            if any(g.get("t", 0) * 1000 >= h0 for g in json.load(f).get("sinyal", {}).values()):
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _slot_longgar(led):
+    """Boleh pakai saringan longgar? Hanya setelah jam 12 WIB, hari itu belum ada sinyal sama sekali,
+    dan jatah 1 sinyal longgar per hari belum terpakai."""
+    jam = (int(time.time()) + 7 * 3600) % 86400 // 3600
+    if jam < JAM_LONGGAR:
+        return False
+    hari = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 3600))
+    if _st_load().get("longgar_hari") == hari:
+        return False
+    return not _ada_sinyal_hari_ini(led)
+
+
+def _gerbang(r, x, skor=True, led=None, longgar=False):
+    """Cek wajib sebelum sinyal keluar, urut: skor setup, izin BTC 4J, BTC 1 jam, berita besar 3 jam ke depan,
+    dan larangan membalik arah. Return alasan ditahan, kosong bila lolos. QSE_GERBANG_BTC=0 mematikan cek BTC 1 jam."""
+    arah = x["arah"]
+    batas = _batas_longgar() if longgar else SKOR_MIN
+    if skor and x.get("skor") is not None and x["skor"] < batas:
+        return f"skor setup {x['skor']}/100, minimal {batas}"
+    izin = r.get("izin", "LONG dan SHORT")
+    if izin != "LONG dan SHORT" and not izin.startswith(arah):
+        return f"BTC 4J hanya mengizinkan {izin}"
+    lawan = SY.btc_melawan(arah) if (GERBANG_BTC and not longgar) else []          # BTC 1 jam (ramalan 4 jam terbukti merusak hasil kalau dipakai menahan)
+    if lawan:
+        return "; ".join(lawan) + f", melawan {arah}"
+    bd = SY.berita_depan(BERITA_DEPAN_JAM)
+    if bd:
+        return f"berita besar {bd['judul']} {BR.jam_wib(bd['ts'])}, tunggu sampai lewat"
+    for it in ((led or {}).get("open") or {}).values():
+        if it.get("sym") == r["symbol"] and it.get("arah") != arah and it.get("status") in ("MENUNGGU", "TERISI", "TP1"):
+            return f"masih ada saran {it['arah']} aktif di koin ini, robot tidak membalik arah"
+    return SY.cek_lintas(r["symbol"], arah)          # jalur lain: trade kamu, momentum, news, Ichimoku, GZH
+
+
+def _saring_berita(sel, ctx, led=None):
     out = []
     for r, x in sel:
         why = ""
@@ -454,8 +542,17 @@ def _saring_berita(sel, ctx):
             why = "pasar bergejolak, sinyal baru ditahan sampai " + BR.jam_wib(ctx["tahan"])
         elif ctx["jeda"]:
             why = f"jeda berita {ctx['jeda']['judul']} {BR.jam_wib(ctx['jeda']['ts'])}"
+        else:
+            why = _gerbang(r, x, led=led)
+            if why and led is not None and _slot_longgar(led) and not _gerbang(r, x, led=led, longgar=True):
+                # hari ini sepi: satu sinyal terbaik boleh lolos dengan skor minimal 45 tanpa cek BTC 1 jam
+                x["longgar"] = why
+                _st_update({"longgar_hari": time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 3600))})
+                print(f"[GERBANG] {r['symbol']} {x['arah']} lolos saringan longgar (ketat: {why})")
+                why = ""
         if why:
             x["buang"] = why
+            print(f"[GERBANG] {r['symbol']} {x['arah']} ditahan: {why}")
             continue
         out.append((r, x))
     return out
@@ -580,6 +677,10 @@ def _catat_jalur(led, items, kunci):
     """Daftarkan saran jalur tambahan (cadangan atau siklus), hitung jatah per candle. Return (r, x, tag)."""
     out = []
     for r, x in items:
+        why = _gerbang(r, x, skor=False, led=led)
+        if why:
+            print(f"[GERBANG] {r['symbol']} {x['arah']} ({kunci}) ditahan: {why}")
+            continue
         tag = FX.register(led, r, x)
         if tag:
             out.append((r, x, tag))
@@ -798,7 +899,7 @@ def _cadangan2(results, sudah, led, tickers, ctx, maks=3):
             salinan.append(dict(r, saran=sar))
     sel, _ = FX.select(salinan, tickers, led)
     for r, x in sel:
-        x["skor"] = _skor(r, x, None)
+        x["skor"] = _skor(r, x, SY.ramal_btc4())
     sel.sort(key=lambda z: z[1]["skor"], reverse=True)
     return sel[:sisa]
 
@@ -920,11 +1021,11 @@ def cek_1j(now, jalur_aktif=True, paksa=False):
     if jalur_aktif and QU.aktif("1j"):
         sel, _ = FX.select(hasil, tickers, led)
         for r, x in sel:
-            x["skor"] = _skor(r, x, None)
+            x["skor"] = _skor(r, x, SY.ramal_btc4())
         jalan = _posisi_kamu()
         sel = [(r, x) for r, x in sel if r["symbol"] not in jalan]
         ctx = _konteks_berita(b1)
-        sel = _saring_berita(sel, ctx)
+        sel = _saring_berita(sel, ctx, led)
         sel.sort(key=lambda z: (z[1]["golden"], z[1]["skor"]), reverse=True)
         for r, x in sel[:3]:
             tag = FX.register(led, r, x)
@@ -985,14 +1086,22 @@ def uji_mingguan(paksa=False):
 
 
 def _blok_posisi_analisa(it, r):
-    vonis, alasan, aksi, _ = SY.analisa_posisi(it, r, (r or {}).get("live"))
     px = (r or {}).get("live") or 0
+    an = SY.analisa_lengkap(it, r, px or None)
     fl = SY.floating(it, px) if px else None
-    ik = {"MASIH SESUAI ANALISA": "✅", "MELEMAH": "⚠️", "BERBALIK": "🛑"}.get(vonis, "•")
+    ik = {"MASIH SESUAI ANALISA": "✅", "MELEMAH": "⚠️", "BERBALIK": "🛑"}.get(an["vonis"], "•")
     head = f"{IKON.get(it['arah'], '')} <b>{TG.e(it['sym'])} {it['arah']}</b> | {SY.NM_POS.get(it['status'], it['status'])}"
     if fl:
         head += f" | {fl['pct']:+.2f}% | {fl['r']:+.2f}R"
-    return f"{head}\n{ik} {vonis}\nKenapa: {TG.e('; '.join(alasan[:6]))}\nSaran: {TG.e(aksi)}"
+    sesuai = an["vonis"] == "MASIH SESUAI ANALISA"
+    kenapa = an["plus"] if sesuai else ([an["harga"]] if an["harga"] else []) + an["minus"]
+    rows = [head, f"{ik} {an['vonis']}", "Kenapa: " + TG.e("; ".join(kenapa[:5]) or "-")]
+    if sesuai and an["minus"]:
+        rows.append("Waspada: " + TG.e("; ".join(an["minus"][:3])))
+    if not sesuai and an["plus"]:
+        rows.append("Yang masih mendukung: " + TG.e("; ".join(an["plus"][:2])))
+    rows.append("Saran: " + TG.e(an["aksi"]))
+    return "\n".join(rows)
 
 
 def _cek_posisi_berubah(res_map):
@@ -1030,9 +1139,11 @@ def _unggulan(results, sudah_valid, maks=10):
         for x in r["saran"]:
             if not x["eksekusi"] or x["sudah_masuk"] or x["mutu"] not in ("A", "B"):
                 continue
-            y = dict(x)
+            y = dict(x, skor=_skor(r, x, SY.ramal_btc4()))
             if FX._order_live(r, y):          # sudah lewat entry, SL, TP1, atau kejauhan: tidak terjangkau
                 continue
+            if r["symbol"] not in sudah_valid and _gerbang(r, y):
+                continue          # skor di bawah batas, BTC, atau berita melawan: jangan dipajang sebagai unggulan
             jarak = abs(c - y["entry"]) / r["atr"] if r["atr"] else 9
             dekat = y["order"] == "MARKET" or (y["order"] == "LIMIT" and y.get("p_isi4", 0) >= 60) or \
                 (y["order"] == "STOP" and jarak <= 0.5)
@@ -1046,7 +1157,8 @@ def _unggulan(results, sudah_valid, maks=10):
                                          "funding, atau TP1 terlalu dekat setelah fee)"))
             out.append((not x.get("golden"), label != "A+", r["rapor"] != "A", jarak,
                         f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {label}"
-                        + (" | 🌟 GOLDEN MOMENT" if x.get("golden") else "") + f" | {TG.e(x['pola'])} mutu {x['mutu']}\n"
+                        + (" | 🌟 GOLDEN MOMENT" if x.get("golden") else "") + f" | {TG.e(x['pola'])} mutu {x['mutu']}"
+                        f" | skor setup {x['skor']}/100\n"
                         f"{x['order']} di {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | TP1 {TG.fp(x['tp1'], t)} | "
                         f"TP2 {TG.fp(x['tp2'], t)}\n"
                         f"Jarak {abs(c - x['entry']) / c * 100:.2f}% ({jarak:.1f} ATR)"
@@ -1143,12 +1255,12 @@ def cek_cepat(now, paksa=False):
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, ["240"])]
     sel, _ = FX.select(results, tickers, led)
     for r, x in sel:
-        x["skor"] = _skor(r, x, None)
+        x["skor"] = _skor(r, x, SY.ramal_btc4())
     sel.sort(key=lambda z: (z[1]["golden"], z[1]["skor"]), reverse=True)
     jalan = _posisi_kamu()
     sel = [(r, x) for r, x in sel if r["symbol"] not in jalan]
     ctx = _konteks_berita(b1)
-    sel = _saring_berita(sel, ctx)
+    sel = _saring_berita(sel, ctx, led)
     events += [(ev, dict(it)) for ev, it in FX.ganti(led, sel)]
     tag_of = {id(x): (FX.register(led, r, x) or "sudah dikirim") for r, x in sel}
     baru = [(r, x) for r, x in sel if tag_of[id(x)] in ("BARU", "UPDATE")]
@@ -1389,14 +1501,14 @@ def scan(now, run4, tfs):
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, tfs)]
     for r in results:
         r["tk"] = tickers.get(r["symbol"])
-    rb = ramal_btc(btc["h4c"]) if "240" in tfs else None
+    rb = ramal_btc(btc["h4c"]) if "240" in tfs else SY.ramal_btc4()
     sel, drop = FX.select(results, tickers, led)
     for r, x in sel:
         x["skor"] = _skor(r, x, rb)
     sel.sort(key=lambda z: (z[1]["golden"], z[1]["skor"]), reverse=True)
     jalan = _posisi_kamu()
     sel = [(r, x) for r, x in sel if r["symbol"] not in jalan]     # koin yang kamu pegang, cegah entry ganda
-    sel = _saring_berita(sel, ctx)
+    sel = _saring_berita(sel, ctx, led)
     events += [(ev, dict(it)) for ev, it in FX.ganti(led, sel)]
     tag_of = {id(s): (FX.register(led, r, s) or "sudah dikirim") for r, s in sel}
     cad = _catat_jalur(led, _cadangan(results, sel, led, tickers, ctx, rb), "cad_n")
@@ -1455,56 +1567,26 @@ def _uang(x):
 
 
 def _skor(r, s, rb):
-    """Skor prioritas 0-100 dari statistik nyata: WR pola (Wilson), rapor robot, mutu, peluang terisi,
-    ramalan BTC 4 jam, dan ramalan arah koin. Dipakai untuk urutan dan ringkasan."""
-    n = s["win"] + s["loss"]
-    p = s["win"] / n if n else 0.0
-    wil = ((p + 1.9208 / n - 1.96 * ((p * (1 - p) + 0.9604 / n) / n) ** 0.5) / (1 + 3.8416 / n)) if n else 0.0
-    sk = max(0.0, wil) * 35
-    sk += 15 if r["rapor"] == "A" else 9
-    sk += 12 if s["mutu"] == "A" else 6
-    sk += 10 * min(100.0, s["p_isi"]) / 100
-    if rb:
-        up = rb["p_up"] if s["arah"] == "LONG" else 100 - rb["p_up"]
-        sk += 10 if up >= 55 else 5 if up > 45 else 0
-    sk += max(0.0, min(10.0, (s.get("p_arah", 50) - 50) * 0.5))
-    sk += 8 if s["golden"] else 0
-    return int(round(min(100.0, sk)))
+    """Skor setup 0-100. Rumus ada di qse_saya.skor_setup supaya /entry dan /status memakai angka yang sama."""
+    return SY.skor_setup(r, s, rb["p_up"] if rb else None)
 
 
 def ramal_btc(btc):
-    """Ramalan BTC 4 jam: peluang candle 4J berikutnya naik pada kondisi tren dan momentum yang sama."""
-    import qse_ta as T
-    import numpy as np
-    c = btc["close"].values.astype(float)
-    h, l = btc["high"].values.astype(float), btc["low"].values.astype(float)
-    if len(c) < 300:
-        return None
-    e20, e50 = T.ema(c, 20), T.ema(c, 50)
-    st = np.where((c > e20) & (e20 > e50), 1, np.where((c < e20) & (e20 < e50), -1, 0))
-    mom = np.r_[False, c[1:] > c[:-1]]
-    L = len(c) - 1
-    up = c[1:] > c[:-1]
-    lo = max(0, L - 3000)
-    sel = (st[lo:L] == st[L]) & (mom[lo:L] == mom[L])
-    if sel.sum() < 60:
-        sel = st[lo:L] == st[L]
-    p = float(up[lo:L][sel].mean() * 100) if sel.sum() else 50.0
-    a = float(T.atr(h, l, c, 14)[L])
-    return dict(p_up=p, n=int(sel.sum()), atr=a, atr_pct=a / c[L] * 100)
+    """Ramalan BTC 4 jam dari candle 4J yang sudah tutup. Rumus dan cache di qse_saya.ramal_btc4,
+    jadi gerbang sinyal, /entry, dan /status memakai angka yang sama."""
+    return SY.ramal_btc4(btc)
 
 
 def _blok_ramal(rb):
     if not rb:
         return ""
     p = rb["p_up"]
-    ikon, arah = ("📈", "condong naik, LONG lebih aman") if p >= 55 else \
-        ("📉", "condong turun, SHORT lebih aman") if p <= 45 else ("➖", "seimbang, tidak ada arah kuat")
+    ikon, arah = ("📈", "condong naik") if p >= 55 else ("📉", "condong turun") if p <= 45 else ("➖", "seimbang")
     atr = f"{rb['atr']:,.0f}" if rb["atr"] >= 100 else f"{rb['atr']:.4g}"
     return (f"🔮 <b>RAMALAN BTC 4 JAM</b>\n"
             f"Candle berikutnya naik {p:.0f}% ({rb['n']} kondisi mirip)\n"
             f"Gerak khas ±{atr} USDT ({rb['atr_pct']:.1f}%)\n"
-            f"Kesimpulan: {arah}")
+            f"Kesimpulan: {arah}. Info saja, tidak dipakai menahan sinyal karena di uji 112 koin malah menurunkan PF")
 
 
 def _blok(no, r, s, status, led=None):
@@ -1521,6 +1603,10 @@ def _blok(no, r, s, status, led=None):
              f"Riwayat pola {s['win']} TP / {s['loss']} SL | WR {s['wr']:.0f}% | {s['net_r']:+.1f}R",
              f"Status: {TG.e(status)}",
              _tabel(s, t)]
+    if s.get("longgar"):
+        rows.insert(1, f"⚠️ <b>SINYAL LONGGAR</b>: sampai jam {JAM_LONGGAR2 if _batas_longgar() == SKOR_LONGGAR2 else JAM_LONGGAR} belum ada sinyal hari ini, jadi satu setup terbaik "
+                       f"diloloskan dengan syarat sedikit lebih ringan. Yang tidak terpenuhi: {TG.e(s['longgar'])}. "
+                       f"Pakai setengah lot.")
     g4 = r["atr"] * (4 / jam_c) ** 0.5
     rows.append(f"Ramalan: candle berikutnya searah {s.get('p_arah', 50):.0f}% | gerak ±{TG.fp(g4, t)} ({g4 / r['close'] * 100:.1f}%)")
     if s["order"] != "MARKET":

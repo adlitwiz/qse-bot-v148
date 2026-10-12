@@ -287,6 +287,11 @@ def scan(daftar, bias, posisi, info=None):
             if CT.mati("momentum"):
                 print(f"[MOMENTUM] {sym} tidak dikirim, jalur momentum sedang dihentikan karena hasil live jelek")
                 break
+            import qse_saya as SY
+            why = SY.cek_lintas(sym, rc["arah"])
+            if why:
+                print(f"[MOMENTUM] {sym} {rc['arah']} ditahan: {why}")
+                break
             CT.tambah("momentum", sym, rc["arah"], rc["entry"], rc["sl"], rc["tp1"], rc["tp2"], 2.0, f"skor {sk}, {nama}")
             e, sl, t1, t2 = rc["entry"], rc["sl"], rc["tp1"], rc["tp2"]
             pc = lambda x: abs(x - e) / e * 100

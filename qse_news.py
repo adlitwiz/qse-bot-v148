@@ -320,6 +320,10 @@ def _mandiri(sym, arah, kat, pub, now, eng):
     if (gerak if L else -gerak) >= 0.6 * abs(d["b24"]):
         return (f"⏳ Harga sudah bergerak {gerak:+.2f}% sejak berita, lebih dari 60% gerak khas jenis berita ini "
                 f"({d['b24']:+.2f}%). Terlambat, jangan kejar.")
+    import qse_saya as SY
+    why = SY.cek_lintas(sym, arah)
+    if why:
+        return f"⏸️ Saran news ditahan: {why}."
     adv = (abs(d["dd"]) if L else d["up"]) / 100 * px
     dist = max(1.5 * atr, 1.2 * adv)
     e = px - 0.25 * atr if L else px + 0.25 * atr
@@ -349,6 +353,10 @@ def _saran(sym, arah, now, kat=None, pub=None):
         t = r["tick"]
         for x in r.get("saran") or []:
             if x["arah"] == arah and x["eksekusi"] and not x.get("sudah_masuk") and x["mutu"] in ("A", "B"):
+                import qse_saya as SY
+                why = SY.cek_lintas(sym, arah)
+                if why:
+                    return f"⏸️ Berita dan engine searah {arah}, tapi saran ditahan: {why}."
                 CT.tambah("news_searah", sym, arah, x["entry"], x["sl"], x["tp1"], x["tp2"],
                           max(0.5, (akhir.timestamp() - now) / 3600), f"{x['pola']} + berita")
                 return (f"✅ <b>SARAN ENTRY {arah} {sym}</b> (berita dan engine searah)\n"
