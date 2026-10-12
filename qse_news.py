@@ -488,3 +488,53 @@ def cek(simbol, maks=2):
     c["topik"] = {k: v for k, v in topik.items() if now - v < 86400}
     _save(c)
     return out
+
+
+def kabar(mundur=1, maju=10):
+    """Perintah /kabar: berita kripto 1 jam terakhir dan kalender berita besar USD 1 jam lalu sampai 10 jam ke depan,
+    lengkap dengan arah (LONG, SHORT, atau campur) dan koin yang terkena."""
+    import qse_berita as BR
+    now = time.time()
+    rows = ["<b>Kalender berita besar USD</b> (1 jam lalu sampai 10 jam ke depan)"]
+    try:
+        ev = [e for e in BR.kalender() if now - mundur * 3600 <= e["ts"] / 1000 <= now + maju * 3600]
+    except Exception:
+        ev = []
+    for e in ev:
+        sisa = (e["ts"] / 1000 - now) / 3600
+        rows.append(f"{BR.jam_wib(e['ts'])} | {TG.e(e['judul'])} | "
+                    + (f"{sisa:.1f} jam lagi" if sisa > 0 else "sudah rilis")
+                    + ". Robot menahan sinyal baru 3 jam sebelumnya")
+    if not ev:
+        rows.append("Tidak ada berita besar USD di rentang ini.")
+    rows.append(f"\n<b>Berita kripto {mundur} jam terakhir</b>")
+    try:
+        import qse_saya as SY
+        simbol = set(SY._peta_robot()) | {"BTCUSDT", "ETHUSDT"}
+    except Exception:
+        simbol = {"BTCUSDT", "ETHUSDT"}
+    semua, lihat = [], set()
+    for nama, url in SUMBER:
+        for b in _ambil(nama, url):
+            kunci = b["judul"].lower()[:80]
+            if b["pub"] and b["pub"] >= now - mundur * 3600 and kunci not in lihat:
+                lihat.add(kunci)
+                semua.append(b)
+    semua.sort(key=lambda b: -b["pub"])
+    for b in semua[:8]:
+        teks = b["judul"] + " " + b["isi"]
+        kat = kategori(teks)
+        a = arah_sejarah(kat) if kat else 0
+        if a == 0:
+            a = _nilai(teks)[0]
+        koin = _koin(teks, simbol)
+        arah = "LONG" if a > 0 else "SHORT" if a < 0 else "campur"
+        jam = time.strftime("%H:%M", time.gmtime(b["pub"] + 7 * 3600))
+        rows.append(f"{jam} WIB | {TG.e(terjemah(b['judul'])[:160])}\n↳ arah {arah}"
+                    + (f" | koin {', '.join(koin)}" if koin else "")
+                    + (f" | jenis {LABEL.get(kat, kat)}" if kat else ""))
+    if not semua:
+        rows.append("Tidak ada berita kripto baru di 1 jam terakhir.")
+    rows.append("\nArah dari sejarah jenis berita (kalau ada) atau dari kata kunci judul. Berita yang benar-benar "
+                "berdampak tetap dikirim otomatis lewat NEWS PENTING.")
+    return "\n".join(rows)

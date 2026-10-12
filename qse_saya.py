@@ -1387,8 +1387,10 @@ def blok_posisi(no, it, px, r=None, pasar=None):
     for ik, nama, harga_lv, jenis in lv:
         R = _hasil_di(it, harga_lv, jenis)
         w = teks_waktu(estimasi_jam(harga_lv - acuan, a, 4)) if (jalan and a) else ""
-        rows.append(f"{ik} {nama} {fp(harga_lv, t)} ({(harga_lv - acuan) / acuan * 100:+.2f}%) | total {R:+.2f}R{_usdt(R)}"
-                    + (f" | {w}" if w else ""))
+        dari_e = (harga_lv - it["entry"]) / it["entry"] * 100
+        sisa_txt = f" | sisa jarak dari harga sekarang {(harga_lv - acuan) / acuan * 100:+.2f}%" if (jalan and px) else ""
+        rows.append(f"{ik} {nama} {fp(harga_lv, t)} | dari entry {dari_e:+.2f}%{sisa_txt}\n"
+                    f"   kalau kena: total {R:+.2f}R{_usdt(R)}" + (f" | perkiraan {w}" if w else ""))
     if jalan:
         try:
             an = analisa_lengkap(it, r, px or None)
@@ -1429,8 +1431,9 @@ def status_saya(harga=None):
     else:
         pasar = dict(btc1=btc_1j(), berita=berita_depan(3))
         ket = [baris_pasar(),
-               "Persen = gerak harga yang dibutuhkan dari harga sekarang. Total = hasil seluruh trade kalau harga sampai "
-               "level itu (TP1 menutup separuh). Waktu = perkiraan kasar dari volatilitas 4J."]
+               "Dari entry = jarak level dari harga entry. Sisa jarak = berapa persen lagi harga harus bergerak dari "
+               "harga sekarang. Floating dihitung dari entry, jadi floating -1.7% dan sisa jarak SL -1.4% berarti total "
+               "jarak SL dari entry -3.1%. Kalau kena = hasil seluruh trade (TP1 menutup separuh)."]
         try:
             import qse_modal as MD
             if MD.lot_normal() > 0:
