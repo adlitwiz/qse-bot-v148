@@ -292,6 +292,145 @@ def btc_melawan(arah):
     return []
 
 
+def kelas_setup(arah, skor=None, wr=None, rr2=None, rapor=None, golden=False, longgar=False, tambahan=None):
+    """Satu label untuk tiap saran sebelum entry: WAJIB ENTRY, AMAN BANGET, HIGH RISK HIGH RETURN, atau BERISIKO.
+    Return (label, ikon, alasan, lot)."""
+    risiko = []
+    if longgar:
+        risiko.append("sinyal longgar")
+    risiko += btc_melawan(arah)
+    bd = berita_depan(3)
+    if bd:
+        risiko.append(f"berita besar {bd['judul']} dalam 3 jam")
+    if rapor and rapor not in ("A", "B", "A+"):
+        risiko.append(f"rapor robot {rapor}")
+    if skor is not None and skor < 55:
+        risiko.append(f"skor setup {skor}")
+    risiko += tambahan or []
+    if risiko:
+        return "BERISIKO", "🟠", "; ".join(risiko), "0.25x sampai 0.5x lot, atau lewati"
+    if wr is not None and wr < 45 and (rr2 or 0) >= 2:
+        return ("HIGH RISK HIGH RETURN", "🎲", f"WR sekitar {wr:.0f}%, target sampai {rr2:.1f}R, sering rugi kecil dan sesekali untung besar",
+                "0.5x lot, siap rugi beruntun")
+    if (skor or 0) >= 70 and (rapor in ("A", "A+") or golden) and (wr or 0) >= 55:
+        return ("WAJIB ENTRY", "🔥", f"skor {skor}, rapor {rapor}{', golden moment' if golden else ''}, WR pola {wr:.0f}%, "
+                f"BTC dan berita aman", "1x lot normal, tetap pasang SL")
+    if (skor or 0) >= 60 and (wr or 0) >= 50:
+        return ("AMAN BANGET", "🛡️", f"skor {skor}, WR pola {wr:.0f}%, BTC dan berita aman", "1x lot normal")
+    return "BERISIKO", "🟠", "skor atau WR pola belum cukup tinggi", "0.5x lot"
+
+
+_KTX = {}
+_SIK = {}
+HALVING = [(2012, 11, 28), (2016, 7, 9), (2020, 5, 11), (2024, 4, 20)]
+
+
+def siklus_btc():
+    """Posisi BTC di siklus 4 tahunan halving. Patokan 3 siklus lalu: puncak 370 sampai 550 hari setelah halving,
+    dasar bear 770 sampai 915 hari setelah halving. Info saja, sampelnya hanya 3 siklus. Disimpan 6 jam."""
+    if time.time() - _SIK.get("t", 0) < 6 * 3600 and _SIK.get("v"):
+        return _SIK["v"]
+    import calendar
+    h = calendar.timegm(HALVING[-1] + (0, 0, 0))
+    hari = int((time.time() - h) // 86400)
+    if hari < 180:
+        fase = "awal bull setelah halving"
+    elif hari < 550:
+        fase = "bull utama (puncak siklus lalu 370 sampai 550 hari setelah halving)"
+    elif hari < 770:
+        fase = "bear setelah puncak"
+    elif hari < 950:
+        fase = "zona dasar bear (dasar siklus lalu 770 sampai 915 hari setelah halving)"
+    else:
+        fase = "akumulasi menjelang halving berikutnya (perkiraan 2028)"
+    teks = f"Siklus BTC: hari ke-{hari} setelah halving April 2024, fase historis {fase}"
+    try:
+        w = _kline("BTCUSDT", "W", 400)
+        cl = [x[3] for x in w]
+        if len(cl) >= 200:
+            ma = sum(cl[-200:]) / 200
+            ath = max(x[1] for x in w)
+            teks += (f" | harga {(cl[-1] / ath - 1) * 100:+.0f}% dari puncak | "
+                     f"{'di atas' if cl[-1] > ma else 'di bawah'} rata-rata 200 minggu")
+    except Exception:
+        pass
+    _SIK.update(t=time.time(), v=teks)
+    return teks
+
+
+def _tren4j(sym):
+    k = _kline(sym, "240", 80)
+    cls = [x[3] for x in k[:-1]]
+    if len(cls) < 55:
+        return "-"
+    e20, e50 = _ema(cls[-60:], 20), _ema(cls[-60:], 50)
+    return "naik" if cls[-1] > e20 > e50 else "turun" if cls[-1] < e20 < e50 else "campur"
+
+
+def baris_konteks():
+    """Satu baris kondisi pasar sebelum tiap saran: arah BTC (1 jam dan 4 jam), arah altcoin dibanding BTC 24 jam,
+    dan arah berita (berita penting 6 jam terakhir dan berita besar USD 3 jam ke depan). Disimpan 5 menit."""
+    if time.time() - _KTX.get("t", 0) < 300:
+        return _KTX["v"]
+    naik, ch3 = btc_1j()
+    try:
+        b4 = _tren4j("BTCUSDT")
+    except Exception:
+        b4 = "-"
+    btc = f"BTC 1J {'-' if naik is None else 'naik' if naik else 'turun'} ({ch3:+.1f}% 3 jam), 4J {b4}"
+    alt = "Altcoin -"
+    try:
+        r = requests.get(BYBIT_URL + "/v5/market/tickers", params={"category": "linear"}, timeout=15).json()
+        lst = [x for x in r["result"]["list"] if x["symbol"].endswith("USDT")]
+        bt = next(float(x["price24hPcnt"]) * 100 for x in lst if x["symbol"] == "BTCUSDT")
+        top = sorted((x for x in lst if x["symbol"] not in ("BTCUSDT", "USDCUSDT")),
+                     key=lambda x: -float(x.get("turnover24h") or 0))[:50]
+        ch = sorted(float(x["price24hPcnt"]) * 100 for x in top)
+        med = ch[len(ch) // 2]
+        naik_n = sum(1 for v in ch if v > 0)
+        sifat = "lebih kuat dari BTC" if med > bt + 1 else "lebih lemah dari BTC" if med < bt - 1 else "searah BTC"
+        alt = f"Altcoin {sifat} (50 alt teratas median {med:+.1f}% 24 jam, {naik_n}/50 naik, BTC {bt:+.1f}%)"
+    except Exception:
+        pass
+    news = "Berita: tidak ada berita penting 6 jam terakhir"
+    try:
+        with open(os.path.join(STATE_DIR, "news.json")) as f:
+            tr = [x for x in json.load(f).get("terakhir", []) if time.time() - x["t"] < 6 * 3600]
+        if tr:
+            p = sum(1 for x in tr if x["arah"] == "LONG")
+            news = (f"Berita 6 jam terakhir: {p} positif, {len(tr) - p} negatif, condong "
+                    + ("LONG" if p > len(tr) - p else "SHORT" if p < len(tr) - p else "campur"))
+    except Exception:
+        pass
+    bd = berita_depan(3)
+    if bd:
+        news += f" | berita besar USD {bd['judul']} dalam 3 jam"
+    import html
+    v = "🌐 " + html.escape(f"{btc} | {alt} | {news}") + "\n🔄 " + html.escape(siklus_btc())
+    _KTX.update(t=time.time(), v=v)
+    return v
+
+
+def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp=""):
+    """Blok level yang sama untuk semua sinyal. Bisa disalin lalu ditempel ke /entry untuk dicatat."""
+    t = tick or tick_of(None, entry)
+    risk = abs(entry - sl) or 1e-12
+    pc = lambda x: abs(x - entry) / entry * 100
+    rows = [f"Entry {fp(entry, t)}" + (f" {order}" if order else ""), f"SL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%"]
+    for nm, v in (("TP1", tp1), ("TP2", tp2)):
+        if v:
+            rows.append(f"{nm:<5} {fp(v, t)}  +{abs(v - entry) / risk:.2f}R  +{pc(v):.1f}%")
+    if catatan_tp:
+        rows.append(f"TP    {catatan_tp}")
+    return "<pre>" + "\n".join(rows) + "</pre>"
+
+
+def baris_kelas(arah, konteks=True, **kw):
+    lb, ik, why, lot = kelas_setup(arah, **kw)
+    import html
+    return (f"{baris_konteks()}\n" if konteks else "") + f"{ik} <b>PENILAIAN: {lb}</b> | {html.escape(why)} | lot {lot}"
+
+
 # ---------------- konsultasi ----------------
 def nilai(sym, arah, entry=None):
     """Penilaian robot untuk rencana entry. Return (label, alasan[], hasil_robot, harga_live)."""
@@ -581,42 +720,113 @@ def _waktu(tok_tgl, tok_jam, now_ms):
         return None
 
 
+KATA_ABAI = {"ENTRY", "HARGA", "LONG", "SHORT", "BUY", "SELL", "SL", "TP", "TP1", "TP2", "SKOR", "SETUP", "LAYAK", "DIIKUTI",
+             "BANGET", "MARKET", "LIMIT", "STOP", "PENILAIAN", "WAJIB", "AMAN", "BERISIKO", "HIGH", "RISK", "RETURN", "LOT",
+             "BARU", "GZH", "TERKONFIRMASI", "ICHIMOKU", "SARAN", "MOMENTUM", "NEWS", "GOLDEN", "MOMENT", "TF", "CANDLE",
+             "MKT", "TERISI", "FILLED", "SUDAH", "ISI", "JAM", "PADA", "DI", "LEV", "LEVERAGE", "QSE", "V148", "R", "TAJAM"}
+
+
+def _sinyal_dari_harga(entry, sl=None):
+    """Cari koin dan arah dari harga entry sinyal yang ditempel (semua jalur, 3 hari terakhir). Return (sym, arah) atau None."""
+    cocok = lambda e: e and abs(e - entry) / entry <= 0.0005
+    calon = []
+    try:
+        import qse_fixprofit as FX
+        led = FX.load()
+        for v in list(led["open"].values()) + led["closed"][-300:]:
+            if cocok(v.get("entry")) and (time.time() * 1000 - (v.get("sent_ts") or 0)) <= 3 * 86400000:
+                calon.append((v["sym"], v["arah"], v.get("sl")))
+    except Exception:
+        pass
+    try:
+        import qse_catat as CT
+        d = CT._baca()
+        calon += [(v["sym"], v["arah"], v.get("sl")) for v in d["open"] + d["closed"][-200:] if cocok(v.get("entry"))]
+    except Exception:
+        pass
+    try:
+        with open(os.path.join(STATE_DIR, "sentuh_fib.json")) as f:
+            calon += [(k, g["arah"], g.get("sl")) for k, g in json.load(f).get("sinyal", {}).items() if cocok(g.get("entry"))]
+    except Exception:
+        pass
+    try:
+        import qse_alarm as AL
+        calon += [(a["sym"], "LONG" if a["L"] else "SHORT", a.get("sl")) for a in AL._lihat()["list"]
+                  if a.get("jenis") == "gzh" and cocok(a.get("harga"))]
+    except Exception:
+        pass
+    try:
+        import qse_ichimoku as IC
+        calon += [(v["sym"], v["arah"], v.get("sl0")) for v in IC.lihat()["open"].values() if cocok(v.get("entry"))]
+    except Exception:
+        pass
+    for r in _peta_robot().values():
+        calon += [(r["symbol"], x["arah"], x.get("sl")) for x in r.get("saran", []) if cocok(x.get("entry"))]
+    if sl:
+        tepat = [c for c in calon if c[2] and abs(c[2] - sl) / sl <= 0.002]
+        calon = tepat or calon
+    return (calon[0][0], calon[0][1]) if calon else None
+
+
 def parse_entry(args):
-    """/entry long limit AUSDT 1.022 [sl 0.99] [tp1 1.05] [tp2 1.08] [terisi [29/09] [02:00]]"""
+    """/entry long limit AUSDT 1.022 [sl 0.99] [tp1 1.05] [tp2 1.08] [terisi [29/09] [02:00]]
+    Bisa juga tempel langsung blok sinyal: Entry 0.12842 SL 0.11815 TP1 0.14362 TP2 0.14942.
+    Koin dan arah dicari dari sinyal robot kalau tidak ditulis."""
+    import re
     arah = order = sym = None
     nums, kv, i = [], {}, 0
     terisi, tgl, jam = False, None, None
+    kandidat = []
     while i < len(args):
         a = args[i]
+        nxt = _angka(args[i + 1]) if i + 1 < len(args) else None
         if a in ("LONG", "BUY", "L"):
-            arah = "LONG"
+            arah = arah or "LONG"
         elif a in ("SHORT", "SELL", "S"):
-            arah = "SHORT"
+            arah = arah or "SHORT"
         elif a in ("LIMIT", "MARKET", "MKT"):
             order = "MARKET" if a != "LIMIT" else "LIMIT"
         elif a in ("TERISI", "FILLED", "SUDAH", "ISI"):
             terisi = True
-        elif a in ("JAM", "PADA", "DI"):
-            pass
-        elif ":" in a:
+        elif re.fullmatch(r"\d{1,2}:\d{2}", a):
             jam = a
-        elif "/" in a:
+        elif re.fullmatch(r"\d{1,2}/\d{1,2}(/\d{2,4})?", a):
             tgl = a
         elif a in ("LEV", "LEVERAGE") and i + 1 < len(args) and _angka(args[i + 1].rstrip("X")) is not None:
             kv["LEV"] = _angka(args[i + 1].rstrip("X"))
             i += 1
-        elif a.endswith("X") and len(a) > 1 and _angka(a[:-1]) is not None:
+        elif re.fullmatch(r"\d+(\.\d+)?X", a):
             kv["LEV"] = _angka(a[:-1])
-        elif a in ("SL", "TP", "TP1", "TP2") and i + 1 < len(args) and _angka(args[i + 1]) is not None:
-            kv["TP1" if a == "TP" else a] = _angka(args[i + 1])
+        elif a in ("SL", "TP", "TP1", "TP2") and nxt is not None:
+            kv["TP1" if a == "TP" else a] = nxt
             i += 1
+        elif a in ("ENTRY", "HARGA", "LIMIT") and nxt is not None:
+            kv["ENTRY"] = nxt
+            i += 1
+        elif re.fullmatch(r"[\d.,]+R|[\d.,]+%|\d+/\d+", a):
+            pass                                            # kolom R, persen, dan skor dari blok sinyal
         elif _angka(a) is not None:
             nums.append(_angka(a))
-        else:
-            sym = a if a.endswith("USDT") else a + "USDT"
+        elif a.endswith("USDT") and len(a) > 4:
+            sym = sym or a
+        elif re.fullmatch(r"[A-Z0-9]{2,15}", a) and a not in KATA_ABAI:
+            kandidat.append(a)
         i += 1
+    if not sym and kandidat:
+        ada = harga_semua() if len(kandidat) > 1 else {}
+        sym = next((k + "USDT" for k in kandidat if not ada or k + "USDT" in ada), None)
+    tempel = "ENTRY" in kv
+    harga = kv.pop("ENTRY", None) or (nums[0] if nums else None)
+    if tempel and order is None:
+        terisi = True          # blok sinyal ditempel: dianggap sudah masuk di harga entry itu
+    if harga and kv.get("SL"):
+        tebak = None if (sym and arah) else _sinyal_dari_harga(harga, kv.get("SL"))
+        if tebak:
+            sym = sym or tebak[0]
+            arah = arah or tebak[1]
+        arah = arah or ("LONG" if kv["SL"] < harga else "SHORT")
     kv.update(terisi=terisi or bool(jam or tgl), tgl=tgl, jam=jam)
-    return arah, order or ("LIMIT" if nums else "MARKET"), sym, (nums[0] if nums else None), kv
+    return arah, order or ("LIMIT" if harga else "MARKET"), sym, harga, kv
 
 
 def _jalur_led(it):
@@ -678,6 +888,9 @@ def sinyal_terakhir(sym, arah, harga, hari=3):
 def entry(args):
     arah, order, sym, harga, kv = parse_entry(args)
     if not arah or not sym:
+        if harga and kv.get("SL"):
+            return ("Koin tidak ketemu dari harga entry itu. Tambahkan nama koinnya di depan, contoh:\n"
+                    "/entry AVNT\nEntry 0.12842\nSL 0.11815 ...")
         return ("Format: /entry long limit AUSDT 1.022\n"
                 "Tambahan opsional: sl 0.99 tp1 1.05 tp2 1.08. Tanpa SL dan TP, robot pakai sinyal terakhir koin ini. "
                 "Tanpa harga dianggap MARKET di harga sekarang.")
@@ -702,7 +915,7 @@ def entry(args):
     if isi_ts is not None and order == "LIMIT" and not kv.get("terisi"):
         catatan_isi = "Harga sekarang sudah melewati entry, jadi LIMIT ini dicatat langsung terisi."
     r = hasil_robot(sym)
-    t = tick_of(r, px)
+    t = min(tick_of(r, px), tick_of(r, harga))
     sumber = "kamu"
     dari_sinyal = None
     sl, tp1, tp2 = kv.get("SL"), kv.get("TP1"), kv.get("TP2")
@@ -1266,13 +1479,30 @@ def ringkas(closed, why_ok=("SL", "BE", "TP2", "TUTUP")):
 
 
 def ringkas_rapi(judul, closed, why_ok=("SL", "BE", "TP2", "TUTUP")):
+    """WR per periode, plus hasil dalam persen modal dan USDT (dari /modal), dipisah total untung dan total rugi."""
+    try:
+        import qse_modal as MD
+        m = MD.lihat()
+        risk_pct, ln = (m["risk"], MD.lot_normal()) if m["modal"] > 0 else (None, 0)
+    except Exception:
+        risk_pct, ln = None, 0
     rows = [f"<b>{judul}</b>"]
     for nama, a in _periode():
         cl = [c for c in closed if c.get("why") in why_ok and c.get("closed_ts", 0) >= a]
         n = len(cl)
         w = sum(1 for c in cl if c["result_r"] > 0)
         net = sum(c["result_r"] for c in cl)
-        rows.append(f"{nama.capitalize()}: {n} trade | WR {w / n * 100 if n else 0:.0f}% | {net:+.2f}R")
+        up = sum(c["result_r"] for c in cl if c["result_r"] > 0)
+        dn = sum(c["result_r"] for c in cl if c["result_r"] < 0)
+        teks = f"{nama.capitalize()}: {n} trade | WR {w / n * 100 if n else 0:.0f}% | {net:+.2f}R"
+        if risk_pct:
+            teks += (f" = {'PROFIT' if net >= 0 else 'RUGI'} {net * risk_pct:+.2f}% modal ({net * ln:+,.2f} USDT)"
+                     f"\n   untung +{up * risk_pct:.2f}% (+{up * ln:,.2f} USDT) | rugi -{abs(dn) * risk_pct:.2f}% (-{abs(dn) * ln:,.2f} USDT)")
+        else:
+            teks += f" | untung +{up:.2f}R | rugi -{abs(dn):.2f}R"
+        rows.append(teks)
+    if not risk_pct:
+        rows.append("Isi /modal 1000 risk 0.5 supaya hasil tampil dalam persen modal dan USDT.")
     return "\n".join(rows)
 
 
@@ -2130,6 +2360,8 @@ def nilai_gzh(r):
 
 
 GZH_DEKAT_ATR = 0.5      # peringatan GZH MENDEKAT saat harga tinggal 0.5 ATR dari 0.618
+GZH_MAKS_HARI = 4        # sinyal sentuh GZH paling banyak per hari (WIB), supaya tidak banjir saat pasar bergerak serentak
+GZH_SKOR_DEKAT = 80      # peringatan MENDEKAT hanya untuk setup skor tinggi
 
 
 def sentuh_fib(min_skor=70):
@@ -2154,8 +2386,14 @@ def sentuh_fib(min_skor=70):
     px_lama, sudah, koin = st.get("px", {}), st.get("sudah", {}), st.get("koin", {})
     dekat = st.get("dekat", {})
     sinyal = st.get("sinyal", {})          # sinyal GZH terkirim, untuk asal entry dan skor di /status
+    hari = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 3600))
+    jatah = st.get("jatah", {}) if st.get("jatah", {}).get("hari") == hari else {"hari": hari, "n": 0}
     now = time.time()
     out = []
+    try:
+        cal.sort(key=lambda r: -nilai_gzh(r)[0])          # jatah harian dipakai setup skor tertinggi dulu
+    except Exception:
+        pass
     for r in cal:
         sym, px = r["symbol"], harga.get(r["symbol"])
         if not px:
@@ -2173,7 +2411,8 @@ def sentuh_fib(min_skor=70):
             if 0 < jr <= GZH_DEKAT_ATR:          # peringatan persiapan, sekali per kaki fib
                 dekat[kunci] = int(now)
                 sk0, ar0, _, _, bt0 = nilai_gzh(r)
-                if sk0 >= min_skor and bt0.get("n", 0) >= 8 and bt0.get("pf", 0) >= 1.2:
+                if sk0 >= max(min_skor, GZH_SKOR_DEKAT) and bt0.get("n", 0) >= 8 and bt0.get("pf", 0) >= 1.2 \
+                        and jatah["n"] < GZH_MAKS_HARI:
                     out.append(f"👀 <b>GZH MENDEKAT {sym} {ar0}</b> | skor setup {sk0}/100\n"
                                f"Harga {fp(px, t)}, tinggal {jr:.1f} ATR ({abs(px - e) / px * 100:.1f}%) dari fib 0.618 di "
                                f"{fp(e, t)}. Siapkan order. Aku kabari lagi saat harga menyentuh dan saat candle 4J tutup.")
@@ -2193,6 +2432,10 @@ def sentuh_fib(min_skor=70):
         if why:
             print(f"[GZH] {sym} {arah} ditahan: {why}")
             continue
+        if jatah["n"] >= GZH_MAKS_HARI:
+            print(f"[GZH] {sym} skor {skor} tidak dikirim, jatah {GZH_MAKS_HARI} sinyal hari ini habis")
+            continue
+        jatah["n"] += 1
         koin[sym] = int(now)
         a = g.get("atr") or r["atr"]
         sl = lv["1.0"] - 0.2 * a if L else lv["1.0"] + 0.2 * a
@@ -2214,6 +2457,8 @@ def sentuh_fib(min_skor=70):
             if L else
             f"{'🟢' if L else '🔴'} <b>{sym} {arah}</b> | skor setup {skor}/100, {kelas}\n"
             f"Harga baru naik menyentuh fib 0.618 di {fp(e, t)}, ini sentuhan pertama di kaki fib ini. ")
+        out[-1] = out[-1].replace("\n", "\n" + baris_kelas(arah, skor=skor, wr=bt.get("wr"), rr2=abs(tp2 - e) / risk,
+                                                      rapor=r.get("rapor"), tambahan=belum[:2] if belum else None) + "\n", 1)
         out[-1] += (f"Titik 0 ada di {'atas' if L else 'bawah'} ({fp(lv['0.0'], t)}), jadi harapannya harga "
                     f"{'mantul naik' if L else 'mantul turun'} lagi ke sana.\n"
                     f"<pre>Entry {fp(e, t)}\nSL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%\n"
@@ -2230,15 +2475,18 @@ def sentuh_fib(min_skor=70):
                     f"Cek detail: /cek {sym.replace('USDT', '')}")
         try:
             import qse_alarm as _AL
-            _AL.tambah_gzh(sym, L, e, sl, tp1, tp2, t)
+            _AL.tambah_gzh(sym, L, e, sl, tp1, tp2, t, skor=skor, wr=bt.get("wr"), dikirim=not belum)
         except Exception as ex:
             print("[WARN] gzh tunggu", ex)
+        if belum:          # belum semua searah: tidak dikirim sebagai sinyal, robot tetap menilai saat candle 4J tutup
+            out.pop()
+            print(f"[GZH] {sym} {arah} disentuh, sinyal ditunda sampai candle tutup: {'; '.join(belum)}")
     batas = now - 7 * 86400
     with open(fpath + ".tmp", "w") as f:
         json.dump(dict(px=px_lama, sudah={k: v for k, v in sudah.items() if v > batas},
                        dekat={k: v for k, v in dekat.items() if v > batas},
                        koin={k: v for k, v in koin.items() if v > batas},
-                       sinyal={k: v for k, v in sinyal.items() if v["t"] > now - 3 * 86400}), f)
+                       sinyal={k: v for k, v in sinyal.items() if v["t"] > now - 3 * 86400}, jatah=jatah), f)
     os.replace(fpath + ".tmp", fpath)
     return out[:5]
 

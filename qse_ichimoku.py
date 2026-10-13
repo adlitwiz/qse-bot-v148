@@ -241,8 +241,9 @@ def jalankan(baru_ok=True):
         except Exception:
             lot = ""
         out.append(f"{'🟢' if L else '🔴'} <b>ICHIMOKU {arah} {sym}</b> (Tenkan potong Kijun {'di atas' if L else 'di bawah'} awan, 4J)\n"
-                   f"<pre>MARKET {TG.fp(px, t)}\nSL     {TG.fp(sl, t)}  -1.00R  -{risk / px * 100:.1f}%\nTP     tidak ada, SL digeser tiap candle 4J</pre>\n"
+                   + SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, SL digeser tiap candle 4J") + "\n"
                    + (f"{lot}\n" if lot else "")
+                   + SY.baris_kelas(arah, wr=37, rr2=3.0) + "\n"
                    + f"↳ Masuk sekarang. Jangan pasang TP. Aku kirim posisi SL baru tiap candle 4J, tutup paksa setelah 10 hari.\n"
                    f"↳ Backtest: {BT_PENDEK}. WR rendah itu wajar, untungnya dari sedikit trade yang lari jauh.")
 

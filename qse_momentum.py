@@ -299,8 +299,8 @@ def scan(daftar, bias, posisi, info=None):
             out.append(
                 judul + f"\n{'🟢' if rc['arah'] == 'LONG' else '🔴'} <b>SARAN {rc['arah']} {sym}</b> | skor {sk}/100, "
                 + ("LAYAK BANGET DIIKUTI" if sk >= 80 else "LAYAK DIIKUTI")
-                + f"\n<pre>LIMIT {_fp(e, tick)}\nSL    {_fp(sl, tick)}  -1.00R  -{pc(sl):.1f}%\n"
-                f"TP1   {_fp(t1, tick)}  +1.00R  +{pc(t1):.1f}%\nTP2   {_fp(t2, tick)}  +2.00R  +{pc(t2):.1f}%</pre>\n"
+                + "\n" + SY.baris_kelas(rc["arah"], skor=sk, wr=bt.get("wr"), rr2=2.0)
+                + "\n" + SY.blok_salin(e, sl, t1, t2, "LIMIT", tick) + "\n"
                 f"Yang bikin yakin: {'; '.join(plus)}\n"
                 + (f"Yang perlu diwaspadai: {'; '.join(minus)}\n" if minus else "")
                 + f"Jangan kejar harga. Pasang LIMIT di retest {_fp(e, tick)}, berlaku sampai {batas}. "

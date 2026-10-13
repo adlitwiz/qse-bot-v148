@@ -334,8 +334,8 @@ def _mandiri(sym, arah, kat, pub, now, eng):
     pc = lambda x: abs(x - e) / e * 100
     st = CT.statistik("news_mandiri")
     return (f"📰 <b>SARAN NEWS MANDIRI {arah} {sym}</b> (sejarah berita ini lebih kuat dari engine, engine condong {eng or '-'})\n"
-            f"<pre>LIMIT {TG.fp(e, t)}\nSL    {TG.fp(sl, t)}  -1.00R  -{pc(sl):.1f}%\n"
-            f"TP1   {TG.fp(t1, t)}  +1.00R  +{pc(t1):.1f}%\nTP2   {TG.fp(t2, t)}  +2.00R  +{pc(t2):.1f}%</pre>\n"
+            + SY.baris_kelas(arah, tambahan=["saran dari berita, harga bisa bergerak liar"]) + "\n"
+            + SY.blok_salin(e, sl, t1, t2, "LIMIT", t) + "\n"
             f"↳ Backtest jalur news mandiri: {BT_MANDIRI}."
             + (f" Live: {st['n']} trade, WR {st['wr']:.0f}%, PF {st['pf']:.2f}." if st["n"] else " Live: belum ada trade selesai.")
             + f"\n↳ Pakai setengah lot. Berlaku sampai {batas}, kalau belum terisi batalkan. SL sudah memberi ruang untuk "
@@ -359,21 +359,58 @@ def _saran(sym, arah, now, kat=None, pub=None):
                     return f"⏸️ Berita dan engine searah {arah}, tapi saran ditahan: {why}."
                 CT.tambah("news_searah", sym, arah, x["entry"], x["sl"], x["tp1"], x["tp2"],
                           max(0.5, (akhir.timestamp() - now) / 3600), f"{x['pola']} + berita")
+                rr2 = abs(x["tp2"] - x["entry"]) / (abs(x["entry"] - x["sl"]) or 1e-12)
                 return (f"✅ <b>SARAN ENTRY {arah} {sym}</b> (berita dan engine searah)\n"
-                        f"↳ {x['order']} di <code>{TG.fp(x['entry'], t)}</code> | SL <code>{TG.fp(x['sl'], t)}</code> | "
-                        f"TP1 <code>{TG.fp(x['tp1'], t)}</code> | TP2 <code>{TG.fp(x['tp2'], t)}</code>\n"
+                        + SY.baris_kelas(arah, skor=SY.skor_setup(r, x), wr=x.get("wr"), rr2=rr2, rapor=r.get("rapor")) + "\n"
+                        + SY.blok_salin(x["entry"], x["sl"], x["tp1"], x["tp2"], x["order"], t) + "\n"
                         f"↳ pola {TG.e(x['pola'])} mutu {x['mutu']}, rapor robot {r['rapor']}. Berlaku sampai {batas}.")
     if kat and kuat_mandiri(kat) and sym == "BTCUSDT":
         return _mandiri(sym, arah, kat, pub, now, eng)
     if not r:
         return f"👀 {sym} belum ada di scan robot. Jangan entry dari berita saja."
     t = r["tick"]
+    eng_txt = f"Engine QSE 4J {sym} condong {eng or 'belum jelas'}"
     if eng == arah:
         gp = (r.get("pasar") or {}).get("gp")
-        zona = f" Zona tunggu {TG.fp(min(gp), t)} sampai {TG.fp(max(gp), t)}." if gp else ""
-        return (f"🟡 Searah engine, belum ada saran valid.{zona} Masuk hanya kalau harga sampai zona "
+        zona = f" Zona tunggu {sym} {TG.fp(min(gp), t)} sampai {TG.fp(max(gp), t)}." if gp else ""
+        return (f"🟡 {eng_txt}, searah berita ({arah}). Belum ada saran valid.{zona} Masuk hanya kalau harga sampai zona "
                 f"dan ada candle konfirmasi {arah}, sebelum {batas}.")
-    return f"⛔ Engine condong {eng or '-'}, berlawanan dengan berita. Jangan entry dari berita ini."
+    return f"⛔ {eng_txt}, berlawanan dengan berita ({arah}). Jangan entry dari berita ini."
+
+
+def _cek_pasar(sym, arah):
+    """Baris tambahan di bawah tiap berita: kondisi semua pasar (BTC 1J dan 4J, altcoin, berita lain),
+    apakah arah berita searah BTC 1 jam, dan posisi kamu yang searah atau berlawanan dengan berita ini.
+    Berita BTC atau ETH dianggap menyentuh semua altcoin, berita koin lain hanya menyentuh koin itu."""
+    import qse_saya as SY
+    rows = []
+    try:
+        rows.append(SY.baris_konteks())
+    except Exception:
+        pass
+    try:
+        lawan = SY.btc_melawan(arah)
+        naik, _ = SY.btc_1j()
+        if naik is not None:
+            rows.append(f"🧭 Berita {arah} {sym} " + (f"BERLAWANAN dengan {lawan[0]}" if lawan
+                                                      else f"searah BTC 1 jam ({'naik' if naik else 'turun'})"))
+    except Exception:
+        pass
+    try:
+        luas = sym in ("BTCUSDT", "ETHUSDT")
+        pos = [v for v in SY.lihat()["open"].values()
+               if v.get("status") != "MENUNGGU" and (luas or v.get("sym") == sym)]
+    except Exception:
+        pos = []
+    if pos:
+        kena = "semua altcoin ikut terdorong" if luas else f"hanya {sym}"
+        sama = sorted({f"{v['sym'].replace('USDT', '')} {v['arah']}" for v in pos if v["arah"] == arah})
+        beda = sorted({f"{v['sym'].replace('USDT', '')} {v['arah']}" for v in pos if v["arah"] != arah})
+        rows.append(f"📌 Posisi kamu ({kena}): "
+                    + (f"berlawanan berita: {', '.join(beda)}. " if beda else "")
+                    + (f"searah berita: {', '.join(sama)}. " if sama else "")
+                    + ("Cek /status untuk jarak ke SL." if beda else ""))
+    return "\n".join(rows)
 
 
 def tes():
@@ -471,6 +508,8 @@ def cek(simbol, maks=2):
                 continue
             topik[tk] = now
             arah_t = "LONG" if arah > 0 else "SHORT"
+            c.setdefault("terakhir", []).append(dict(t=now, arah=arah_t, koin=koin[:2], kat=kat))
+            c["terakhir"] = [x for x in c["terakhir"] if now - x["t"] < 86400][-50:]
             judul = TG.e(terjemah(b["judul"])[:160])
             if b["link"]:
                 judul = f'<a href="{html.escape(b["link"], quote=True)}">{judul}</a>'
@@ -483,6 +522,9 @@ def cek(simbol, maks=2):
                 rows.append(sejarah_singkat(kat))
             for base in koin[:1]:
                 rows.append(_saran(base + "USDT", arah_t, now, kat, b.get("pub")))
+                ck = _cek_pasar(base + "USDT", arah_t)
+                if ck:
+                    rows.append(ck)
             out.append("\n".join(rows))
     c["kirim"] = list(sudah)[-1500:]
     c["topik"] = {k: v for k, v in topik.items() if now - v < 86400}

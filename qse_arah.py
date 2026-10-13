@@ -216,5 +216,6 @@ def harian():
     except Exception:
         pass
     blok.append(SY.baris_pasar())
+    blok.append(SY.siklus_btc() + ". Info saja, patokannya hanya 3 siklus sebelumnya.")
     blok.append("Robot otomatis menahan sinyal yang melawan BTC 1 jam dan 3 jam sebelum berita besar. Detail koin: /arah KOIN")
     return "\n\n".join(blok)

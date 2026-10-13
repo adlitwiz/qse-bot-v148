@@ -151,7 +151,7 @@ def tunggu(args):
             f"Alarm hangus sendiri setelah {BERLAKU_HARI} hari.")
 
 
-def tambah_gzh(sym, L, e, sl, tp1, tp2, tick):
+def tambah_gzh(sym, L, e, sl, tp1, tp2, tick, skor=None, wr=None, dikirim=True):
     """Dipanggil Golden Zone Hunter saat harga menyentuh 0.618: nilai candle 4J tempat sentuhan terjadi saat tutup."""
     sekarang = int(time.time() * 1000)
 
@@ -160,7 +160,7 @@ def tambah_gzh(sym, L, e, sl, tp1, tp2, tick):
             return
         d["seq"] += 1
         d["list"].append(dict(id=d["seq"], jenis="gzh", sym=sym, L=bool(L), harga=float(e), sl=float(sl), tp1=float(tp1),
-                              tp2=float(tp2), tick=float(tick), tf="240", tf_ms=4 * 3600000,
+                              tp2=float(tp2), tick=float(tick), tf="240", tf_ms=4 * 3600000, skor=skor, wr=wr, dikirim=bool(dikirim),
                               candle=sekarang // (4 * 3600000) * (4 * 3600000), dibuat=sekarang))
     _ubah(f)
 
@@ -189,11 +189,21 @@ def _pesan_gzh(a, cl):
         return (f"⚠️ <b>GZH {a['sym']}</b> candle tutup memantul di {TG.fp(cl, t)}, tapi harga sudah terlalu dekat TP1. "
                 f"Lewati, R sudah tidak layak.")
     pc = lambda x: abs(x - cl) / cl * 100
+    import qse_saya as SY
+    arah = "LONG" if L else "SHORT"
+    tahan = SY.btc_melawan(arah)
+    bd = SY.berita_depan(3)
+    if bd:
+        tahan.append(f"berita besar {bd['judul']} dalam 3 jam")
+    if tahan and not a.get("dikirim", True):
+        return None          # sentuhan tadi tidak dikirim dan sekarang tetap belum searah: diam saja
+    if tahan:
+        return (f"⏸️ <b>GZH {a['sym']} {arah}</b>: candle 4J tutup memantul di {TG.fp(cl, t)}, tapi belum semua searah: "
+                f"{TG.e('; '.join(tahan))}. Belum jadi sinyal, jangan entry dulu.")
     return (f"✅ <b>GZH TERKONFIRMASI {a['sym']} {'LONG' if L else 'SHORT'}</b>\n"
+            + SY.baris_kelas(arah, rr2=abs(a["tp2"] - cl) / risk, wr=a.get("wr"), skor=a.get("skor")) + "\n"
             f"Candle 4J tutup {'di atas' if L else 'di bawah'} 0.618 ({TG.fp(a['harga'], t)}). Ini entry yang dipakai backtest.\n"
-            f"<pre>MARKET {TG.fp(cl, t)}\nSL     {TG.fp(a['sl'], t)}  -1.00R  -{pc(a['sl']):.1f}%\n"
-            f"TP1    {TG.fp(a['tp1'], t)}  +{abs(a['tp1'] - cl) / risk:.2f}R  +{pc(a['tp1']):.1f}%\n"
-            f"TP2    {TG.fp(a['tp2'], t)}  +{abs(a['tp2'] - cl) / risk:.2f}R  +{pc(a['tp2']):.1f}%</pre>\n"
+            + SY.blok_salin(cl, a["sl"], a["tp1"], a["tp2"], "MARKET", t) + "\n"
             f"Masuk sekarang. Di TP1 tutup separuh, SL pindah ke entry.")
 
 
@@ -217,7 +227,9 @@ def _cek_tutup(d0):
         if a["jenis"] == "gzh":
             c = next((cl for ts, cl in rows if ts == a["candle"]), None)
             if c is not None:
-                out.append(_pesan_gzh(a, c))
+                p = _pesan_gzh(a, c)
+                if p:
+                    out.append(p)
                 selesai.add(a["id"])
             elif rows[-1][0] > a["candle"]:
                 selesai.add(a["id"])          # candle sentuhan terlewat (bot mati), jangan kirim terlambat

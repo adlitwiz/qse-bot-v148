@@ -183,7 +183,7 @@ def _radar(results, sudah, maks=6):
         jam = SY.estimasi_jam(c - x["entry"], r["atr"], 4)
         v = "EKSEKUSI" if x["eksekusi"] else "TAHAN, " + x["alasan"]
         rows.append(f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {r['rapor']} | {TG.e(x['pola'])} "
-                    f"mutu {x['mutu']} | skor setup {x['skor']}/100\n{x['order']} {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | "
+                    f"mutu {x['mutu']} | skor setup {x['skor']}/100\n{_kelas(r, x, konteks=False)}\n{x['order']} {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | "
                     f"TP1 {TG.fp(x['tp1'], t)} | TP2 {TG.fp(x['tp2'], t)}\n"
                     f"Jarak {abs(c - x['entry']) / c * 100:.2f}% | perkiraan tersentuh {SY.teks_waktu(jam)}\n↳ DASBOR: {TG.e(v)}")
     return rows
@@ -820,7 +820,7 @@ def _blok_sik(no, r, x, tag, led):
         rows.append(bl)
     rows.append("Catatan: dari pola harga masa lalu, konfirmasi di DASBOR sebelum entry")
     rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
-    return "\n".join(rows)
+    return _sisip_kelas("\n".join(rows), r, x)
 
 
 def _konf_candle(p, arah):
@@ -921,11 +921,12 @@ def _blok_fib(no, r, x, tag, led):
     if bl:
         rows.append(bl)
     rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
-    return "\n".join(rows)
+    return _sisip_kelas("\n".join(rows), r, x)
 
 
 def _blok_cad2(no, r, x, tag, led):
-    b = _blok(no, r, x, f"{x['mutu']} TAHAN di DASBOR ({x['alasan_tahan']}), dikirim sebagai CADANGAN 2", led)
+    b = _blok(no, r, x, f"{x['mutu']} TAHAN di DASBOR ({x['alasan_tahan']}), dikirim sebagai CADANGAN 2", led,
+              tambahan=["DASBOR masih TAHAN"])
     return b.replace(f"<b>{no}. ", f"<b>🟠 {no}. ", 1) + f"\nCatatan: lot {SY.lot_jalur('saran cadangan 2'):g}x, karena DASBOR masih TAHAN"
 
 
@@ -960,7 +961,7 @@ def _blok_cad(no, r, x, tag, led):
         rows.append(bl)
     rows.append("Catatan: belum lolos backtest v148")
     rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
-    return "\n".join(rows)
+    return _sisip_kelas("\n".join(rows), r, x)
 
 
 def _wr_baris(led):
@@ -1158,7 +1159,7 @@ def _unggulan(results, sudah_valid, maks=10):
             out.append((not x.get("golden"), label != "A+", r["rapor"] != "A", jarak,
                         f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {label}"
                         + (" | 🌟 GOLDEN MOMENT" if x.get("golden") else "") + f" | {TG.e(x['pola'])} mutu {x['mutu']}"
-                        f" | skor setup {x['skor']}/100\n"
+                        f" | skor setup {x['skor']}/100\n{_kelas(r, x, konteks=False)}\n"
                         f"{x['order']} di {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | TP1 {TG.fp(x['tp1'], t)} | "
                         f"TP2 {TG.fp(x['tp2'], t)}\n"
                         f"Jarak {abs(c - x['entry']) / c * 100:.2f}% ({jarak:.1f} ATR)"
@@ -1325,7 +1326,7 @@ def cek_cepat(now, paksa=False):
         ung = _unggulan(results, sudah_j, maks=3)
         if ung:
             blocks.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN JAM INI ({len(ung)})</b>\nSaran EKSEKUSI yang entry-nya masih "
-                          "terjangkau dari harga sekarang.\n\n" + "\n\n".join(ung))
+                          "terjangkau dari harga sekarang.\n" + SY.baris_konteks() + "\n\n" + "\n\n".join(ung))
         rad = _radar(results, sudah_j | {r["symbol"] for r, _ in sel}, maks=3)
         if rad:
             blocks.append(f"{GARIS}\n🎯 <b>SETUP TERDEKAT ({len(rad)})</b>\nEntry belum tersentuh. Pasang alarm, jangan "
@@ -1589,7 +1590,28 @@ def _blok_ramal(rb):
             f"Kesimpulan: {arah}. Info saja, tidak dipakai menahan sinyal karena di uji 112 koin malah menurunkan PF")
 
 
-def _blok(no, r, s, status, led=None):
+def _kelas(r, x, tambahan=None, konteks=True):
+    risk = abs(x["entry"] - x["sl"]) or 1e-12
+    skor = x.get("skor")
+    if skor is None and "win" in x:
+        try:
+            skor = _skor(r, x, SY.ramal_btc4())
+        except Exception:
+            skor = None
+    return SY.baris_kelas(x["arah"], skor=skor, wr=x.get("wr", r.get("wr")), rr2=abs(x["tp2"] - x["entry"]) / risk,
+                          rapor=r.get("rapor"), golden=bool(x.get("golden")), longgar=bool(x.get("longgar")),
+                          tambahan=tambahan, konteks=konteks)
+
+
+def _sisip_kelas(teks, r, x, tambahan=None):
+    """Taruh baris PENILAIAN tepat di bawah judul koin."""
+    rows = teks.split("\n")
+    i = next((k for k, z in enumerate(rows) if r["symbol"] in z), 0)
+    rows.insert(i + 1, _kelas(r, x, tambahan))
+    return "\n".join(rows)
+
+
+def _blok(no, r, s, status, led=None, tambahan=None):
     t = r["tick"]
     jam_c = r["tf_ms"] / 3600000
     rows = []
@@ -1658,7 +1680,7 @@ def _blok(no, r, s, status, led=None):
         qty = FP["risk_usdt"] / max(abs(s["entry"] - s["sl"]), t)
         rows.append(f"Lot risiko {FP['risk_usdt']:g} USDT: {qty:.4g} koin | nilai {qty * s['entry']:,.0f} USDT")
     rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
-    return "\n".join(rows)
+    return _sisip_kelas("\n".join(rows), r, s, tambahan)
 
 
 def _rekap(led, now, hari=1, judul="REKAP KEMARIN", why_ok=("SL", "BE", "TP2")):
