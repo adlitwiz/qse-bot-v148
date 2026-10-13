@@ -168,6 +168,8 @@ def _radar(results, sudah, maks=6):
             if (L and c <= x["sl"]) or ((not L) and c >= x["sl"]) or (L and c >= x["tp1"]) or ((not L) and c <= x["tp1"]):
                 continue
             x = dict(x, skor=_skor(r, x, SY.ramal_btc4()))
+            if not SY.TAMPIL_SEMUA and not SY.boleh_ikut("saran utama", x["arah"], x["skor"])[0]:
+                continue
             if _gerbang(r, x):
                 continue          # skor di bawah batas, BTC, atau berita melawan: jangan dipajang sebagai setup
             jarak = abs(c - x["entry"]) / r["atr"]
@@ -183,7 +185,7 @@ def _radar(results, sudah, maks=6):
         jam = SY.estimasi_jam(c - x["entry"], r["atr"], 4)
         v = "EKSEKUSI" if x["eksekusi"] else "TAHAN, " + x["alasan"]
         rows.append(f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {r['rapor']} | {TG.e(x['pola'])} "
-                    f"mutu {x['mutu']} | skor setup {x['skor']}/100\n{_kelas(r, x, konteks=False)}\n{x['order']} {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | "
+                    f"mutu {x['mutu']}\n{_kelas(r, x, konteks=False)}\n{x['order']} {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | "
                     f"TP1 {TG.fp(x['tp1'], t)} | TP2 {TG.fp(x['tp2'], t)}\n"
                     f"Jarak {abs(c - x['entry']) / c * 100:.2f}% | perkiraan tersentuh {SY.teks_waktu(jam)}\n↳ DASBOR: {TG.e(v)}")
     return rows
@@ -796,31 +798,14 @@ def _alasan_sik(rs, ctx):
 
 
 def _blok_sik(no, r, x, tag, led):
-    t, sk = r["tick"], r["siklus"]
-    pk, fl = sk["pola"], sk["aliran"]
+    sk = r["siklus"]
+    pk = sk["pola"]
     arah_txt = "naik" if x["arah"] == "LONG" else "turun"
-    rows = [f"🔵 <b>{no}. {TG.e(r['symbol'])} {x['arah']}</b> | SIKLUS",
-            f"Pola kembar: {pk['n']} pola mirip, sesudahnya {arah_txt} "
-            f"{x['naik'] if x['arah'] == 'LONG' else 100 - x['naik']:.0f}% | teruji {x['uji']} tepat",
-            f"Arah 4J naik {sk['c4P']:.0f}% | 1D naik {sk['cDP']:.0f}% | BTC naik {r['bProb']:.0f}%",
-            f"Aliran dana skor {x['dana']:+d}/4 | CMF {fl['cmf']:.2f} | MFI {fl['mfi']:.0f} | CVD {'naik' if fl['cvd_up'] else 'turun'}"
-            + (f" | OI {fl['oi']:+.1f}%" if fl.get("oi") is not None else ""),
-            f"Status: {'SARAN BARU' if tag == 'BARU' else 'ENTRY DIPERBARUI'}",
-            _tabel(x, t)]
-    if x["order"] == "MARKET":
-        rows.append(f"Cara: MARKET sekarang, lot {SY.lot_jalur('saran siklus'):g}x lot normal, langsung pasang SL dan TP1")
-    else:
-        key = "%s|%s|%s|%s" % (r["symbol"], r["tf"], x["pola"], x["arah"])
-        it = (led or {}).get("open", {}).get(key)
-        rows.append(f"Cara: LIMIT di EMA20, lot {SY.lot_jalur('saran siklus'):g}x lot normal, batal otomatis "
-                    f"{_jam(it['exp_ts']) if it and it.get('exp_ts') else '24 jam'}")
-    rows.append("Kelola: TP1 tutup separuh, SL ke entry, sisa ke TP2")
-    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran siklus") * MK.kali_lot(x["arah"]), _lev_maks(x))
-    if bl:
-        rows.append(bl)
-    rows.append("Catatan: dari pola harga masa lalu, konfirmasi di DASBOR sebelum entry")
-    rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
-    return _sisip_kelas("\n".join(rows), r, x)
+    k = [f"{pk['n']} pola harga mirip di sejarah, sesudahnya {arah_txt} "
+         f"{x['naik'] if x['arah'] == 'LONG' else 100 - x['naik']:.0f}%, teruji {x['uji']} tepat",
+         f"Peluang naik: 4J {sk['c4P']:.0f}%, harian {sk['cDP']:.0f}%, BTC {r['bProb']:.0f}%",
+         f"Aliran dana skor {x['dana']:+d}/4"]
+    return _kartu(no, r, x, "saran siklus", "SARAN BARU" if tag == "BARU" else "entry diperbarui", led, kenapa=k)
 
 
 def _konf_candle(p, arah):
@@ -905,29 +890,15 @@ def _cadangan2(results, sudah, led, tickers, ctx, maks=3):
 
 
 def _blok_fib(no, r, x, tag, led):
-    t = r["tick"]
-    p = r["pasar"]
-    rows = [f"📐 <b>{no}. {TG.e(r['symbol'])} {x['arah']}</b> | SKILL FIB | konf {x['konf']}/8",
-            f"Rapor robot {r['rapor']} | {r['trd']} trade | WR {r['wr']:.0f}%",
-            TG.e(SY.fib_teks(r)),
-            f"Skill searah: {', '.join(x['konf_ok'])} | candle: {TG.e(SY.konfirmasi_candle(p, x['arah'])[1])}",
-            f"Status: {'SARAN BARU' if tag == 'BARU' else 'ENTRY DIPERBARUI'}",
-            _tabel(x, t)]
-    rows += [TG.e(z) for z in PL.teks(r.get("pola_chart"))]
-    rows.append(_baris_waktu(r, x))
-    rows.append(f"Cara: MARKET sekarang, lot {SY.lot_jalur('saran fib'):g}x lot normal, SL di luar ekor candle khas koin ini")
-    rows.append("Kelola: TP1 di puncak kaki fib, tutup separuh, SL ke entry, sisa ke extension 1.272")
-    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran fib") * MK.kali_lot(x["arah"]), _lev_maks(x))
-    if bl:
-        rows.append(bl)
-    rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
-    return _sisip_kelas("\n".join(rows), r, x)
+    k = [TG.e(SY.fib_teks(r)), f"Skill searah {x['konf']}/8: {', '.join(x['konf_ok'])}",
+         f"Candle: {TG.e(SY.konfirmasi_candle(r['pasar'], x['arah'])[1])}"]
+    cara = ["Masuk MARKET sekarang, SL di luar ekor candle khas koin ini",
+            "TP1 di puncak kaki fib: tutup separuh, pindahkan SL ke harga entry", "Sisanya ke extension 1.272 (TP2)"]
+    return _kartu(no, r, x, "saran fib", "SARAN BARU" if tag == "BARU" else "entry diperbarui", led, kenapa=k, cara=cara)
 
 
 def _blok_cad2(no, r, x, tag, led):
-    b = _blok(no, r, x, f"{x['mutu']} TAHAN di DASBOR ({x['alasan_tahan']}), dikirim sebagai CADANGAN 2", led,
-              tambahan=["DASBOR masih TAHAN"])
-    return b.replace(f"<b>{no}. ", f"<b>🟠 {no}. ", 1) + f"\nCatatan: lot {SY.lot_jalur('saran cadangan 2'):g}x, karena DASBOR masih TAHAN"
+    return _kartu(no, r, x, "saran cadangan 2", f"DASBOR masih TAHAN ({x['alasan_tahan']})", led)
 
 
 def _baris_waktu(r, x):
@@ -939,29 +910,10 @@ def _baris_waktu(r, x):
 
 
 def _blok_cad(no, r, x, tag, led):
-    t = r["tick"]
-    rows = [f"🟡 <b>{no}. {TG.e(r['symbol'])} {x['arah']}</b> | CADANGAN",
-            f"Rapor robot {r['rapor']} | {r['trd']} trade | WR {r['wr']:.0f}% | PF {r['pf']:.2f}",
-            "Dasar: zona emas searah bias, BTC mengizinkan",
-            f"Skill searah {x['konf']}/8: {', '.join(x['konf_ok'])}",
-            f"Status: {'SARAN BARU' if tag == 'BARU' else 'ENTRY DIPERBARUI'}",
-            _tabel(x, t)]
-    if x["order"] == "MARKET":
-        rows.append(f"Cara: MARKET sekarang, lot {SY.lot_jalur('saran cadangan'):g}x lot normal, langsung pasang SL dan TP1")
-    else:
-        key = "%s|%s|%s|%s" % (r["symbol"], r["tf"], x["pola"], x["arah"])
-        it = (led or {}).get("open", {}).get(key)
-        if x.get("p_isi") is not None and x.get("p_isi4") is not None:
-            rows.append(f"Peluang terisi 4 jam {x['p_isi4']:.0f}% | 24 jam {x['p_isi']:.0f}%")
-        rows.append(f"Cara: LIMIT di entry, lot {SY.lot_jalur('saran cadangan'):g}x lot normal, batal otomatis "
-                    f"{_jam(it['exp_ts']) if it and it.get('exp_ts') else '24 jam'}")
-    rows.append("Kelola: TP1 tutup separuh, SL ke entry, sisa ke TP2")
-    bl = MD.baris_lot(x["entry"], x["sl"], SY.lot_jalur("saran cadangan") * MK.kali_lot(x["arah"]), _lev_maks(x))
-    if bl:
-        rows.append(bl)
-    rows.append("Catatan: belum lolos backtest v148")
-    rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
-    return _sisip_kelas("\n".join(rows), r, x)
+    k = [f"Harga di zona emas searah bias robot, BTC mengizinkan",
+         f"Skill searah {x['konf']}/8: {', '.join(x['konf_ok'])}",
+         f"Rapor robot {r['rapor']}, WR {r['wr']:.0f}%"]
+    return _kartu(no, r, x, "saran cadangan", "SARAN BARU" if tag == "BARU" else "entry diperbarui", led, kenapa=k)
 
 
 def _wr_baris(led):
@@ -1141,6 +1093,8 @@ def _unggulan(results, sudah_valid, maks=10):
             if not x["eksekusi"] or x["sudah_masuk"] or x["mutu"] not in ("A", "B"):
                 continue
             y = dict(x, skor=_skor(r, x, SY.ramal_btc4()))
+            if not SY.TAMPIL_SEMUA and not SY.boleh_ikut("saran utama", y["arah"], y["skor"])[0]:
+                continue          # hanya setup yang bisa diikuti yang dipajang
             if FX._order_live(r, y):          # sudah lewat entry, SL, TP1, atau kejauhan: tidak terjangkau
                 continue
             if r["symbol"] not in sudah_valid and _gerbang(r, y):
@@ -1159,7 +1113,7 @@ def _unggulan(results, sudah_valid, maks=10):
             out.append((not x.get("golden"), label != "A+", r["rapor"] != "A", jarak,
                         f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {label}"
                         + (" | 🌟 GOLDEN MOMENT" if x.get("golden") else "") + f" | {TG.e(x['pola'])} mutu {x['mutu']}"
-                        f" | skor setup {x['skor']}/100\n{_kelas(r, x, konteks=False)}\n"
+                        f"\n{_kelas(r, x, konteks=False)}\n"
                         f"{x['order']} di {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | TP1 {TG.fp(x['tp1'], t)} | "
                         f"TP2 {TG.fp(x['tp2'], t)}\n"
                         f"Jarak {abs(c - x['entry']) / c * 100:.2f}% ({jarak:.1f} ATR)"
@@ -1620,76 +1574,71 @@ def _sisip_kelas(teks, r, x, tambahan=None):
     return "\n".join(rows)
 
 
-def _blok(no, r, s, status, led=None, tambahan=None):
-    t = r["tick"]
-    jam_c = r["tf_ms"] / 3600000
-    rows = []
-    if s["golden"]:
-        rows.append("🌟 <b>GOLDEN MOMENT</b>")
-    rows += [f"{IKON.get(s['arah'], '')} <b>{no}. {TG.e(r['symbol'])} {s['arah']}</b> | skor {s.get('skor', 0)}/100"
-             + (" | TF 1J" if r["tf"] == "60" else ""),
-             (f"Rapor robot 4J {r['rapor']} | rapor 1J {r.get('rapor_1j', '-')} | {r['trd']} trade | WR {r['wr']:.0f}% | PF {r['pf']:.2f}"
-              if r["tf"] == "60" else f"Rapor robot {r['rapor']} | {r['trd']} trade | WR {r['wr']:.0f}% | PF {r['pf']:.2f}"),
-             f"Pola {TG.e(s['pola'])} | mutu {s['mutu']}" + (" | zona emas" if s["zona_emas"] else ""),
-             f"Riwayat pola {s['win']} TP / {s['loss']} SL | WR {s['wr']:.0f}% | {s['net_r']:+.1f}R",
-             f"Status: {TG.e(status)}",
-             _tabel(s, t)]
-    if s.get("longgar"):
-        rows.insert(1, f"⚠️ <b>SINYAL LONGGAR</b>: sampai jam {JAM_LONGGAR2 if _batas_longgar() == SKOR_LONGGAR2 else JAM_LONGGAR} belum ada sinyal hari ini, jadi satu setup terbaik "
-                       f"diloloskan dengan syarat sedikit lebih ringan. Yang tidak terpenuhi: {TG.e(s['longgar'])}. "
-                       f"Pakai setengah lot.")
-    g4 = r["atr"] * (4 / jam_c) ** 0.5
-    rows.append(f"Ramalan: candle berikutnya searah {s.get('p_arah', 50):.0f}% | gerak ±{TG.fp(g4, t)} ({g4 / r['close'] * 100:.1f}%)")
-    if s["order"] != "MARKET":
-        rows.append(f"Peluang terisi 4 jam {s.get('p_isi4', 0):.0f}% | 24 jam {s['p_isi']:.0f}%")
-    if s.get("dur", 0) > 0:
-        rows.append(f"Perkiraan hasil ±{s['dur']:.0f} candle ({s['dur'] * jam_c:.0f} jam) dari riwayat pola")
-    rows.append(_baris_waktu(r, s))
-    hk = SY.hari_ini_koin(r, s["arah"])
-    if hk:
-        rows.append(TG.e(hk))
-    rows += [TG.e(z) for z in PL.teks(r.get("pola_chart"))]
-    pt = r.get("pola_top") or []
-    if pt:
-        rows.append("Pola terbaik koin ini: " + ", ".join(f"{TG.e(z['pola'])} {'B' if z['arah'] == 'LONG' else 'S'} "
-                                                         f"{z['net_r']:+.1f}R" for z in pt[:3]))
-    sa = SY.sl_aman(r, s["arah"], s["entry"], s["sl"])
-    if sa:
-        rows.append(TG.e(sa))
-    if r.get("skill"):
-        n_k, tot, ok = SK.konfirmasi(r["skill"], s["arah"])
-        rows.append(f"Konfirmasi skill {n_k}/{tot}" + (f": {', '.join(ok)}" if ok else ""))
-    nk, kf = _konfluensi(r, s["arah"], s["zona_emas"])
-    if nk:
-        rows.append(f"Konfluensi {nk}/6" + (" TINGGI" if nk >= 3 else "") + f": {', '.join(kf)}")
-    tk = r.get("tk")
-    if tk:
-        rows.append(f"Volume 24j {_uang(tk['turnover'])} | funding {tk['funding'] * 100:+.4f}% | "
-                    f"spread {tk['spread']:.2f}%")
-    key = "%s|%s|%s|%s" % (r["symbol"], r["tf"], s["pola"], s["arah"])
-    it = (led or {}).get("open", {}).get(key)
-    if s["order"] == "MARKET":
-        rows.append("Cara: MARKET sekarang, langsung pasang SL dan TP1")
-    else:
-        rows.append(f"Cara: LIMIT di entry, batal otomatis {_jam(it['exp_ts']) if it and it.get('exp_ts') else '24 jam'}")
-    rows.append("Kelola: TP1 tutup separuh, SL ke entry, sisa ke TP2")
-    jl = "saran 1J" if r["tf"] == "60" else "saran utama"
-    if MK.kali_lot(s["arah"]) < 1:
-        rows.append("⚠️ Tekanan makro AS (yield dan dolar naik bersamaan): lot LONG dipotong setengah")
-    if SY.lot_jalur(jl) != 1.0:
-        rows.append(f"Lot: {SY.lot_jalur(jl):g}x lot normal" + (" (saran TF 1J)" if r["tf"] == "60" else " (dari hasil trade kamu)"))
-    slp = abs(s["entry"] - s["sl"]) / s["entry"] if s["entry"] > 0 else 1
+def _kartu(no, r, x, jalur, status="", led=None, kenapa=None, cara=None, catatan=None):
+    """Kartu sinyal rapi untuk semua jalur. Sinyal yang belum terbukti cukup satu baris (kecuali QSE_TAMPIL_SEMUA=1),
+    tetap dicatat robot supaya hasil live-nya terus diukur."""
+    t, arah, sym = r["tick"], x["arah"], r["symbol"]
+    skor = x.get("skor")
+    ok, tk, ik, lot = SY.boleh_ikut(jalur, arah, skor)
+    nama = SY.NAMA_JALUR.get(jalur, jalur)
+    tf = "1J" if r.get("tf") == "60" else "4J"
+    if not ok and not SY.TAMPIL_SEMUA:
+        return (f"⛔ {TG.e(sym)} {arah} · {nama} · {tk.lower()}"
+                + f"\n   {TG.e(SY.bukti_pendek(jalur, arah, skor))}")
+    risiko = SY.risiko_sekarang(arah, bool(x.get("longgar")))
+    lot_n = SY.lot_angka(lot) * (0.5 if risiko else 1.0) * MK.kali_lot(arah)
+    lot_txt = f"{lot_n:g}x lot normal"
+    head = "BISA DIIKUTI" if ok else "TIDAK DISARANKAN"
+    rows = [SY.GARIS,
+            f"{IKON.get(arah, '')} <b>{no}. {TG.e(sym)} {arah}</b>  ·  {nama}" + ("" if nama.endswith("J") else f" {tf}")
+            + ("  ·  🌟 GOLDEN" if x.get("golden") else ""),
+            f"{ik if ok else '⛔'} <b>{head}</b>  ·  {tk}  ·  lot <b>{lot_txt}</b>",
+            SY.GARIS,
+            _tabel(x, t)]
+    k = list(kenapa or [])
+    if not kenapa:
+        if x.get("win", 0) + x.get("loss", 0) > 0:
+            k.append(f"Pola {TG.e(x['pola'])}, di koin ini {x['win']} TP dan {x['loss']} SL (WR {x['wr']:.0f}%)")
+        else:
+            k.append(f"Pola {TG.e(x['pola'])}")
+        k.append(f"Rapor robot {r['rapor']}, WR {r['wr']:.0f}%, PF {r['pf']:.2f}")
+        nk, kf = _konfluensi(r, arah, x.get("zona_emas"))
+        if nk:
+            k.append("Pendukung: " + ", ".join(kf))
+    k.append("Bukti: " + TG.e(SY.bukti_pendek(jalur, arah, skor)))
+    rows.append("💡 <b>Kenapa</b>\n" + "\n".join(f"• {z}" for z in k))
+    if risiko:
+        rows.append("⚠️ <b>Waspada</b> (lot sudah dipotong setengah)\n" + "\n".join(f"• {TG.e(z)}" for z in risiko))
+    if MK.kali_lot(arah) < 1:
+        rows.append("⚠️ Tekanan makro AS untuk LONG, lot dipotong setengah")
+    if cara is None:
+        key = "%s|%s|%s|%s" % (sym, r["tf"], x["pola"], arah)
+        it = (led or {}).get("open", {}).get(key)
+        if x["order"] == "MARKET":
+            c1 = "Masuk MARKET sekarang, langsung pasang SL dan TP1"
+        else:
+            c1 = (f"Pasang {x['order']} di harga entry, batal sendiri "
+                  f"{_jam(it['exp_ts']) if it and it.get('exp_ts') else 'kalau 24 jam tidak terisi'}")
+        cara = [c1, "Harga sampai TP1: tutup separuh posisi, pindahkan SL ke harga entry", "Sisanya biarkan jalan ke TP2"]
+    rows.append("🛠 <b>Cara</b>\n" + "\n".join(f"{i}. {z}" for i, z in enumerate(cara, 1)))
+    slp = abs(x["entry"] - x["sl"]) / x["entry"] if x["entry"] > 0 else 1
     lev = max(1, min(FP["lev_cap"], int(1 / (slp * 1.3 + 0.006))))
-    rows.append(f"Leverage maks {lev}x isolated | SL {slp * 100:.1f}% dari entry")
-    bl = MD.baris_lot(s["entry"], s["sl"], SY.lot_jalur("saran 1J" if r["tf"] == "60" else "saran utama") *
-                      MK.kali_lot(s["arah"]), lev)
-    if bl:
-        rows.append(bl)
-    elif FP["risk_usdt"] > 0:
-        qty = FP["risk_usdt"] / max(abs(s["entry"] - s["sl"]), t)
-        rows.append(f"Lot risiko {FP['risk_usdt']:g} USDT: {qty:.4g} koin | nilai {qty * s['entry']:,.0f} USDT")
-    rows.append(f'<a href="https://www.tradingview.com/chart/?symbol=BYBIT:{r["symbol"]}.P">Chart {TG.e(r["symbol"])}.P</a>')
-    return _sisip_kelas("\n".join(rows), r, s, tambahan)
+    info = f"Leverage maks {lev}x isolated  ·  SL {slp * 100:.1f}% dari entry"
+    bl = MD.baris_lot(x["entry"], x["sl"], lot_n, lev)
+    rows.append("📐 " + info + (f"\n{bl}" if bl else ""))
+    if status:
+        rows.append(f"ℹ️ {TG.e(status)}")
+    for z in catatan or []:
+        rows.append(f"ℹ️ {z}")
+    rows.append(f'🔗 <a href="https://www.tradingview.com/chart/?symbol=BYBIT:{sym}.P">Chart {TG.e(sym)}.P</a>')
+    return "\n".join(rows)
+
+
+def _blok(no, r, s, status, led=None, tambahan=None):
+    jl = "saran 1J" if r["tf"] == "60" else "saran utama"
+    if s.get("cad2"):
+        jl = "saran cadangan 2"
+    return _kartu(no, r, s, jl, status, led, catatan=[TG.e(z) for z in (tambahan or [])])
 
 
 def _rekap(led, now, hari=1, judul="REKAP KEMARIN", why_ok=("SL", "BE", "TP2")):
@@ -1880,41 +1829,33 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                 out.append(SY.evaluasi())
     so = []
     n_awal = len(out)
-    if sig or cad or sik or fib or cad2:
-        rows = ["📋 <b>RINGKASAN</b>"]
-        mst = MD.status()
-        sisa_slot = max(0, MD.lihat()["posisi"] - mst["n_posisi"])
-        rows.append(f"Urutan = prioritas. Slot posisi tersisa {sisa_slot} dari {MD.lihat()['posisi']}"
-                    + (f" | ⛔ {mst['alasan']}" if mst["rem"] else ""))
-        rows += [f"{IKON.get(s['arah'], '')} {TG.e(r['symbol'])} {s['arah']} | {s['order']} | mutu {s['mutu']} | "
-                 f"skor {s.get('skor', 0)} | konfluensi {_konfluensi(r, s['arah'], s['zona_emas'])[0]}/6 | "
-                 f"{_tanda(r, s)}"
-                 + (" | 🌟 GOLDEN" if s["golden"] else "") for r, s in sig]
-        rows += [f"🟡 {TG.e(r['symbol'])} {x['arah']} | {x['order']} | cadangan | konf {x['konf']}/8" for r, x, _ in cad]
-        rows += [f"🔵 {TG.e(r['symbol'])} {x['arah']} | {x['order']} | siklus | teruji {x['uji']}" for r, x, _ in sik]
-        rows += [f"📐 {TG.e(r['symbol'])} {x['arah']} | MARKET | fib 0.618-0.65 | konf {x['konf']}/8" for r, x, _ in fib]
-        rows += [f"🟠 {TG.e(r['symbol'])} {x['arah']} | {x['order']} | cadangan 2 | {TG.e(x['alasan_tahan'])}" for r, x, _ in cad2]
-        so.append("\n".join(rows))
-    so.append(f"{GARIS}\n🎯 <b>1. SINYAL VALID ({len(sig)})</b>" +
-               ("" if sig else "\nBelum ada sinyal yang lolos semua syarat di candle ini."))
-    for i, (r, s) in enumerate(sig, 1):
+    semua = []          # (jalur, r, x, kartu)
+    for r, s in sig:
         tg = tag_of[id(s)]
-        st = f"{s['mutu']} EKSEKUSI, " + ("SINYAL BARU" if tg in ("BARU", "UPDATE") else "masih valid")
-        if s.get("tersentuh"):
-            st += ", entry pernah tersentuh"
-        so.append(_blok(i, r, s, st, led))
-    so.append(f"{GARIS}\n🟡 <b>1B. SARAN CADANGAN ({len(cad)})</b>\n" +
-               ("Dari zona emas dan skill tambahan." if cad else _alasan_cad(rs, ctx)))
-    so += [_blok_cad(i, r, x, tg, led) for i, (r, x, tg) in enumerate(cad, 1)]
-    so.append(f"{GARIS}\n🔵 <b>1C. SARAN SIKLUS ({len(sik)})</b>\n" +
-               ("Dari pola kembar dan siklus pasar." if sik else _alasan_sik(rs, ctx)))
-    so += [_blok_sik(i, r, x, tg, led) for i, (r, x, tg) in enumerate(sik, 1)]
-    if fib:
-        so.append(f"{GARIS}\n📐 <b>1D. SARAN SKILL FIB 0.618-0.65 ({len(fib)})</b>\nGolden pocket + skill tambahan + candle konfirmasi.")
-        so += [_blok_fib(i, r, x, tg, led) for i, (r, x, tg) in enumerate(fib, 1)]
-    if cad2:
-        so.append(f"{GARIS}\n🟠 <b>1E. SARAN CADANGAN 2 ({len(cad2)})</b>\nRapor A/B dan saran mutu A/B yang di DASBOR masih TAHAN.")
-        so += [_blok_cad2(i, r, x, tg, led) for i, (r, x, tg) in enumerate(cad2, 1)]
+        st = ("sinyal baru" if tg in ("BARU", "UPDATE") else "masih valid dari candle sebelumnya") + \
+             (", entry pernah tersentuh" if s.get("tersentuh") else "")
+        semua.append(("saran 1J" if r["tf"] == "60" else "saran utama", r, s, st, _blok))
+    semua += [("saran cadangan", r, x, tg, _blok_cad) for r, x, tg in cad]
+    semua += [("saran siklus", r, x, tg, _blok_sik) for r, x, tg in sik]
+    semua += [("saran fib", r, x, tg, _blok_fib) for r, x, tg in fib]
+    semua += [("saran cadangan 2", r, x, tg, _blok_cad2) for r, x, tg in cad2]
+    ikut = [z for z in semua if SY.boleh_ikut(z[0], z[2]["arah"], z[2].get("skor"))[0]]
+    tolak = [z for z in semua if z not in ikut]
+    if ikut:
+        rows = ["📋 <b>RINGKAS</b>"]
+        for jl, r, x, _, _ in ikut:
+            ok, tk, ik, lot = SY.boleh_ikut(jl, x["arah"], x.get("skor"))
+            rows.append(f"{IKON.get(x['arah'], '')} {TG.e(r['symbol'])} {x['arah']}  ·  {SY.NAMA_JALUR.get(jl, jl)}  ·  "
+                        f"{x['order']}  ·  {ik} lot {lot}")
+        so.append("\n".join(rows))
+        so.append(f"✅ <b>BISA DIIKUTI ({len(ikut)})</b>")
+        so += [f(i, r, x, st, led) for i, (jl, r, x, st, f) in enumerate(ikut, 1)]
+    if tolak:
+        so.append(f"{SY.GARIS}\n🙈 <b>TIDAK DISARANKAN ({len(tolak)})</b>\nTetap dicatat robot untuk diuji. "
+                  f"Kalau jalurnya terbukti di live, tandanya naik sendiri dan sinyalnya tampil lengkap.\n\n"
+                  + "\n".join(f(i, r, x, st, led) for i, (jl, r, x, st, f) in enumerate(tolak, 1)))
+    if not semua:
+        so.append(f"{SY.GARIS}\nBelum ada sinyal yang lolos semua syarat di candle ini.")
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
     if pos and tf == "240":
         peta = {r["symbol"]: r for r in rs}
@@ -1956,10 +1897,13 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             rows.append(f"{IKON.get(s['arah'], '')} {TG.e(r['symbol'])} {s['arah']} | {TG.e(s['pola'])}\n↳ {TG.e(why)}")
         out.append("\n".join(rows))
     out.append(_wr_baris(led))
-    ada = bool(sig or cad or sik or fib or cad2)
+    ada = bool(ikut)
     if ada:
-        btc_l = next((r["btc"] for r in results if r["tf"] == "240"), "")
-        so.insert(0, f"🎯 <b>QSE v148 | SINYAL {judul}</b>\nCandle {kode} tutup {_jam(tutup)}\n{TG.e(btc_l)}\n"
+        try:
+            ktx = SY.baris_konteks()
+        except Exception:
+            ktx = ""
+        so.insert(0, f"🎯 <b>QSE v148 | SINYAL {judul}</b>\nCandle {kode} tutup {_jam(tutup)}\n{SY.GARIS}\n{ktx}\n"
                      f"Laporan lengkap ada di pesan 📊 berikutnya.")
         return out, so, True
     return out[:n_awal] + so + out[n_awal:], [], False

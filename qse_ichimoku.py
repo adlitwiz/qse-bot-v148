@@ -78,6 +78,27 @@ def _ll(x, n):
     return pd.Series(x).rolling(n).min().values
 
 
+TELAT_ATR = 0.5          # robot telat lebih dari 30 menit: sinyal tetap dikirim kalau harga belum lari 0.5 ATR
+REM_DD_R, REM_RUGI = 16.0, 6      # rem drawdown: uji 5 tahun, drawdown 32% -> 20.5%, profit 247% -> 251% (risiko 0.5%)
+
+
+def rem():
+    """Rem drawdown jalur Ichimoku dari catatan robot: lot setengah saat hasil turun lebih dari 16R dari puncak
+    (sekitar 8% modal di risiko 0.5%) atau rugi 6 kali beruntun. Kembali normal setelah keduanya lewat. Return alasan atau ''."""
+    eq = peak = 0.0
+    rugi = 0
+    for c in sorted(lihat().get("closed", []), key=lambda c: c.get("selesai", 0)):
+        r = float(c.get("R", 0))
+        eq += r
+        peak = max(peak, eq)
+        rugi = rugi + 1 if r < 0 else 0
+    if peak - eq > REM_DD_R:
+        return f"hasil jalur ini turun {peak - eq:.0f}R dari puncak"
+    if rugi >= REM_RUGI:
+        return f"rugi {rugi} kali beruntun"
+    return ""
+
+
 def _sinyal(df):
     """Sinyal di candle tutup terakhir. Return (arah atau None, atr)."""
     h, l, c = df["high"].values, df["low"].values, df["close"].values
@@ -174,14 +195,18 @@ def jalankan(baru_ok=True):
         t = tick.get(it["sym"], it.get("tick", 0.0001))
         if st in ("SL", "WAKTU"):
             _catat_ledger(it, R)
-            out.append(f"{'✅' if R > 0 else '🛑'} <b>ICHIMOKU SELESAI {it['sym']} {it['arah']}</b> | {R:+.2f}R\n"
-                       + ("Kena trailing SL" if st == "SL" else f"Tutup paksa, sudah {MAKS_BAR} candle 4J. Tutup posisi di harga sekarang")
-                       + f". Entry {TG.fp(it['entry'], t)}, keluar sekitar {TG.fp(it['sl'] if st == 'SL' else it['close'], t)}.")
+            out.append(f"{'✅' if R > 0 else '🛑'} <b>ICHIMOKU SELESAI  ·  {it['sym']} {it['arah']}  ·  {R:+.2f}R</b>\n"
+                       + (f"Harga balik dan kena SL berjalan di sekitar {TG.fp(it['sl'], t)}. Kalau SL di Bybit sudah ikut digeser, "
+                          f"posisi sudah tertutup sendiri. Kalau belum, tutup sekarang."
+                          if st == "SL" else f"Sudah {MAKS_BAR} candle 4J (10 hari). Tutup posisi sekarang di harga pasar, "
+                          f"sekitar {TG.fp(it['close'], t)}.")
+                       + f"\nEntry tadi {TG.fp(it['entry'], t)}.")
         elif abs(it["sl"] - sl_lama) >= 0.25 * it["risk"]:
             L = it["arah"] == "LONG"
             kunci = ((it["sl"] - it["entry"]) if L else (it["entry"] - it["sl"])) / it["risk"]
-            out.append(f"🔁 <b>ICHIMOKU {it['sym']} {it['arah']}</b> geser SL ke <code>{TG.fp(it['sl'], t)}</code> "
-                       f"(dari {TG.fp(sl_lama, t)}). Profit terkunci {kunci:+.2f}R. Candle ke {it['bar']}/{MAKS_BAR}.")
+            out.append(f"🔁 <b>ICHIMOKU  ·  {it['sym']} {it['arah']}  ·  GESER SL</b>\n"
+                       f"Ubah SL di Bybit ke <code>{TG.fp(it['sl'], t)}</code> (sebelumnya {TG.fp(sl_lama, t)})\n"
+                       f"Profit yang sudah aman kalau harga balik: {kunci:+.2f}R  ·  hari ke-{it['bar'] // 6 + 1} dari 10")
 
     def simpan_kelola(dd):
         for key, (it, st, R, _) in hasil.items():
@@ -228,6 +253,10 @@ def jalankan(baru_ok=True):
     baru = []
     for sym, arah, a, df in hasil_s[:slot]:          # sudah urut dari koin paling likuid
         px = tk[sym]["last"] or float(df["close"].iloc[-1])
+        telat = time.time() * 1000 - (int(df.index[-1]) + H4)
+        if telat > 1800000 and abs(px - float(df["close"].iloc[-1])) > TELAT_ATR * a:
+            print(f"[ICHIMOKU] {sym} dilewati: robot telat {telat / 60000:.0f} menit dan harga sudah lari dari harga sinyal")
+            continue
         L = arah == "LONG"
         risk = SL_ATR * a
         sl = px - risk if L else px + risk
@@ -240,12 +269,41 @@ def jalankan(baru_ok=True):
             lot = MD.baris_lot(px, sl)
         except Exception:
             lot = ""
-        out.append(f"{'🟢' if L else '🔴'} <b>ICHIMOKU {arah} {sym}</b> (Tenkan potong Kijun {'di atas' if L else 'di bawah'} awan, 4J)\n"
-                   + SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, SL digeser tiap candle 4J") + "\n"
-                   + (f"{lot}\n" if lot else "")
-                   + SY.baris_kelas(arah, wr=37, rr2=3.0, jalur="saran ichimoku") + "\n"
-                   + f"↳ Masuk sekarang. Jangan pasang TP. Aku kirim posisi SL baru tiap candle 4J, tutup paksa setelah 10 hari.\n"
-                   f"↳ Backtest: {BT_PENDEK}. WR rendah itu wajar, untungnya dari sedikit trade yang lari jauh.")
+        pc = risk / px * 100
+        jarak = TRAIL_ATR * a
+        _, tkb, ik, lot_b = SY.boleh_ikut("saran ichimoku", arah)
+        rm = rem()
+        if rm:
+            lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
+        try:
+            import qse_modal as MD
+            lot = MD.baris_lot(px, sl, SY.lot_angka(lot_b))
+        except Exception:
+            lot = ""
+        out.append("\n".join([
+            SY.GARIS,
+            f"{'🟢' if L else '🔴'} <b>{len(baru)}. {sym} {arah}</b>  ·  Ichimoku 4J",
+            f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.5% modal per trade)",
+            SY.GARIS,
+            SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan"),
+            *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih. Di uji 5 tahun rem ini "
+                f"menurunkan drawdown dari 32% ke 20% tanpa mengurangi profit"] if rm else []),
+            "💡 <b>Kenapa</b>",
+            f"• Tenkan baru memotong Kijun {'ke atas' if L else 'ke bawah'} dan harga {'di atas' if L else 'di bawah'} awan: "
+            f"tren {'naik' if L else 'turun'} baru mulai",
+            "• Bukti: uji 5 tahun 3358 trade, PF 1.33, untung di pasar naik, turun, dan sideways",
+            "🛠 <b>Cara</b>",
+            f"1. Masuk MARKET sekarang. Pasang SL di {TG.fp(sl, t)} ({pc:.1f}% dari entry). Jangan pasang TP",
+            "2. Tiap candle 4J tutup, robot kirim pesan GESER SL. Ubah SL di Bybit ke angka di pesan itu",
+            "3. SL hanya maju searah profit, tidak pernah mundur. Saat harga balik menyentuh SL, posisi tutup sendiri dengan profit yang sudah terkunci",
+            "4. Kalau 10 hari belum kena SL, robot mengingatkan untuk tutup manual",
+            "❓ <b>Kenapa tanpa TP</b>",
+            "Jalur ini menang sekitar 37%. Untungnya datang dari sedikit trade yang lari jauh, bisa +3R sampai +10R. "
+            "TP tetap akan memotong trade besar itu, jadi profit dikunci dengan SL berjalan",
+            f"📐 Cara mudah: tetap pasang SL awal di atas, lalu tambahkan Trailing Stop di Bybit dengan jarak "
+            f"{TG.fp(jarak, t)} ({jarak / px * 100:.1f}%). Hasilnya mirip, jadi tidak perlu geser SL manual"
+            + (f"\n{lot}" if lot else ""),
+        ]))
 
     def simpan_baru(dd):
         for it in baru:

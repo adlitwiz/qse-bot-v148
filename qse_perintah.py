@@ -101,13 +101,23 @@ BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
            "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n"
            "/arah SOL = tren 15m sampai 1W, tanggal yang sama tahun lalu, pola kembar, dan riwayat pola robot di koin ini\n\n"
            "<b>Info</b>\n"
+           "/kabar = berita 1 jam terakhir dan kalender berita besar USD\n"
+           "/viral = berita kripto paling ramai dan berdampak 24 jam terakhir\n"
            "/cek AUSDT = analisa lengkap koin: kesimpulan, saran robot, teknikal, siklus, skill, fundamental, derivatif, kalender\n"
            "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
            "/uji = hasil uji mundur 6 bulan saran cadangan, fib, dan siklus\n"
            "/kalibrasi ETHFI = angka bot untuk dicocokkan dengan DASBOR TradingView\n"
            "/tespin = cek apakah bot sudah bisa menyematkan pesan\n"
            "/status = trade kamu, floating, dan WR\n"
-           "/bantuan = daftar perintah ini")
+           "/bantuan = daftar perintah ini\n\n"
+           "<b>Arti tanda BUKTI di tiap sinyal</b>\nSinyal yang tampil lengkap = yang bisa diikuti. Sisanya tetap dicatat robot dan naik sendiri kalau terbukti di live.\n"
+           "✅ TERBUKTI = untung di backtest 5 tahun (Ichimoku). Ikuti semua, lot penuh\n"
+           "✅ TERBUKTI LIVE = jalur sudah 30 trade live dengan PF 1.2 ke atas. Lot penuh\n"
+           "🧪 SEDANG DIUJI = kelompok yang untung di uji (4J SHORT kelompok terbaik). Setengah lot\n"
+           "⚠️ BELUM TERBUKTI = sudah diuji tapi hasilnya impas atau rugi. Satu baris di TIDAK DISARANKAN, lewati\n"
+           "❔ BELUM DIUJI atau JARANG = belum ada angka uji. Satu baris di TIDAK DISARANKAN, lewati\n"
+           "⚠️ MELEMAH DI LIVE = terbukti, tapi live 40 trade lebih PF di bawah 1. Setengah lot\n"
+           "⚠️ Waspada di kartu = BTC 1 jam melawan atau berita dekat, lot sudah dipotong setengah")
 
 
 BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
@@ -124,10 +134,19 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/status = posisi, jarak TP SL, analisa, dan WR\n"
            "/cek SOL = analisa lengkap satu koin\n"
            "/arah SOL = tren 15m sampai 1W dan pola sejarah koin\n"
-           "/kabar = berita kripto 1 jam terakhir dan berita besar USD sampai 10 jam ke depan, dengan arahnya\n\n"
+           "/kabar = berita kripto 1 jam terakhir dan berita besar USD sampai 10 jam ke depan, dengan arahnya\n"
+           "/viral = berita kripto paling ramai dan berdampak 24 jam terakhir (/viral 6 = 6 jam terakhir)\n\n"
            "<b>Alarm</b>\n"
            "/tunggu SOL atas 150 4j = kabari saat candle 4J TUTUP di atas 150 (bawah juga bisa, TF 15m, 1j, 4j, 1d)\n"
            "/alert SOL 150 = kabari saat harga menyentuh 150\n\n"
+           "<b>Arti tanda BUKTI di tiap sinyal</b>\nSinyal yang tampil lengkap = yang bisa diikuti. Sisanya tetap dicatat robot dan naik sendiri kalau terbukti di live.\n"
+           "✅ TERBUKTI = untung di backtest 5 tahun (Ichimoku). Ikuti semua, lot penuh\n"
+           "✅ TERBUKTI LIVE = jalur sudah 30 trade live dengan PF 1.2 ke atas. Lot penuh\n"
+           "🧪 SEDANG DIUJI = kelompok yang untung di uji (4J SHORT kelompok terbaik). Setengah lot\n"
+           "⚠️ BELUM TERBUKTI = sudah diuji tapi hasilnya impas atau rugi. Satu baris di TIDAK DISARANKAN, lewati\n"
+           "❔ BELUM DIUJI atau JARANG = belum ada angka uji. Satu baris di TIDAK DISARANKAN, lewati\n"
+           "⚠️ MELEMAH DI LIVE = terbukti, tapi live 40 trade lebih PF di bawah 1. Setengah lot\n"
+           "⚠️ Waspada di kartu = BTC 1 jam melawan atau berita dekat, lot sudah dipotong setengah\n\n"
            "<b>Atur</b>\n"
            "/modal 1000 risk 0.5 = modal dan risiko per trade\n"
            "/bantuan semua = daftar semua perintah")
@@ -242,6 +261,13 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/kabar", "/info"):
         import qse_news as NW
         return NW.kabar()
+    if cmd in ("/viral", "/trending", "/hits", "/hot"):
+        import qse_news as NW
+        try:
+            jam = int(args[0]) if args else 24
+        except ValueError:
+            jam = 24
+        return NW.viral(max(1, min(72, jam)))
     if cmd in ("/berita", "/news"):
         import qse_news as NW
         return NW.tes()
@@ -294,7 +320,7 @@ def proses(cmds, dari_main=False):
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
-                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
+                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"

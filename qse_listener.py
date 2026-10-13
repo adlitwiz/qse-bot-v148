@@ -96,7 +96,7 @@ def _tugas_berkala():
         _st({"ichi4": t4})
         try:
             import qse_ichimoku as IC
-            pesan = IC.jalankan(baru_ok=now - t4 <= 1800)
+            pesan = IC.jalankan(baru_ok=True)          # telat (VPS sempat mati) tetap boleh asal harga belum lari, dicek di IC
             if pesan:
                 TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(pesan)])
         except Exception as ex:

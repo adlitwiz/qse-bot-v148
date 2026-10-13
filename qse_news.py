@@ -331,6 +331,9 @@ def _mandiri(sym, arah, kat, pub, now, eng):
     t = (_hasil(sym) or {}).get("tick", 0.0001 if px < 100 else 0.1)
     batas = dt.datetime.fromtimestamp(now + 7200, WIB).strftime("%d/%m %H:%M WIB")
     CT.tambah("news_mandiri", sym, arah, e, sl, t1, t2, 2.0, LABEL.get(kat, kat))
+    if not SY.TAMPIL_SEMUA and not SY.boleh_ikut("saran news", arah)[0]:
+        return (f"🟡 Sejarah berita jenis ini condong {arah} untuk {sym}. Saran entry dari berita belum terbukti, "
+                f"jadi tidak disarankan. Robot tetap mencatat hasilnya.")
     pc = lambda x: abs(x - e) / e * 100
     st = CT.statistik("news_mandiri")
     return (f"📰 <b>SARAN NEWS MANDIRI {arah} {sym}</b> (sejarah berita ini lebih kuat dari engine, engine condong {eng or '-'})\n"
@@ -359,6 +362,9 @@ def _saran(sym, arah, now, kat=None, pub=None):
                     return f"⏸️ Berita dan engine searah {arah}, tapi saran ditahan: {why}."
                 CT.tambah("news_searah", sym, arah, x["entry"], x["sl"], x["tp1"], x["tp2"],
                           max(0.5, (akhir.timestamp() - now) / 3600), f"{x['pola']} + berita")
+                if not SY.TAMPIL_SEMUA and not SY.boleh_ikut("saran news", arah)[0]:
+                    return (f"🟡 Berita dan engine 4J {sym} searah {arah}. Saran entry dari berita belum terbukti, "
+                            f"jadi tidak disarankan. Robot tetap mencatat hasilnya.")
                 rr2 = abs(x["tp2"] - x["entry"]) / (abs(x["entry"] - x["sl"]) or 1e-12)
                 return (f"✅ <b>SARAN ENTRY {arah} {sym}</b> (berita dan engine searah)\n"
                         + SY.baris_kelas(arah, skor=SY.skor_setup(r, x), wr=x.get("wr"), rr2=rr2, rapor=r.get("rapor"), jalur="saran news") + "\n"
@@ -580,3 +586,81 @@ def kabar(mundur=1, maju=10):
     rows.append("\nArah dari sejarah jenis berita (kalau ada) atau dari kata kunci judul. Berita yang benar-benar "
                 "berdampak tetap dikirim otomatis lewat NEWS PENTING.")
     return "\n".join(rows)
+
+
+STOP = set("the a an and or of to in on for with as at by from is are was be this that its it after over into amid new says "
+           "said will could may than more how why what who crypto cryptocurrency price prices market markets news today "
+           "bitcoin btc ethereum eth".split())
+
+
+def _kata(judul):
+    return {w for w in re.findall(r"[a-z0-9]{3,}", judul.lower()) if w not in STOP}
+
+
+def viral(jam=24, maks=6):
+    """Perintah /viral: berita kripto paling ramai dan paling berdampak dalam `jam` jam terakhir.
+    Ramai = dibahas banyak sumber (judul mirip digabung) dan masuk Reddit hot. Dampak = jenis berita yang
+    punya sejarah gerak BTC besar, atau kata kunci kuat. Arah dan koin yang terkena ikut ditulis."""
+    import qse_saya as SY
+    now = time.time()
+    try:
+        simbol = set(SY._peta_robot()) | {"BTCUSDT", "ETHUSDT"}
+    except Exception:
+        simbol = {"BTCUSDT", "ETHUSDT"}
+    semua = []
+    for nama, url in SUMBER:
+        for b in _ambil(nama, url):
+            if b["pub"] and b["pub"] >= now - jam * 3600:
+                semua.append(dict(b, kata=_kata(b["judul"])))
+    if not semua:
+        return "Belum ada berita kripto yang bisa diambil. Coba lagi beberapa menit lagi."
+    klaster = []
+    for b in sorted(semua, key=lambda b: b["pub"]):
+        for k in klaster:
+            u = b["kata"] | k["kata"]
+            if u and len(b["kata"] & k["kata"]) / len(u) >= 0.3:
+                k["isi"].append(b)
+                k["kata"] |= b["kata"]
+                break
+        else:
+            klaster.append(dict(kata=set(b["kata"]), isi=[b]))
+    rows = []
+    for k in klaster:
+        isi = k["isi"]
+        utama = next((b for b in isi if "reddit" not in b["sumber"].lower()), isi[0])
+        teks = " ".join(b["judul"] + " " + b["isi"][:200] for b in isi)
+        kat = kategori(teks)
+        a, kuat = _nilai(teks)
+        if kat and arah_sejarah(kat):
+            a = arah_sejarah(kat)
+        sumber = {b["sumber"] for b in isi}
+        reddit = any("reddit" in s.lower() for s in sumber)
+        d = DAMPAK.get(kat) if kat else None
+        dampak = abs(d["b24"]) if d else (2.0 if kuat == "KUAT" else 1.0 if kuat == "SEDANG" else 0.0)
+        umur = (now - max(b["pub"] for b in isi)) / 3600
+        skor = 2.0 * len(sumber) + (2 if reddit else 0) + 1.5 * dampak + max(0.0, 3 - umur / 4)
+        rows.append(dict(skor=skor, utama=utama, sumber=sumber, reddit=reddit, kat=kat, arah=a, kuat=kuat,
+                         koin=_koin(teks, simbol), umur=umur, n=len(isi)))
+    rows.sort(key=lambda z: -z["skor"])
+    out = [f"🔥 <b>BERITA VIRAL DAN BERDAMPAK</b>  ·  {jam} jam terakhir",
+           f"Dari {len(semua)} berita di {len({b['sumber'] for b in semua})} sumber, diurut dari yang paling ramai dan berdampak."]
+    for i, z in enumerate(rows[:maks], 1):
+        b = z["utama"]
+        judul = TG.e(terjemah(b["judul"])[:170])
+        if b["link"]:
+            judul = f'<a href="{html.escape(b["link"], quote=True)}">{judul}</a>'
+        arah = ("🟢 POSITIF" if z["arah"] > 0 else "🔴 NEGATIF" if z["arah"] < 0 else "⚪ NETRAL")
+        kena = ", ".join(z["koin"]) if z["koin"] else "pasar umum"
+        baris = [SY.GARIS, f"<b>{i}. {judul}</b>",
+                 f"📰 {len(z['sumber'])} sumber" + (" · ramai di Reddit" if z["reddit"] else "")
+                 + (f" · {z['umur'] * 60:.0f} menit lalu" if z["umur"] < 1 else f" · {z['umur']:.0f} jam lalu"),
+                 f"🎯 {arah} untuk {kena}" + (f" · jenis {LABEL.get(z['kat'], z['kat'])}" if z["kat"] else "")]
+        sj = sejarah_singkat(z["kat"]) if z["kat"] else ""
+        if sj:
+            baris.append(sj)
+        elif z["kuat"]:
+            baris.append(f"📚 Belum ada sejarah jenis berita ini, kekuatan kata kunci {z['kuat'].lower()}")
+        out.append("\n".join(baris))
+    out.append(SY.GARIS + "\nBerita yang benar-benar menggerakkan harga tetap dikirim otomatis lewat NEWS PENTING. "
+               "Kalender berita besar USD: /kabar")
+    return "\n".join(out)

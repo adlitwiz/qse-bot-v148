@@ -293,6 +293,9 @@ def scan(daftar, bias, posisi, info=None):
                 print(f"[MOMENTUM] {sym} {rc['arah']} ditahan: {why}")
                 break
             CT.tambah("momentum", sym, rc["arah"], rc["entry"], rc["sl"], rc["tp1"], rc["tp2"], 2.0, f"skor {sk}, {nama}")
+            if not SY.TAMPIL_SEMUA and not SY.boleh_ikut("saran momentum", rc["arah"], sk)[0]:
+                print(f"[MOMENTUM] {sym} {rc['arah']} dicatat, tidak dikirim: jalur momentum belum terbukti")
+                break
             e, sl, t1, t2 = rc["entry"], rc["sl"], rc["tp1"], rc["tp2"]
             pc = lambda x: abs(x - e) / e * 100
             batas = time.strftime("%d/%m %H:%M WIB", time.gmtime(now + 7200 + 7 * 3600))
