@@ -1590,6 +1590,13 @@ def _blok_ramal(rb):
             f"Kesimpulan: {arah}. Info saja, tidak dipakai menahan sinyal karena di uji 112 koin malah menurunkan PF")
 
 
+def _tanda(r, s):
+    """Tanda bukti singkat untuk baris ringkasan."""
+    j = "saran 1J" if r.get("tf") == "60" else "saran utama"
+    tk, ik, lot = SY.tingkat_bukti(j, s["arah"], s.get("skor"))[:3]
+    return f"{ik} {tk} lot {lot}"
+
+
 def _kelas(r, x, tambahan=None, konteks=True):
     risk = abs(x["entry"] - x["sl"]) or 1e-12
     skor = x.get("skor")
@@ -1598,9 +1605,11 @@ def _kelas(r, x, tambahan=None, konteks=True):
             skor = _skor(r, x, SY.ramal_btc4())
         except Exception:
             skor = None
+    jalur = ("saran cadangan 2" if x.get("cad2") else "saran cadangan" if x.get("cadangan") else "saran fib" if x.get("fib")
+             else "saran siklus" if x.get("siklus") else "saran 1J" if r.get("tf") == "60" else "saran utama")
     return SY.baris_kelas(x["arah"], skor=skor, wr=x.get("wr", r.get("wr")), rr2=abs(x["tp2"] - x["entry"]) / risk,
                           rapor=r.get("rapor"), golden=bool(x.get("golden")), longgar=bool(x.get("longgar")),
-                          tambahan=tambahan, konteks=konteks)
+                          tambahan=tambahan, konteks=konteks, jalur=jalur)
 
 
 def _sisip_kelas(teks, r, x, tambahan=None):
@@ -1878,7 +1887,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         rows.append(f"Urutan = prioritas. Slot posisi tersisa {sisa_slot} dari {MD.lihat()['posisi']}"
                     + (f" | ⛔ {mst['alasan']}" if mst["rem"] else ""))
         rows += [f"{IKON.get(s['arah'], '')} {TG.e(r['symbol'])} {s['arah']} | {s['order']} | mutu {s['mutu']} | "
-                 f"skor {s.get('skor', 0)} | konfluensi {_konfluensi(r, s['arah'], s['zona_emas'])[0]}/6"
+                 f"skor {s.get('skor', 0)} | konfluensi {_konfluensi(r, s['arah'], s['zona_emas'])[0]}/6 | "
+                 f"{_tanda(r, s)}"
                  + (" | 🌟 GOLDEN" if s["golden"] else "") for r, s in sig]
         rows += [f"🟡 {TG.e(r['symbol'])} {x['arah']} | {x['order']} | cadangan | konf {x['konf']}/8" for r, x, _ in cad]
         rows += [f"🔵 {TG.e(r['symbol'])} {x['arah']} | {x['order']} | siklus | teruji {x['uji']}" for r, x, _ in sik]

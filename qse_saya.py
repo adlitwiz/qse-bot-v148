@@ -292,7 +292,7 @@ def btc_melawan(arah):
     return []
 
 
-def kelas_setup(arah, skor=None, wr=None, rr2=None, rapor=None, golden=False, longgar=False, tambahan=None):
+def kelas_setup(arah, skor=None, wr=None, rr2=None, rapor=None, golden=False, longgar=False, tambahan=None, jalur=None):
     """Satu label untuk tiap saran sebelum entry: WAJIB ENTRY, AMAN BANGET, HIGH RISK HIGH RETURN, atau BERISIKO.
     Return (label, ikon, alasan, lot)."""
     risiko = []
@@ -304,14 +304,19 @@ def kelas_setup(arah, skor=None, wr=None, rr2=None, rapor=None, golden=False, lo
         risiko.append(f"berita besar {bd['judul']} dalam 3 jam")
     if rapor and rapor not in ("A", "B", "A+"):
         risiko.append(f"rapor robot {rapor}")
-    if skor is not None and skor < 55:
-        risiko.append(f"skor setup {skor}")
+    if skor is not None and skor < 55 and jalur != "saran utama":
+        risiko.append(f"skor setup {skor}")          # saran 4J: uji 5 tahun, skor 55 ke bawah justru lebih baik
     risiko += tambahan or []
     if risiko:
         return "BERISIKO", "🟠", "; ".join(risiko), "0.25x sampai 0.5x lot, atau lewati"
     if wr is not None and wr < 45 and (rr2 or 0) >= 2:
         return ("HIGH RISK HIGH RETURN", "🎲", f"WR sekitar {wr:.0f}%, target sampai {rr2:.1f}R, sering rugi kecil dan sesekali untung besar",
-                "0.5x lot, siap rugi beruntun")
+                "1x lot, siap rugi beruntun" if jalur and tingkat_bukti(jalur, arah, skor)[0].startswith("TERBUKTI")
+                else "0.5x lot, siap rugi beruntun")
+    if jalur and tingkat_bukti(jalur, arah, skor)[0] != "TERBUKTI" and (skor or 0) >= 60:
+        # uji 5 tahun 108 koin: label AMAN BANGET lama di saran 4J WR 22%, skor tinggi tidak menjamin menang
+        return ("BERISIKO", "🟠", f"skor {skor} tinggi, tapi jalur ini belum terbukti di backtest dan skor tinggi tidak menaikkan WR",
+                tingkat_bukti(jalur, arah, skor)[2])
     if (skor or 0) >= 70 and (rapor in ("A", "A+") or golden) and (wr or 0) >= 55:
         return ("WAJIB ENTRY", "🔥", f"skor {skor}, rapor {rapor}{', golden moment' if golden else ''}, WR pola {wr:.0f}%, "
                 f"BTC dan berita aman", "1x lot normal, tetap pasang SL")
@@ -428,7 +433,66 @@ def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp=""
 def baris_kelas(arah, konteks=True, **kw):
     lb, ik, why, lot = kelas_setup(arah, **kw)
     import html
-    return (f"{baris_konteks()}\n" if konteks else "") + f"{ik} <b>PENILAIAN: {lb}</b> | {html.escape(why)} | lot {lot}"
+    out = (f"{baris_konteks()}\n" if konteks else "") + f"{ik} <b>PENILAIAN: {lb}</b> | {html.escape(why)} | lot {lot}"
+    if kw.get("jalur"):
+        out += "\n" + baris_bukti(kw["jalur"], arah, kw.get("skor"))
+    return out
+
+
+# ---------------- tanda bukti tiap jalur (hasil backtest dengan aturan robot) ----------------
+# Ichimoku: aturan qse_ichimoku persis, 30 koin perp + funding, Jul 2021 - Sep 2026, batas 8 posisi.
+# Saran 4J: mesin dijalankan ulang tiap candle 4J + saringan fix profit + gerbang robot, 108 koin perp, Jul 2021 - Okt 2026.
+BUKTI = {
+    "saran ichimoku": ("TERBUKTI", "✅", "1x", "backtest 5 tahun 30 koin perp: 3358 trade, PF 1.33, positif 18 dari 21 kuartal, "
+                       "untung di pasar naik, turun, dan sideways"),
+    "saran utama": ("BELUM TERBUKTI", "⚠️", "0.25x", "backtest 5 tahun 108 koin dengan semua syarat robot: 83 trade, PF 0.70"),
+}
+BELUM_UJI = ("BELUM DIUJI", "❔", "0.25x", "belum diuji ulang dengan data perp 5 tahun dan aturan robot lengkap")
+CT_KEY = {"saran ichimoku": "ichimoku", "saran momentum": "momentum"}
+NAIK_N, NAIK_PF = 30, 1.2          # syarat naik jadi TERBUKTI dari hasil live
+
+
+def _live_jalur(jalur):
+    """Hasil live jalur ini: trade kamu (/entry) atau catatan jalur robot. Return (n, wr, pf, net) atau None."""
+    rs = [c["result_r"] for c in _selesai(3650) if c.get("jalur", "manual") == jalur]
+    if not rs and jalur in CT_KEY:
+        try:
+            import qse_catat as CT
+            s = CT.statistik(CT_KEY[jalur])
+            return (s["n"], s["wr"], s["pf"], s["net"]) if s["n"] else None
+        except Exception:
+            return None
+    if not rs:
+        return None
+    pos, neg = sum(r for r in rs if r > 0), -sum(r for r in rs if r < 0)
+    return len(rs), sum(1 for r in rs if r > 0) / len(rs) * 100, (pos / neg if neg else 9.9), sum(rs)
+
+
+def tingkat_bukti(jalur, arah=None, skor=None):
+    """Return (tingkat, ikon, lot, alasan). Jalur yang belum terbukti naik jadi TERBUKTI kalau live >= 30 trade dan PF >= 1.2."""
+    tk, ik, lot, why = BUKTI.get(jalur, BELUM_UJI)
+    if jalur == "saran utama" and arah:
+        if arah == "LONG":
+            why += ". LONG paling jelek: PF 0.43 dari 35 trade"
+        elif skor is not None and skor <= 55:
+            tk, ik, lot = "SEDANG DIUJI", "🧪", "0.5x"
+            why += ". SHORT skor 55 ke bawah satu satunya kelompok positif: PF 1.31 dari 39 trade (temuan, belum diuji ulang)"
+        else:
+            why += ". SHORT skor di atas 55: PF 0.46 dari 9 trade"
+    lv = _live_jalur(jalur)
+    if lv and tk != "TERBUKTI" and lv[0] >= NAIK_N and lv[2] >= NAIK_PF:
+        tk, ik, lot = "TERBUKTI LIVE", "✅", "1x"
+    elif lv and tk == "TERBUKTI" and lv[0] >= 40 and lv[2] < 1.0:
+        tk, ik, lot = "MELEMAH DI LIVE", "⚠️", "0.5x"
+    return tk, ik, lot, why, lv
+
+
+def baris_bukti(jalur, arah=None, skor=None):
+    import html
+    tk, ik, lot, why, lv = tingkat_bukti(jalur, arah, skor)
+    live = (f" | live {lv[0]} trade, WR {lv[1]:.0f}%, PF {lv[2]:.2f}, {lv[3]:+.1f}R" if lv else " | live belum ada trade")
+    syarat = "" if tk.startswith("TERBUKTI") else f" | naik jadi TERBUKTI kalau live {NAIK_N} trade dengan PF {NAIK_PF}"
+    return f"{ik} <b>BUKTI {html.escape(jalur.upper())}: {tk}</b> | {html.escape(why)}{live}{syarat} | lot maks {lot}"
 
 
 # ---------------- konsultasi ----------------
@@ -2458,7 +2522,8 @@ def sentuh_fib(min_skor=70):
             f"{'🟢' if L else '🔴'} <b>{sym} {arah}</b> | skor setup {skor}/100, {kelas}\n"
             f"Harga baru naik menyentuh fib 0.618 di {fp(e, t)}, ini sentuhan pertama di kaki fib ini. ")
         out[-1] = out[-1].replace("\n", "\n" + baris_kelas(arah, skor=skor, wr=bt.get("wr"), rr2=abs(tp2 - e) / risk,
-                                                      rapor=r.get("rapor"), tambahan=belum[:2] if belum else None) + "\n", 1)
+                                                      rapor=r.get("rapor"), tambahan=belum[:2] if belum else None,
+                                                      jalur="saran fib") + "\n", 1)
         out[-1] += (f"Titik 0 ada di {'atas' if L else 'bawah'} ({fp(lv['0.0'], t)}), jadi harapannya harga "
                     f"{'mantul naik' if L else 'mantul turun'} lagi ke sana.\n"
                     f"<pre>Entry {fp(e, t)}\nSL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%\n"

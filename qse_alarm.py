@@ -201,7 +201,7 @@ def _pesan_gzh(a, cl):
         return (f"⏸️ <b>GZH {a['sym']} {arah}</b>: candle 4J tutup memantul di {TG.fp(cl, t)}, tapi belum semua searah: "
                 f"{TG.e('; '.join(tahan))}. Belum jadi sinyal, jangan entry dulu.")
     return (f"✅ <b>GZH TERKONFIRMASI {a['sym']} {'LONG' if L else 'SHORT'}</b>\n"
-            + SY.baris_kelas(arah, rr2=abs(a["tp2"] - cl) / risk, wr=a.get("wr"), skor=a.get("skor")) + "\n"
+            + SY.baris_kelas(arah, rr2=abs(a["tp2"] - cl) / risk, wr=a.get("wr"), skor=a.get("skor"), jalur="saran GZH") + "\n"
             f"Candle 4J tutup {'di atas' if L else 'di bawah'} 0.618 ({TG.fp(a['harga'], t)}). Ini entry yang dipakai backtest.\n"
             + SY.blok_salin(cl, a["sl"], a["tp1"], a["tp2"], "MARKET", t) + "\n"
             f"Masuk sekarang. Di TP1 tutup separuh, SL pindah ke entry.")
