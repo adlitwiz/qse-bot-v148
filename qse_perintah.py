@@ -99,6 +99,7 @@ BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
            "/jalur = hasil live saran momentum, news searah, dan news mandiri\n"
            "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n"
            "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n"
+           "/ob = jalur Order Block + Volume 4J: posisi, hasil, dan hasil uji 6 tahun\n"
            "/arah SOL = tren 15m sampai 1W, tanggal yang sama tahun lalu, pola kembar, dan riwayat pola robot di koin ini\n\n"
            "<b>Info</b>\n"
            "/kabar = berita 1 jam terakhir dan kalender berita besar USD\n"
@@ -111,7 +112,7 @@ BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
            "/status = trade kamu, floating, dan WR\n"
            "/bantuan = daftar perintah ini\n\n"
            "<b>Arti tanda BUKTI di tiap sinyal</b>\nSinyal yang tampil lengkap = yang bisa diikuti. Sisanya tetap dicatat robot dan naik sendiri kalau terbukti di live.\n"
-           "✅ TERBUKTI = untung di backtest 5 tahun (Ichimoku). Ikuti semua, lot penuh\n"
+           "✅ TERBUKTI = untung di backtest 5 tahun (Ichimoku, Order Block + Volume). Ikuti semua, lot penuh\n"
            "✅ TERBUKTI LIVE = jalur sudah 30 trade live dengan PF 1.2 ke atas. Lot penuh\n"
            "🧪 SEDANG DIUJI = kelompok yang untung di uji (4J SHORT kelompok terbaik). Setengah lot\n"
            "⚠️ BELUM TERBUKTI = sudah diuji tapi hasilnya impas atau rugi. Satu baris di TIDAK DISARANKAN, lewati\n"
@@ -140,7 +141,7 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/tunggu SOL atas 150 4j = kabari saat candle 4J TUTUP di atas 150 (bawah juga bisa, TF 15m, 1j, 4j, 1d)\n"
            "/alert SOL 150 = kabari saat harga menyentuh 150\n\n"
            "<b>Arti tanda BUKTI di tiap sinyal</b>\nSinyal yang tampil lengkap = yang bisa diikuti. Sisanya tetap dicatat robot dan naik sendiri kalau terbukti di live.\n"
-           "✅ TERBUKTI = untung di backtest 5 tahun (Ichimoku). Ikuti semua, lot penuh\n"
+           "✅ TERBUKTI = untung di backtest 5 tahun (Ichimoku, Order Block + Volume). Ikuti semua, lot penuh\n"
            "✅ TERBUKTI LIVE = jalur sudah 30 trade live dengan PF 1.2 ke atas. Lot penuh\n"
            "🧪 SEDANG DIUJI = kelompok yang untung di uji (4J SHORT kelompok terbaik). Setengah lot\n"
            "⚠️ BELUM TERBUKTI = sudah diuji tapi hasilnya impas atau rugi. Satu baris di TIDAK DISARANKAN, lewati\n"
@@ -241,6 +242,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/arah", "/tren"):
         import qse_arah as AR
         return AR.teks(args)
+    if cmd in ("/ob", "/orderblock", "/smc"):
+        import qse_ob as OB
+        return OB.teks()
     if cmd in ("/ichimoku", "/ichi"):
         import qse_ichimoku as IC
         return IC.teks()
@@ -320,7 +324,7 @@ def proses(cmds, dari_main=False):
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
-                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
+                    "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ob": "⭐", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"

@@ -196,6 +196,13 @@ def asal_saran(sym, arah, harga, r=None):
     except Exception:
         pass
     try:
+        import qse_ob as OB
+        for it in OB.lihat()["open"].values():
+            if it["sym"] == sym and arah == "LONG":
+                return dict(jalur="saran orderblock", pola="Order Block + Volume", skor=None)
+    except Exception:
+        pass
+    try:
         with open(os.path.join(STATE_DIR, "sentuh_fib.json")) as f:
             g = json.load(f).get("sinyal", {}).get(sym)
         if g and g["arah"] == arah and time.time() - g["t"] <= 2 * 86400 and dekat(g["entry"], 1.0):
@@ -455,9 +462,11 @@ BUKTI = {
     "saran fib": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot: 6 trade, WR 33%, PF 0.77, -0.9R"),
     "saran siklus": ("JARANG", "❔", "0.25x", "uji 2 tahun 30 koin: tidak ada sinyal yang lolos semua syarat"),
     "saran cadangan 2": ("JARANG", "❔", "0.25x", "uji 2 tahun 30 koin: tidak ada sinyal yang lolos semua syarat"),
+    "saran orderblock": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin perp, LONG, maks 8 posisi: 969 trade, PF 1.45, "
+                         "uji ulang 2024-2026 dengan aturan yang dipilih dari 2020-2023: PF 1.26"),
 }
 BELUM_UJI = ("BELUM DIUJI", "❔", "0.25x", "belum diuji ulang dengan data perp 5 tahun dan aturan robot lengkap")
-CT_KEY = {"saran ichimoku": "ichimoku", "saran momentum": "momentum", "saran news": "news_searah"}
+CT_KEY = {"saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran momentum": "momentum", "saran news": "news_searah"}
 NAIK_N, NAIK_PF = 30, 1.2          # syarat naik jadi TERBUKTI dari hasil live
 
 
@@ -527,7 +536,8 @@ TAMPIL_SEMUA = os.environ.get("QSE_TAMPIL_SEMUA", "0") == "1"      # 1 = sinyal 
 GARIS = "━━━━━━━━━━━━━━━━━━"
 NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadangan": "Saran cadangan",
               "saran cadangan 2": "Pola A/B pilihan robot", "saran fib": "Golden zone 0.618", "saran siklus": "Siklus", "saran GZH": "GZH", "saran momentum": "Momentum",
-              "saran news": "News", "saran ichimoku": "Ichimoku"}
+              "saran news": "News", "saran ichimoku": "Ichimoku",
+              "saran orderblock": "Order Block + Volume"}
 
 
 def boleh_ikut(jalur, arah=None, skor=None):
@@ -542,6 +552,8 @@ def bukti_pendek(jalur, arah=None, skor=None):
         return f"live {lv[0]} trade, WR {lv[1]:.0f}%, PF {lv[2]:.2f}"
     if jalur == "saran ichimoku":
         return "uji 5 tahun 111 koin: 3084 trade, PF 1.29, untung tiap tahun"
+    if jalur == "saran orderblock":
+        return "uji 6 tahun 111 koin: 969 trade, PF 1.45, uji ulang 2024-2026 PF 1.26"
     if tk == "SEDANG DIUJI":
         return "SHORT kelompok terbaik: PF 1.31 di uji 5 tahun, WR 86% di uji 2 tahun"
     if jalur == "saran utama" and arah == "LONG":
@@ -905,6 +917,11 @@ def _sinyal_dari_harga(entry, sl=None):
     try:
         import qse_ichimoku as IC
         calon += [(v["sym"], v["arah"], v.get("sl0")) for v in IC.lihat()["open"].values() if cocok(v.get("entry"))]
+    except Exception:
+        pass
+    try:
+        import qse_ob as OB
+        calon += [(v["sym"], "LONG", v.get("sl")) for v in OB.lihat()["open"].values() if cocok(v.get("entry"))]
     except Exception:
         pass
     for r in _peta_robot().values():
@@ -1540,6 +1557,14 @@ def pantau():
                 ev += _trailing(it, h1, px)
             ik = {"TERISI": "📥", "TP1": "💰", "TP2": "🏆", "SL": "🛑", "BE": "⚖️", "INFO": "⚠️", "TRAIL": "📈"}
             for e, txt in ev:
+                if e == "SL":
+                    try:
+                        import qse_ob as OB
+                        OB.antri_sl(it["sym"], it["arah"], it["entry"], it["sl"], it.get("fill_ts") or it.get("created_ts"),
+                                    "trade kamu")
+                        txt += ". Analisa volume dikirim setelah candle 4J ini tutup"
+                    except Exception as ex:
+                        print("[WARN] antri SL", ex)
                 pesan.append(f"{ik.get(e, '•')} <b>{it['sym']} {it['arah']}</b>\n↳ {txt} | entry {fp(it['entry'], it['tick'])}")
             if it["status"] == "SELESAI":
                 d["closed"].append(d["open"].pop(k))
@@ -2253,6 +2278,12 @@ def arah_aktif(sym):
             import qse_ichimoku as IC
             for v in IC.lihat()["open"].values():
                 tambah(v["sym"], v["arah"], "Ichimoku")
+        except Exception:
+            pass
+        try:
+            import qse_ob as OB
+            for v in OB.lihat()["open"].values():
+                tambah(v["sym"], "LONG", "Order Block")
         except Exception:
             pass
         try:

@@ -94,20 +94,34 @@ def _tugas_berkala():
     if now - t4 >= 150 and st.get("ichi4", 0) < t4:
         # jalur Ichimoku tren: kelola trailing SL dan cari sinyal baru sekali tiap candle 4J tutup
         _st({"ichi4": t4})
+        baru = []
         try:
             import qse_ichimoku as IC
             pesan = IC.jalankan(baru_ok=True)          # telat (VPS sempat mati) tetap boleh asal harga belum lari, dicek di IC
             if pesan:
-                baru = [m for m in pesan if "BISA DIIKUTI" in m]
-                lain = [m for m in pesan if m not in baru]
+                baru += [m for m in pesan if "BISA DIIKUTI" in m]
+                lain = [m for m in pesan if "BISA DIIKUTI" not in m]
                 if lain:
                     TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(lain)])
-                if baru:
-                    ids = TG.send([f"📌 <b>QSE v148 | SINYAL ICHIMOKU ({len(baru)})</b>\nJalur terbukti, disematkan paling atas.\n\n"
-                                   + "\n\n".join(baru)])
-                    _pin_ichi(ids)
         except Exception as ex:
             print("[WARN] ichimoku", ex)
+        try:
+            import qse_ob as OB
+            pesan = OB.jalankan(baru_ok=True)          # jalur Order Block + Volume, aturan sama dengan backtest 6 tahun
+            if pesan:
+                baru += [m for m in pesan if "BISA DIIKUTI" in m]
+                lain = [m for m in pesan if "BISA DIIKUTI" not in m]
+                if lain:
+                    TG.send(["⭐ <b>QSE v148 | ORDER BLOCK 4J</b>\n\n" + "\n\n".join(lain)])
+            sl_v = OB.proses_sl()                      # analisa volume SL setelah candle 4J tempat SL kena sudah tutup
+            if sl_v:
+                TG.send(["📊 <b>QSE v148 | ANALISA VOLUME SL</b>\n\n" + "\n\n".join(sl_v)])
+        except Exception as ex:
+            print("[WARN] orderblock", ex)
+        if baru:
+            ids = TG.send([f"📌 <b>QSE v148 | SINYAL TERBUKTI ({len(baru)})</b>\nIchimoku dan Order Block + Volume, "
+                           f"jalur yang lolos uji 5 tahun lebih. Disematkan paling atas.\n\n" + "\n\n".join(baru)])
+            _pin_ichi(ids)
     hari = int(now // 86400) * 86400
     if now - hari >= 300 and st.get("arah_hari", 0) < hari and now - hari <= 6 * 3600:
         # 07:05 WIB, candle harian baru tutup: kirim arah pasar otomatis (BTC, ETH, posisi kamu, berita hari ini)

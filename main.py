@@ -1492,6 +1492,16 @@ def scan(now, run4, tfs):
     fib = _catat_jalur(led, _fib_saran(results, sudah, led, tickers, ctx), "fib_n")
     sudah |= {r["symbol"] for r, _, _ in fib}
     cad2 = _catat_jalur(led, _cadangan2(results, sudah, led, tickers, ctx), "cad2_n")
+    for ev, it in events:
+        if ev != "SL":
+            continue
+        try:
+            jl = SY._jalur_led(it)
+            if SY.boleh_ikut(jl, it.get("arah"), it.get("skor"))[0]:        # hanya saran yang memang dikirim
+                import qse_ob as OB
+                OB.antri_sl(it["sym"], it["arah"], it["entry"], it["sl"], it.get("fill_ts"), SY.NAMA_JALUR.get(jl, jl))
+        except Exception as ex:
+            print("[WARN] antri SL saran", ex)
     events = [(ev, it) for ev, it in events if ev == "BATAL"]      # hanya saran yang dibatalkan yang dikabarkan
     for tf in tfs:
         blocks, sinyal, ada = _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs, rb, ctx, cad, sik,
@@ -1846,6 +1856,11 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             sinyal_rows.append("Ichimoku: " + IC.status_singkat())
         except Exception as ex:
             print("[WARN] status ichimoku", ex)
+        try:
+            import qse_ob as OB
+            sinyal_rows.append("Order Block: " + OB.status_singkat())
+        except Exception as ex:
+            print("[WARN] status orderblock", ex)
     head.append(GARIS)
     head += ["🎯 <b>SINYAL</b>"] + [f"• {z}" for z in sinyal_rows] + ["", GARIS]
     if pasar:
@@ -1924,6 +1939,14 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                             f"dan disematkan paling atas.\n{TG.e(IC.status_singkat())}")
             except Exception as ex:
                 print("[WARN] status ichimoku", ex)
+            try:
+                import qse_ob as OB
+                blok.append(f"{GARIS}\n🔹 <b>ORDER BLOCK + VOLUME</b>  ·  ✅ TERBUKTI\n"
+                            f"Order block bullish yang dibentuk volume besar, hanya LONG. Sinyal baru dikirim terpisah "
+                            f"bersama Ichimoku dan disematkan. Yang masih terjangkau masuk daftar KOIN UNGGULAN.\n"
+                            f"{TG.e(OB.status_singkat())}")
+            except Exception as ex:
+                print("[WARN] status orderblock", ex)
             ok_g, tk_g, ik_g, _ = SY.boleh_ikut("saran GZH", "LONG")
             blok.append(f"{GARIS}\n🔹 <b>GZH (golden zone hunter)</b>  ·  {ik_g} {tk_g}\nDipantau tiap menit saat harga "
                         f"menyentuh 0.618. " + ("Dikirim terpisah saat ada." if ok_g else
@@ -1958,7 +1981,12 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         out.append("\n".join(rows))
     if tf == "240":
         ung = _unggulan(rs, {r["symbol"] for r, _ in sig}, maks=8)
-        out.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN ({len(ung)})</b>\nRapor A+/A/B atau golden moment yang sarannya masih terjangkau dari harga sekarang."
+        try:
+            import qse_ob as OB
+            ung = OB.baris_unggulan({r["symbol"]: r.get("live") or r.get("close") for r in rs if r.get("tf", "240") == "240"} or None) + ung
+        except Exception as ex:
+            print("[WARN] unggulan order block", ex)
+        out.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN ({len(ung)})</b>\nOrder Block + Volume yang masih terjangkau, lalu rapor A+/A/B atau golden moment yang sarannya masih terjangkau dari harga sekarang."
                    + ("\n\n" + "\n\n".join(ung) if ung else "\nBelum ada koin unggulan yang entry-nya masih terjangkau."))
     out += _pantauan(rs, sig +[(r, x) for r, x, _ in cad] + [(r, x) for r, x, _ in sik], kode)
     rendah = {}

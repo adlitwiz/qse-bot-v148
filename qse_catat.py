@@ -12,11 +12,12 @@ from config import STATE_DIR, BYBIT_URL
 
 FILE = os.path.join(STATE_DIR, "catat_jalur.json")
 NAMA = {"momentum": "Momentum 15/30 menit", "news_searah": "News searah engine", "news_mandiri": "News mandiri (sejarah kuat)",
-        "ichimoku": "Ichimoku tren 4J (trailing)"}
+        "ichimoku": "Ichimoku tren 4J (trailing)",
+        "orderblock": "Order Block + Volume 4J"}
 BIAYA = 0.08
 TAHAN_JAM = 24
 MIN_N, MIN_PF = 15, 1.0
-MIN_N_JALUR = {"ichimoku": 40}     # jalur tren WR rendah butuh sampel lebih banyak sebelum dinilai
+MIN_N_JALUR = {"ichimoku": 40, "orderblock": 40}     # jalur tren WR rendah butuh sampel lebih banyak sebelum dinilai
 
 
 def _ubah(fn):
@@ -162,6 +163,12 @@ def teks():
             try:
                 import qse_ichimoku as IC
                 buka = len(IC.lihat()["open"])
+            except Exception:
+                pass
+        if j == "orderblock":
+            try:
+                import qse_ob as OB
+                buka = len(OB.lihat()["open"])
             except Exception:
                 pass
         batal = sum(1 for it in d["closed"] if it["jalur"] == j and it.get("status") == "BATAL")
