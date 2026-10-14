@@ -334,6 +334,29 @@ def jalankan(baru_ok=True):
     return out
 
 
+def status_singkat():
+    """Ringkas status jalur Ichimoku untuk laporan 4 jam: slot posisi robot, sinyal terakhir, rem, dan jeda berita."""
+    import qse_catat as CT
+    d = lihat()
+    n = len(d["open"])
+    rows = []
+    if CT.mati("ichimoku"):
+        rows.append("⛔ jalur dihentikan karena hasil live jelek")
+    rows.append(f"posisi robot {n}/{MAKS_BUKA}" + ("  ·  slot penuh, sinyal baru keluar setelah ada posisi selesai"
+                                                    if n >= MAKS_BUKA else ""))
+    semua = list(d["open"].values()) + d["closed"][-50:]
+    if semua:
+        x = max(semua, key=lambda z: z.get("t", 0))
+        rows.append(f"sinyal terakhir {x['sym']} {x['arah']} {time.strftime('%d/%m %H:%M', time.gmtime(x.get('t', 0) + 7 * 3600))} WIB")
+    else:
+        rows.append("belum pernah ada sinyal tercatat")
+    rm = rem()
+    if rm:
+        rows.append(f"rem drawdown aktif ({rm}), lot setengah")
+    rows.append(f"dicek tiap candle 4J tutup, hanya {TOP_LIKUID} koin paling likuid")
+    return "  ·  ".join(rows)
+
+
 def teks():
     d = lihat()
     rows = [f"<b>Jalur Ichimoku tren 4J</b>\nBacktest: {BT}"]

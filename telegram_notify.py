@@ -40,7 +40,7 @@ _RAPAT = ("↳", "━", "SL:", "TP1:", "TP2:", "TP:")
 
 GARIS_PANJANG = "━━━━━━━━━━━━━━━━━━"
 JUDUL_BAGIAN = ("💡", "🛠", "⚠️ <b>", "👍", "📏", "🧭", "⏰ <b>", "🔎", "🌐 <b>", "❓", "📐", "✅ <b>BISA", "🙈", "📋", "🗂",
-                "📈 <b>", "🛡")
+                "📈 <b>", "🛡", "🎯 <b>", "🟢 <b>", "🔴 <b>", "🟡 <b>", "🔵 <b>", "🟠 <b>", "Rapor A/B lainnya", "<b>", "🔹", "⚪", "📊 <b>", "🤖 <b>", "⛔")
 
 
 def _rapi_struktur(b):
@@ -57,8 +57,9 @@ def _rapi_struktur(b):
 
 
 def _rapi(b):
-    if GARIS_PANJANG in b:
-        return _rapi_struktur(b)
+    # semua pesan memakai spasi terstruktur: baris kosong hanya sebelum judul bagian dan sebelum item baru
+    # (baris berawalan ikon arah atau nomor tebal), poin dan baris lanjutan tetap rapat
+    return _rapi_struktur(b)
     """Beri baris kosong di antara kalimat supaya enak dibaca. Baris lanjutan (↳), garis, dan SL/TP tetap
     menempel ke baris atasnya. Isi <code>/<pre> yang memanjang beberapa baris tidak diubah."""
     out, dalam = [], 0

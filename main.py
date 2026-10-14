@@ -1833,7 +1833,21 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     scan.append(f"Corong saran: EKSEKUSI di DASBOR {len({r['symbol'] for r, _ in eks})} koin  ·  mutu A/B "
                 f"{len({r['symbol'] for r, _ in eks_ab})}  ·  rapor A/B {len({r['symbol'] for r, _ in eks_rp})}  ·  "
                 f"lolos semua {len(sig)}")
+    tahan_txt = (f"ditahan jeda berita {TG.e(ctx['jeda']['judul'])}" if ctx and ctx.get("jeda") else
+                 f"ditahan karena pasar bergejolak sampai {BR.jam_wib(ctx['tahan'])}" if ctx and ctx.get("tahan") else "")
+    ikut_n = sum(1 for r, s in sig if SY.boleh_ikut("saran 1J" if r["tf"] == "60" else "saran utama", s["arah"], s.get("skor"))[0])
+    sinyal_rows = [f"Sinyal valid {kode}: {ikut_n}" + (f"  ·  {tahan_txt}" if tahan_txt else
+                   ("" if ikut_n else "  ·  belum ada setup yang lolos semua syarat"))]
+    if len(sig) - ikut_n > 0:
+        sinyal_rows.append(f"Tidak disarankan: {len(sig) - ikut_n} (belum terbukti, satu baris di bawah)")
+    if tf == "240":
+        try:
+            import qse_ichimoku as IC
+            sinyal_rows.append("Ichimoku: " + IC.status_singkat())
+        except Exception as ex:
+            print("[WARN] status ichimoku", ex)
     head.append(GARIS)
+    head += ["🎯 <b>SINYAL</b>"] + [f"• {z}" for z in sinyal_rows] + ["", GARIS]
     if pasar:
         head += ["🌐 <b>PASAR</b>"] + [f"• {z}" for z in pasar] + [""]
     head += ["🔎 <b>HASIL SCAN</b>"] + [f"• {z}" for z in scan]
@@ -1875,20 +1889,54 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     ikut = [z for z in semua if SY.boleh_ikut(z[0], z[2]["arah"], z[2].get("skor"))[0]]
     tolak = [z for z in semua if z not in ikut]
     if ikut:
-        rows = [GARIS, "📋 <b>RINGKAS</b>"]
+        rows = [GARIS, "📋 <b>RINGKAS YANG BISA DIIKUTI</b>"]
         for jl, r, x, _, _ in ikut:
             ok, tk, ik, lot = SY.boleh_ikut(jl, x["arah"], x.get("skor"))
             rows.append(f"{IKON.get(x['arah'], '')} {TG.e(r['symbol'])} {x['arah']}  ·  {SY.NAMA_JALUR.get(jl, jl)}  ·  "
                         f"{x['order']}  ·  {ik} lot {lot}")
         so.append("\n".join(rows))
-        so.append(f"✅ <b>BISA DIIKUTI ({len(ikut)})</b>")
-        so += [f(i, r, x, st, led) for i, (jl, r, x, st, f) in enumerate(ikut, 1)]
-    if tolak:
-        so.append(f"{SY.GARIS}\n🙈 <b>TIDAK DISARANKAN ({len(tolak)})</b>\nTetap dicatat robot untuk diuji. "
-                  f"Kalau jalurnya terbukti di live, tandanya naik sendiri dan sinyalnya tampil lengkap.\n\n"
-                  + "\n".join(f(i, r, x, st, led) for i, (jl, r, x, st, f) in enumerate(tolak, 1)))
+    # dipisah menurut sumber: DASBOR (mesin QSE, sama dengan TradingView) dan robot Telegram
+    BAGIAN = [("📊", "DARI DASBOR", [
+        ("saran utama", "SARAN VALID 4J", "saran EKSEKUSI di DASBOR yang lolos semua saringan robot"),
+        ("saran 1J", "SARAN VALID 1J", "saran EKSEKUSI di chart 1 jam, searah bias 4J"),
+        ("saran cadangan", "SARAN CADANGAN", "zona emas searah bias, skill tambahan minimal 5 dari 8"),
+        ("saran fib", "GOLDEN ZONE (fib 0.618-0.65)", "harga di golden pocket, skill dan candle konfirmasi searah"),
+        ("saran cadangan 2", "POLA RAPOR A/B, DIPILIHKAN ROBOT", "pola mutu A/B yang di DASBOR masih TAHAN, entry dipilih robot")]),
+        ("🤖", "DARI ROBOT TELEGRAM", [
+        ("saran siklus", "SIKLUS POLA KEMBAR", "pola harga mirip di sejarah koin")])]
+    kosong = []
+    for ikon_b, judul_b, isi_b in BAGIAN:
+        blok = [f"{GARIS}\n{ikon_b} <b>{judul_b}</b>"]
+        for jl, nama_j, ket in isi_b:
+            if (tf == "60") != (jl == "saran 1J"):
+                continue          # saran 1J punya pesan sendiri tiap jam
+            item = [z for z in semua if z[0] == jl]
+            if not item:
+                kosong.append(SY.NAMA_JALUR.get(jl, jl))
+                continue
+            ok_n = sum(1 for z in item if z in ikut)
+            blok.append(f"{GARIS}\n🔹 <b>{nama_j} ({len(item)})</b>  ·  bisa diikuti {ok_n}\n<i>{ket}</i>")
+            blok += [f(i, r, x, st, led) for i, (j_, r, x, st, f) in enumerate(item, 1)]
+        if judul_b == "DARI ROBOT TELEGRAM" and tf == "240":
+            try:
+                import qse_ichimoku as IC
+                blok.append(f"{GARIS}\n🔹 <b>ICHIMOKU</b>  ·  ✅ TERBUKTI\nSinyal dikirim terpisah sekitar 3 menit setelah laporan "
+                            f"dan disematkan paling atas.\n{TG.e(IC.status_singkat())}")
+            except Exception as ex:
+                print("[WARN] status ichimoku", ex)
+            ok_g, tk_g, ik_g, _ = SY.boleh_ikut("saran GZH", "LONG")
+            blok.append(f"{GARIS}\n🔹 <b>GZH (golden zone hunter)</b>  ·  {ik_g} {tk_g}\nDipantau tiap menit saat harga "
+                        f"menyentuh 0.618. " + ("Dikirim terpisah saat ada." if ok_g else
+                        "Sementara tidak dikirim karena di uji 2 tahun rugi. Tampil lagi otomatis kalau terbukti di live."))
+        if len(blok) > 1:
+            so.append("\n".join(blok))
+    if kosong:
+        so.append(f"{GARIS}\n⚪ Kosong di candle ini: {', '.join(kosong)}")
     if not semua:
-        so.append(f"{SY.GARIS}\nBelum ada sinyal yang lolos semua syarat di candle ini.")
+        why = ("Sinyal baru ditahan sementara: jeda berita " + TG.e(ctx["jeda"]["judul"])) if ctx and ctx.get("jeda") else \
+              ("Sinyal baru ditahan sementara: pasar bergejolak") if ctx and ctx.get("tahan") else \
+              "Belum ada setup yang lolos semua syarat di candle ini."
+        so.append(f"{GARIS}\n{why}")
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
     if pos and tf == "240":
         peta = {r["symbol"]: r for r in rs}

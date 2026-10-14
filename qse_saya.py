@@ -525,8 +525,8 @@ def tingkat_bukti(jalur, arah=None, skor=None):
 IKUT = ("TERBUKTI", "TERBUKTI LIVE", "SEDANG DIUJI")
 TAMPIL_SEMUA = os.environ.get("QSE_TAMPIL_SEMUA", "0") == "1"      # 1 = sinyal yang belum terbukti tetap ditampilkan lengkap
 GARIS = "━━━━━━━━━━━━━━━━━━"
-NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadangan": "Cadangan", "saran cadangan 2": "Cadangan 2",
-              "saran fib": "Fib 0.618", "saran siklus": "Siklus", "saran GZH": "GZH", "saran momentum": "Momentum",
+NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadangan": "Saran cadangan",
+              "saran cadangan 2": "Pola A/B pilihan robot", "saran fib": "Golden zone 0.618", "saran siklus": "Siklus", "saran GZH": "GZH", "saran momentum": "Momentum",
               "saran news": "News", "saran ichimoku": "Ichimoku"}
 
 
