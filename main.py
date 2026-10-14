@@ -485,13 +485,19 @@ def _ada_sinyal_hari_ini(led):
     """Sudah ada sinyal apa pun hari ini (WIB)? Cek semua jalur: robot, cadangan, fib, siklus, 1J, momentum, news,
     Ichimoku, dan Golden Zone Hunter."""
     h0 = _hari0_ms()
+    # hanya sinyal yang benar-benar tampil (bisa diikuti). Sinyal tersembunyi tetap dicatat, tapi tidak dihitung,
+    # supaya pelonggaran jam 12 dan 18 tetap jalan kalau hari itu belum ada sinyal yang bisa kamu ikuti
     for it in list(led["open"].values()) + led["closed"][-300:]:
-        if (it.get("start_ts") or it.get("sent_ts") or 0) >= h0:
+        if ((it.get("start_ts") or it.get("sent_ts") or 0) >= h0
+                and SY.boleh_ikut(SY._jalur_led(it), it.get("arah"), it.get("skor"))[0]):
             return True
     try:
         import qse_catat as CT
         d = CT._baca()
-        if any(it.get("t", 0) * 1000 >= h0 for it in d["open"] + d["closed"][-300:]):
+        peta = {"momentum": "saran momentum", "news_searah": "saran news", "news_mandiri": "saran news",
+                "ichimoku": "saran ichimoku"}
+        if any(it.get("t", 0) * 1000 >= h0 and SY.boleh_ikut(peta.get(it.get("jalur"), "lain"), it.get("arah"))[0]
+               for it in d["open"] + d["closed"][-300:]):
             return True
     except Exception:
         pass
@@ -557,7 +563,8 @@ def _saring_berita(sel, ctx, led=None):
             why = f"jeda berita {ctx['jeda']['judul']} {BR.jam_wib(ctx['jeda']['ts'])}"
         else:
             why = _gerbang(r, x, led=led)
-            if why and led is not None and _slot_longgar(led) and not _gerbang(r, x, led=led, longgar=True):
+            if (why and led is not None and _slot_longgar(led) and not _gerbang(r, x, led=led, longgar=True)
+                    and SY.boleh_ikut("saran 1J" if r.get("tf") == "60" else "saran utama", x["arah"], x.get("skor"))[0]):
                 # hari ini sepi: satu sinyal terbaik boleh lolos dengan skor minimal 45 tanpa cek BTC 1 jam
                 x["longgar"] = why
                 _st_update({"longgar_hari": time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 3600))})
