@@ -22,12 +22,14 @@ FILE = os.path.join(STATE_DIR, "ichimoku.json")
 H4 = 4 * 3600 * 1000
 SL_ATR, TRAIL_ATR, MAKS_BAR = 2.0, 3.0, 60
 TOP_KOIN = 150          # koin paling likuid yang dipantau (backtest memakai koin likuid)
+TOP_LIKUID = 20         # sinyal hanya dari 20 koin dengan nilai transaksi 30 hari terbesar
 MAKS_BARU = 5           # sinyal baru paling banyak per candle 4J
 MAKS_BUKA = 8           # posisi jalur ini paling banyak terbuka bersamaan
 BIAYA = 0.0015
-BT = ("112 koin 2022-2026: 18573 trade, WR 37%, PF 1.21, rata +0.10R (SHORT PF 1.30, LONG PF 1.10). "
-      "Dengan batas 8 posisi: PF 1.19, turun terdalam 61R, rugi beruntun terpanjang 32")
-BT_PENDEK = "112 koin 2022-2026: WR 37%, PF 1.21, rata +0.10R per trade"
+BT = ("111 koin perp 2021-2026, sinyal hanya dari 20 koin paling likuid, maks 8 posisi: 3084 trade, WR 38%, PF 1.29, "
+      "positif 18 dari 22 kuartal, untung tiap tahun. Risiko 0.5% dengan rem drawdown: +198%, turun terdalam 17.6%, "
+      "rugi beruntun terpanjang 24")
+BT_PENDEK = "111 koin perp 2021-2026, 20 koin paling likuid: PF 1.29, untung tiap tahun"
 
 
 def _ubah(fn):
@@ -79,7 +81,7 @@ def _ll(x, n):
 
 
 TELAT_ATR = 0.5          # robot telat lebih dari 30 menit: sinyal tetap dikirim kalau harga belum lari 0.5 ATR
-REM_DD_R, REM_RUGI = 16.0, 6      # rem drawdown: uji 5 tahun, drawdown 32% -> 20.5%, profit 247% -> 251% (risiko 0.5%)
+REM_DD_R, REM_RUGI = 16.0, 6      # rem drawdown: uji 5 tahun top 20 likuid, drawdown 28.4% -> 17.6%, profit tetap +198%
 
 
 def rem():
@@ -191,17 +193,27 @@ def jalankan(baru_ok=True):
         it = dict(it)
         st, R, sl_lama = _kelola(it, df)
         hasil[key] = (it, st, R, sl_lama)
+    # posisi tetap dikelola dan dicatat untuk semua sinyal, tapi pesan GESER SL dan SELESAI hanya untuk posisi
+    # yang benar-benar kamu catat lewat /entry (koin dan arah sama), supaya grup tidak ramai
+    try:
+        import qse_saya as SY
+        pegang = {(v["sym"], v["arah"]) for v in SY.lihat()["open"].values() if v.get("status") in ("TERISI", "TP1")}
+    except Exception:
+        pegang = set()
     for key, (it, st, R, sl_lama) in hasil.items():
         t = tick.get(it["sym"], it.get("tick", 0.0001))
+        kabar = (it["sym"], it["arah"]) in pegang
         if st in ("SL", "WAKTU"):
             _catat_ledger(it, R)
+            if not kabar:
+                continue
             out.append(f"{'✅' if R > 0 else '🛑'} <b>ICHIMOKU SELESAI  ·  {it['sym']} {it['arah']}  ·  {R:+.2f}R</b>\n"
                        + (f"Harga balik dan kena SL berjalan di sekitar {TG.fp(it['sl'], t)}. Kalau SL di Bybit sudah ikut digeser, "
                           f"posisi sudah tertutup sendiri. Kalau belum, tutup sekarang."
                           if st == "SL" else f"Sudah {MAKS_BAR} candle 4J (10 hari). Tutup posisi sekarang di harga pasar, "
                           f"sekitar {TG.fp(it['close'], t)}.")
                        + f"\nEntry tadi {TG.fp(it['entry'], t)}.")
-        elif abs(it["sl"] - sl_lama) >= 0.25 * it["risk"]:
+        elif kabar and abs(it["sl"] - sl_lama) >= 0.25 * it["risk"]:
             L = it["arah"] == "LONG"
             kunci = ((it["sl"] - it["entry"]) if L else (it["entry"] - it["sl"])) / it["risk"]
             out.append(f"🔁 <b>ICHIMOKU  ·  {it['sym']} {it['arah']}  ·  GESER SL</b>\n"
@@ -232,17 +244,24 @@ def jalankan(baru_ok=True):
     except Exception:
         return out
     koin = [s for s in sorted(tk, key=lambda s: -tk[s]["turnover"]) if s in tick or not tick][:TOP_KOIN]
+    pindai = list(koin)          # semua koin dipindai untuk peringkat likuiditas 30 hari
     tutup_kini = {it["sym"] for it, st, _, _ in hasil.values() if st in ("SL", "WAKTU")}
     koin = [s for s in koin if s not in {it["sym"] for it in d["open"].values()} and s not in tutup_kini]   # sama backtest
 
     def cek(sym):
         df = _k4(sym, 300)
         if df is None or len(df) < 120:
-            return sym, None, None, None
+            return sym, None, None, None, 0.0
         arah, a = _sinyal(df)
-        return sym, arah, a, df
+        return sym, arah, a, df, float((df["close"] * df["volume"]).iloc[-180:].sum())
     with ThreadPoolExecutor(8) as ex:
-        hasil_s = [x for x in ex.map(cek, koin) if x[1]]
+        semua = list(ex.map(cek, pindai))
+    # hanya koin paling likuid (nilai transaksi 30 hari): uji 5 tahun 111 koin, top 20 PF 1.29 dan drawdown 17.6%,
+    # semua koin PF 1.16 dan drawdown 27%. Makin likuid makin bagus (top 20 > 30 > 50 > 80 > semua)
+    likuid = {x[0] for x in sorted(semua, key=lambda x: -x[4])[:TOP_LIKUID]}
+    boleh = set(koin)
+    hasil_s = sorted([x[:4] for x in semua if x[1] and x[0] in likuid and x[0] in boleh],
+                     key=lambda x: -next(z[4] for z in semua if z[0] == x[0]))
     import qse_saya as SY
     tahan = {x[0]: SY.cek_lintas(x[0], x[1]) for x in hasil_s}
     for sym, why in tahan.items():
@@ -287,16 +306,18 @@ def jalankan(baru_ok=True):
             SY.GARIS,
             SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan"),
             *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih. Di uji 5 tahun rem ini "
-                f"menurunkan drawdown dari 32% ke 20% tanpa mengurangi profit"] if rm else []),
+                f"menurunkan drawdown dari 28% ke 18% tanpa mengurangi profit"] if rm else []),
             "💡 <b>Kenapa</b>",
             f"• Tenkan baru memotong Kijun {'ke atas' if L else 'ke bawah'} dan harga {'di atas' if L else 'di bawah'} awan: "
             f"tren {'naik' if L else 'turun'} baru mulai",
-            "• Bukti: uji 5 tahun 3358 trade, PF 1.33, untung di pasar naik, turun, dan sideways",
+            f"• Koin ini termasuk {TOP_LIKUID} koin paling likuid 30 hari terakhir. Makin likuid, makin bagus hasil Ichimoku",
+            "• Bukti: uji 5 tahun 111 koin, 3084 trade, PF 1.29, untung tiap tahun, positif 18 dari 22 kuartal",
             "🛠 <b>Cara</b>",
             f"1. Masuk MARKET sekarang. Pasang SL di {TG.fp(sl, t)} ({pc:.1f}% dari entry). Jangan pasang TP",
             "2. Tiap candle 4J tutup, robot kirim pesan GESER SL. Ubah SL di Bybit ke angka di pesan itu",
             "3. SL hanya maju searah profit, tidak pernah mundur. Saat harga balik menyentuh SL, posisi tutup sendiri dengan profit yang sudah terkunci",
             "4. Kalau 10 hari belum kena SL, robot mengingatkan untuk tutup manual",
+            f"5. Catat dengan /entry supaya pesan GESER SL dikirim. Tanpa /entry, robot tidak mengirim pesan lanjutan untuk koin ini",
             "❓ <b>Kenapa tanpa TP</b>",
             "Jalur ini menang sekitar 37%. Untungnya datang dari sedikit trade yang lari jauh, bisa +3R sampai +10R. "
             "TP tetap akan memotong trade besar itu, jadi profit dikunci dengan SL berjalan",

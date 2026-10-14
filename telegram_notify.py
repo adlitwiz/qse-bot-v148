@@ -38,7 +38,27 @@ def unpin(mid):
 _RAPAT = ("↳", "━", "SL:", "TP1:", "TP2:", "TP:")
 
 
+GARIS_PANJANG = "━━━━━━━━━━━━━━━━━━"
+JUDUL_BAGIAN = ("💡", "🛠", "⚠️ <b>", "👍", "📏", "🧭", "⏰ <b>", "🔎", "🌐 <b>", "❓", "📐", "✅ <b>BISA", "🙈", "📋", "🗂",
+                "📈 <b>", "🛡")
+
+
+def _rapi_struktur(b):
+    """Blok yang sudah tersusun (punya garis panjang): spasi hanya sebelum judul bagian, supaya poin tetap rapat."""
+    out, dalam = [], 0
+    for ln in b.split("\n"):
+        s = ln.strip()
+        if (out and out[-1].strip() and not dalam and s.startswith(JUDUL_BAGIAN)
+                and not out[-1].strip().startswith("━")):
+            out.append("")
+        out.append(ln)
+        dalam += ln.count("<code>") + ln.count("<pre>") - ln.count("</code>") - ln.count("</pre>")
+    return "\n".join(out)
+
+
 def _rapi(b):
+    if GARIS_PANJANG in b:
+        return _rapi_struktur(b)
     """Beri baris kosong di antara kalimat supaya enak dibaca. Baris lanjutan (↳), garis, dan SL/TP tetap
     menempel ke baris atasnya. Isi <code>/<pre> yang memanjang beberapa baris tidak diubah."""
     out, dalam = [], 0

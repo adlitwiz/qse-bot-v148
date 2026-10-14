@@ -98,7 +98,14 @@ def _tugas_berkala():
             import qse_ichimoku as IC
             pesan = IC.jalankan(baru_ok=True)          # telat (VPS sempat mati) tetap boleh asal harga belum lari, dicek di IC
             if pesan:
-                TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(pesan)])
+                baru = [m for m in pesan if "BISA DIIKUTI" in m]
+                lain = [m for m in pesan if m not in baru]
+                if lain:
+                    TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(lain)])
+                if baru:
+                    ids = TG.send([f"📌 <b>QSE v148 | SINYAL ICHIMOKU ({len(baru)})</b>\nJalur terbukti, disematkan paling atas.\n\n"
+                                   + "\n\n".join(baru)])
+                    _pin_ichi(ids)
         except Exception as ex:
             print("[WARN] ichimoku", ex)
     hari = int(now // 86400) * 86400
@@ -210,6 +217,18 @@ def _jalankan_main(now):
 HB = {"perintah": time.time(), "kerja": time.time()}
 BATAS_PERINTAH = 180      # loop perintah macet lebih dari 3 menit -> restart paksa
 BATAS_KERJA = 1500        # tugas berkala macet lebih dari 25 menit -> restart paksa
+
+
+def _pin_ichi(ids):
+    """Slot pin prioritas: sinyal Ichimoku valid. Pin Ichimoku lama dilepas. Pin ini dinaikkan lagi ke paling atas
+    setiap laporan 4 jam disematkan (lihat main._naikkan_pin_ichi), selama masih 24 jam."""
+    if not ids or not ids[0]:
+        return
+    lama = _st().get("pin_ichi")
+    if TG.pin(ids[0]) is None:
+        if lama and lama != ids[0]:
+            TG.unpin(lama)
+        _st({"pin_ichi": ids[0], "pin_ichi_t": time.time()})
 
 
 def _pin_dini(ids):
