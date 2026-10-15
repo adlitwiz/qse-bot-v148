@@ -13,11 +13,12 @@ from config import STATE_DIR, BYBIT_URL
 FILE = os.path.join(STATE_DIR, "catat_jalur.json")
 NAMA = {"momentum": "Momentum 15/30 menit", "news_searah": "News searah engine", "news_mandiri": "News mandiri (sejarah kuat)",
         "ichimoku": "Ichimoku tren 4J (trailing)",
-        "orderblock": "Order Block + Volume 4J"}
+        "orderblock": "Order Block + Volume 4J", "gzh": "GZH SHORT, TP 2R penuh"}
 BIAYA = 0.08
 TAHAN_JAM = 24
+TAHAN_JALUR = {"gzh": 240}          # GZH diuji dengan tahan maksimal 10 hari
 MIN_N, MIN_PF = 15, 1.0
-MIN_N_JALUR = {"ichimoku": 40, "orderblock": 40}     # jalur tren WR rendah butuh sampel lebih banyak sebelum dinilai
+MIN_N_JALUR = {"ichimoku": 40, "orderblock": 40, "gzh": 30}     # jalur tren WR rendah butuh sampel lebih banyak sebelum dinilai
 
 
 def _ubah(fn):
@@ -74,6 +75,8 @@ def _nilai(it, k):
     L = it["arah"] == "LONG"
     e, sl, t1, t2 = it["entry"], it["sl"], it["tp1"], it["tp2"]
     risk = abs(e - sl) or 1e-12
+    r1, r2 = abs(t1 - e) / risk, abs(t2 - e) / risk          # momentum dan news: 1R dan 2R, GZH: 2R dan 2R
+    tahan = TAHAN_JALUR.get(it.get("jalur"), TAHAN_JAM)
     isi, tp1 = None, False
     for ts, h, l, c in k:
         t = ts / 1000
@@ -88,14 +91,14 @@ def _nilai(it, k):
                 continue
         stop = e if tp1 else sl
         if (L and l <= stop) or ((not L) and h >= stop):
-            return "SELESAI", (0.5 if tp1 else -1.0) - BIAYA, isi
+            return "SELESAI", (0.5 * r1 if tp1 else -1.0) - BIAYA, isi
         if not tp1 and ((L and h >= t1) or ((not L) and l <= t1)):
             tp1 = True
         if tp1 and ((L and h >= t2) or ((not L) and l <= t2)):
-            return "SELESAI", 1.5 - BIAYA, isi
-        if t - isi >= TAHAN_JAM * 3600:
+            return "SELESAI", 0.5 * r1 + 0.5 * r2 - BIAYA, isi
+        if t - isi >= tahan * 3600:
             g = ((c - e) if L else (e - c)) / risk
-            return "SELESAI", (0.5 + 0.5 * g if tp1 else g) - BIAYA, isi
+            return "SELESAI", (0.5 * r1 + 0.5 * g if tp1 else g) - BIAYA, isi
     if isi is None:
         return "MENUNGGU", None, None
     return ("TP1" if tp1 else "TERISI"), None, isi

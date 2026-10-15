@@ -94,34 +94,37 @@ def _tugas_berkala():
     if now - t4 >= 150 and st.get("ichi4", 0) < t4:
         # jalur Ichimoku tren: kelola trailing SL dan cari sinyal baru sekali tiap candle 4J tutup
         _st({"ichi4": t4})
-        baru = []
         try:
             import qse_ichimoku as IC
             pesan = IC.jalankan(baru_ok=True)          # telat (VPS sempat mati) tetap boleh asal harga belum lari, dicek di IC
             if pesan:
-                baru += [m for m in pesan if "BISA DIIKUTI" in m]
+                baru = [m for m in pesan if "BISA DIIKUTI" in m]
                 lain = [m for m in pesan if "BISA DIIKUTI" not in m]
                 if lain:
                     TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(lain)])
+                if baru:
+                    ids = TG.send([f"📌 <b>QSE v148 | SINYAL ICHIMOKU ({len(baru)})</b>\n{SY.baris_jadwal(telat_menit=3)}\nJalur terbukti, disematkan paling atas.\n\n"
+                                   + "\n\n".join(baru)])
+                    _pin_ichi(ids)
         except Exception as ex:
             print("[WARN] ichimoku", ex)
         try:
             import qse_ob as OB
             pesan = OB.jalankan(baru_ok=True)          # jalur Order Block + Volume, aturan sama dengan backtest 6 tahun
             if pesan:
-                baru += [m for m in pesan if "BISA DIIKUTI" in m]
+                baru = [m for m in pesan if "BISA DIIKUTI" in m]
                 lain = [m for m in pesan if "BISA DIIKUTI" not in m]
                 if lain:
                     TG.send(["⭐ <b>QSE v148 | ORDER BLOCK 4J</b>\n\n" + "\n\n".join(lain)])
+                if baru:
+                    ids = TG.send([f"📌 <b>QSE v148 | SINYAL ORDER BLOCK + VOLUME ({len(baru)})</b>\n{SY.baris_jadwal(telat_menit=3)}\nJalur terbukti, hanya LONG, "
+                                   f"disematkan paling atas.\n\n" + "\n\n".join(baru)])
+                    _pin_ichi(ids, "pin_ob")
             sl_v = OB.proses_sl()                      # analisa volume SL setelah candle 4J tempat SL kena sudah tutup
             if sl_v:
                 TG.send(["📊 <b>QSE v148 | ANALISA VOLUME SL</b>\n\n" + "\n\n".join(sl_v)])
         except Exception as ex:
             print("[WARN] orderblock", ex)
-        if baru:
-            ids = TG.send([f"📌 <b>QSE v148 | SINYAL TERBUKTI ({len(baru)})</b>\nIchimoku dan Order Block + Volume, "
-                           f"jalur yang lolos uji 5 tahun lebih. Disematkan paling atas.\n\n" + "\n\n".join(baru)])
-            _pin_ichi(ids)
     hari = int(now // 86400) * 86400
     if now - hari >= 300 and st.get("arah_hari", 0) < hari and now - hari <= 6 * 3600:
         # 07:05 WIB, candle harian baru tutup: kirim arah pasar otomatis (BTC, ETH, posisi kamu, berita hari ini)
@@ -233,16 +236,16 @@ BATAS_PERINTAH = 180      # loop perintah macet lebih dari 3 menit -> restart pa
 BATAS_KERJA = 1500        # tugas berkala macet lebih dari 25 menit -> restart paksa
 
 
-def _pin_ichi(ids):
-    """Slot pin prioritas: sinyal Ichimoku valid. Pin Ichimoku lama dilepas. Pin ini dinaikkan lagi ke paling atas
-    setiap laporan 4 jam disematkan (lihat main._naikkan_pin_ichi), selama masih 24 jam."""
+def _pin_ichi(ids, slot="pin_ichi"):
+    """Slot pin prioritas sinyal terbukti: pin_ichi untuk Ichimoku, pin_ob untuk Order Block. Pin lama slot yang sama
+    dilepas. Pin ini dinaikkan lagi ke paling atas setiap laporan 4 jam disematkan (main._naikkan_pin_ichi), selama 24 jam."""
     if not ids or not ids[0]:
         return
-    lama = _st().get("pin_ichi")
+    lama = _st().get(slot)
     if TG.pin(ids[0]) is None:
         if lama and lama != ids[0]:
             TG.unpin(lama)
-        _st({"pin_ichi": ids[0], "pin_ichi_t": time.time()})
+        _st({slot: ids[0], slot + "_t": time.time()})
 
 
 def _pin_dini(ids):
@@ -275,7 +278,7 @@ def _tugas_menit():
     try:
         fb = SY.sentuh_fib()
         if fb:
-            TG.send(["📐 <b>QSE v148 | GOLDEN ZONE HUNTER</b>\nCuma setup yang lolos penilaian semua aspek yang aku kirim.\n\n" + "\n\n".join(fb)])
+            TG.send(["📐 <b>QSE v148 | GOLDEN ZONE HUNTER (GZH)</b>\nSHORT saja, fix profit TP 2R. Belum terbukti, lot 0.25x.\n\n" + "\n\n".join(fb)])
     except Exception as ex:
         print("[WARN] fib", ex)
     try:

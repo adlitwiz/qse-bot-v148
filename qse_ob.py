@@ -177,7 +177,7 @@ def rem():
     return ""
 
 
-def jalankan(baru_ok=True):
+def _jalankan(baru_ok=True):
     """Dipanggil listener sekali tiap candle 4J tutup. Return daftar pesan."""
     import qse_catat as CT
     import qse_saya as SY
@@ -225,14 +225,17 @@ def jalankan(baru_ok=True):
     _ubah(simpan_kelola)
 
     if CT.mati("orderblock"):
+        _ALASAN[0] = "jalur dihentikan karena hasil live jelek"
         out.append("⛔ Jalur Order Block sedang dihentikan karena hasil live-nya jelek. Cek /jalur.")
         return out
     d = lihat()
     slot = min(MAKS_BARU, MAKS_BUKA - len(d["open"]))
     if slot <= 0 or not baru_ok:
+        _ALASAN[0] = "slot posisi penuh" if slot <= 0 else "robot telat, hanya kelola posisi"
         return out
     bn = btc_naik()
     if not bn:
+        _ALASAN[0] = "BTC 4J di bawah EMA 50, sinyal LONG ditahan"
         print("[ORDERBLOCK] BTC 4J di bawah EMA 50, sinyal baru ditahan (uji: PF 0.87 saat BTC turun)")
         return out
     try:
@@ -326,7 +329,7 @@ def status_singkat():
     import qse_catat as CT
     d = lihat()
     n = len(d["open"])
-    rows = []
+    rows = [baris_cek()]
     if CT.mati("orderblock"):
         rows.append("⛔ jalur dihentikan karena hasil live jelek")
     rows.append(f"posisi robot {n}/{MAKS_BUKA}")
@@ -493,3 +496,31 @@ def baris_unggulan(harga=None, jam=24):
                    f"↳ MARKET sekitar {TG.fp(px, t)}  ·  SL {TG.fp(it['sl'], t)}  ·  TP {TG.fp(it['tp'], t)}  ·  "
                    f"sinyal {time.strftime('%d/%m %H:%M', time.gmtime(it['t'] + 7 * 3600))} WIB")
     return out
+
+
+_ALASAN = [""]
+
+
+def jalankan(baru_ok=True):
+    """Bungkus _jalankan: catat kapan terakhir dicek, jumlah sinyal baru, dan alasan kalau kosong, untuk laporan 4 jam."""
+    _ALASAN[0] = ""
+    out = _jalankan(baru_ok)
+    n = sum(1 for m in out if "BISA DIIKUTI" in m)
+    why = _ALASAN[0] or ("" if n else "tidak ada koin yang lolos semua syarat")
+
+    def f(d):
+        d["cek"] = dict(t=time.time(), n=n, why=why)
+    try:
+        _ubah(f)
+    except Exception as ex:
+        print("[WARN] catat cek", ex)
+    return out
+
+
+def baris_cek():
+    """Contoh: 'dicek 07:03 WIB: 0 sinyal baru, tidak ada koin yang lolos semua syarat'."""
+    c = lihat().get("cek")
+    if not c:
+        return "belum pernah dicek sejak update"
+    jam = time.strftime("%H:%M", time.gmtime(c["t"] + 7 * 3600))
+    return f"dicek {jam} WIB: {c['n']} sinyal baru" + (f", {c['why']}" if c.get("why") and not c["n"] else "")

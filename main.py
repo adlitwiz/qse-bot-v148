@@ -409,10 +409,11 @@ def _naikkan_pin_ichi():
     """Pin sinyal Ichimoku punya prioritas: setelah pin lain dipasang, pin Ichimoku dilepas lalu dipasang lagi
     supaya kembali tampil paling atas di grup. Berlaku 24 jam sejak sinyal Ichimoku terakhir."""
     st = _st_load()
-    mid = st.get("pin_ichi")
-    if mid and time.time() - st.get("pin_ichi_t", 0) < 86400:
-        TG.unpin(mid)
-        TG.pin(mid)
+    for slot in ("pin_ob", "pin_ichi"):              # Ichimoku dipasang terakhir supaya paling atas
+        mid = st.get(slot)
+        if mid and time.time() - st.get(slot + "_t", 0) < 86400:
+            TG.unpin(mid)
+            TG.pin(mid)
 
 
 def _pin(ids, jenis="saran4", isi=None, led=None):
@@ -1011,7 +1012,7 @@ def cek_1j(now, jalur_aktif=True, paksa=False):
         return
     jam = now.astimezone(WIB).strftime("%d/%m %H:%M WIB")
     judul = "🔎 <b>QSE v148 | SCAN SEKARANG TF 1J</b>" if paksa else "🕐 <b>QSE v148 | SARAN TF 1J</b>"
-    blocks = [f"{judul}\n{jam}\n"
+    blocks = [f"{judul}\n{jam if paksa else SY.baris_jadwal(3600000)}\n"
               f"Syarat ganda: rapor 4J A/B, rapor 1J A/B, dan searah bias 4J | dinilai {len(hasil)} koin"]
     if not jalur_aktif or not QU.aktif("1j"):
         blocks.append("Jalur TF 1J sedang dimatikan uji mundur karena hasil historisnya jelek.")
@@ -1799,7 +1800,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     cad = [z for z in (cad or []) if z[0]["tf"] == tf]
     pasar, scan = [], []
     head = [GARIS, f"📊 <b>QSE v148 | LAPORAN {judul}</b>",
-            f"Candle {kode} tutup {_jam(tutup)}" if tutup else now.astimezone(WIB).strftime("%d/%m %H:%M WIB")]
+            SY.baris_jadwal(rs[0]["tf_ms"], tutup) if tutup else now.astimezone(WIB).strftime("%d/%m %H:%M WIB")]
     if tutup and time.time() * 1000 - tutup > 20 * 60000:
         head.append(f"⏰ Laporan susulan, dibuat {now.astimezone(WIB).strftime('%H:%M WIB')} karena jadwal sempat "
                     f"terlewat. Harga saran sudah dicek ulang ke harga sekarang.")
@@ -1935,22 +1936,22 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         if judul_b == "DARI ROBOT TELEGRAM" and tf == "240":
             try:
                 import qse_ichimoku as IC
-                blok.append(f"{GARIS}\n🔹 <b>ICHIMOKU</b>  ·  ✅ TERBUKTI\nSinyal dikirim terpisah sekitar 3 menit setelah laporan "
-                            f"dan disematkan paling atas.\n{TG.e(IC.status_singkat())}")
+                blok.append(f"{GARIS}\n🔹 <b>ICHIMOKU</b>  ·  ✅ TERBUKTI\nSinyal dikirim di pesan sendiri sekitar 3 menit setelah candle 4J tutup, "
+                            f"biasanya sebelum laporan ini. Tidak ada pesan berarti tidak ada sinyal baru.\n{TG.e(IC.status_singkat())}")
             except Exception as ex:
                 print("[WARN] status ichimoku", ex)
             try:
                 import qse_ob as OB
                 blok.append(f"{GARIS}\n🔹 <b>ORDER BLOCK + VOLUME</b>  ·  ✅ TERBUKTI\n"
-                            f"Order block bullish yang dibentuk volume besar, hanya LONG. Sinyal baru dikirim terpisah "
-                            f"bersama Ichimoku dan disematkan. Yang masih terjangkau masuk daftar KOIN UNGGULAN.\n"
+                            f"Order block bullish yang dibentuk volume besar, hanya LONG. Sinyal baru dikirim di pesan "
+                            f"sendiri dan disematkan. Yang masih terjangkau masuk daftar KOIN UNGGULAN.\n"
                             f"{TG.e(OB.status_singkat())}")
             except Exception as ex:
                 print("[WARN] status orderblock", ex)
-            ok_g, tk_g, ik_g, _ = SY.boleh_ikut("saran GZH", "LONG")
-            blok.append(f"{GARIS}\n🔹 <b>GZH (golden zone hunter)</b>  ·  {ik_g} {tk_g}\nDipantau tiap menit saat harga "
-                        f"menyentuh 0.618. " + ("Dikirim terpisah saat ada." if ok_g else
-                        "Sementara tidak dikirim karena di uji 2 tahun rugi. Tampil lagi otomatis kalau terbukti di live."))
+            ok_g, tk_g, ik_g, lot_g = SY.boleh_ikut("saran GZH", "SHORT")
+            blok.append(f"{GARIS}\n🔹 <b>GZH (golden zone hunter)</b>  ·  {ik_g} {tk_g}  ·  lot {lot_g}\nAktif, SHORT saja, fix profit "
+                        f"TP 2R penuh. Dipantau tiap menit saat harga menyentuh 0.618, dikirim terpisah: GZH DISENTUH lalu "
+                        f"GZH TERKONFIRMASI saat candle 4J tutup. Uji 2 tahun: 632 trade, PF 1.06, hampir impas.")
         if len(blok) > 1:
             so.append("\n".join(blok))
     if kosong:
@@ -2013,7 +2014,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             ktx = SY.baris_konteks()
         except Exception:
             ktx = ""
-        so.insert(0, f"🎯 <b>QSE v148 | SINYAL {judul}</b>\nCandle {kode} tutup {_jam(tutup)}\n{SY.GARIS}\n{ktx}\n"
+        so.insert(0, f"🎯 <b>QSE v148 | SINYAL {judul}</b>\n{SY.baris_jadwal(rs[0]['tf_ms'] if rs else 4 * 3600000, tutup)}\n{SY.GARIS}\n{ktx}\n"
                      f"Laporan lengkap ada di pesan 📊 berikutnya.")
         return out, so, True
     return out[:n_awal] + so + out[n_awal:], [], False

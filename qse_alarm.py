@@ -185,26 +185,27 @@ def _pesan_gzh(a, cl):
                 f"Candle 4J tutup di {TG.fp(cl, t)}, {'tembus ke bawah' if L else 'tembus ke atas'} 0.618 "
                 f"({TG.fp(a['harga'], t)}). Zona gagal menahan, setup dilewati.")
     risk = abs(cl - a["sl"])
-    if risk <= 0 or ((a["tp1"] <= cl) if L else (a["tp1"] >= cl)):
-        return (f"⚠️ <b>GZH {a['sym']}</b> candle tutup memantul di {TG.fp(cl, t)}, tapi harga sudah terlalu dekat TP1. "
-                f"Lewati, R sudah tidak layak.")
-    pc = lambda x: abs(x - cl) / cl * 100
+    if risk <= 0 or ((a["tp1"] <= cl) if L else (a["tp1"] >= cl)):          # tp1 di sini = titik 0 fib
+        return (f"⚠️ <b>GZH {a['sym']}</b> candle tutup memantul di {TG.fp(cl, t)}, tapi harga sudah melewati titik 0 fib. "
+                f"Lewati.")
     import qse_saya as SY
     arah = "LONG" if L else "SHORT"
-    tahan = SY.btc_melawan(arah)
     bd = SY.berita_depan(3)
     if bd:
-        tahan.append(f"berita besar {bd['judul']} dalam 3 jam")
-    if tahan and not a.get("dikirim", True):
-        return None          # sentuhan tadi tidak dikirim dan sekarang tetap belum searah: diam saja
-    if tahan:
-        return (f"⏸️ <b>GZH {a['sym']} {arah}</b>: candle 4J tutup memantul di {TG.fp(cl, t)}, tapi belum semua searah: "
-                f"{TG.e('; '.join(tahan))}. Belum jadi sinyal, jangan entry dulu.")
-    return (f"✅ <b>GZH TERKONFIRMASI {a['sym']} {'LONG' if L else 'SHORT'}</b>\n"
-            + SY.baris_kelas(arah, rr2=abs(a["tp2"] - cl) / risk, wr=a.get("wr"), skor=a.get("skor"), jalur="saran GZH") + "\n"
-            f"Candle 4J tutup {'di atas' if L else 'di bawah'} 0.618 ({TG.fp(a['harga'], t)}). Ini entry yang dipakai backtest.\n"
-            + SY.blok_salin(cl, a["sl"], a["tp1"], a["tp2"], "MARKET", t) + "\n"
-            f"Masuk sekarang. Di TP1 tutup separuh, SL pindah ke entry.")
+        return (f"⏸️ <b>GZH {a['sym']} {arah}</b>: candle 4J tutup memantul di {TG.fp(cl, t)}, tapi ada berita besar "
+                f"{TG.e(bd['judul'])} dalam 3 jam. Lewati.")
+    tp = cl + SY.GZH_TP_R * risk if L else cl - SY.GZH_TP_R * risk
+    try:
+        import qse_catat as CT
+        CT.tambah("gzh", a["sym"], arah, cl, a["sl"], tp, tp, berlaku_jam=4, ket="GZH konfirmasi")
+    except Exception as ex:
+        print("[WARN] catat gzh", ex)
+    return (f"✅ <b>GZH TERKONFIRMASI {a['sym']} {arah}</b>\n"
+            + SY.baris_kelas(arah, rr2=SY.GZH_TP_R, wr=None, skor=a.get("skor"), jalur="saran GZH") + "\n"
+            f"Candle 4J tutup {'di atas' if L else 'di bawah'} 0.618 ({TG.fp(a['harga'], t)}). Entry sama dengan uji.\n"
+            + SY.blok_salin(cl, a["sl"], tp, tp, "MARKET", t, catatan_tp="TP1 sama dengan TP2, tutup penuh di 2R") + "\n"
+            f"🛠 Masuk MARKET sekarang. Fix profit: tutup penuh di TP 2R, jangan geser SL. Kalau 10 hari belum kena, tutup manual.\n"
+            f"📊 Uji 2 tahun GZH SHORT TP 2R: 632 trade, WR 41%, PF 1.06. Belum terbukti, pakai lot kecil.")
 
 
 def _cek_tutup(d0):

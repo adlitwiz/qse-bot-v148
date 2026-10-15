@@ -172,7 +172,7 @@ def _catat_ledger(it, R):
     CT._ubah(f)
 
 
-def jalankan(baru_ok=True):
+def _jalankan(baru_ok=True):
     """Dipanggil listener sekali tiap candle 4J tutup. baru_ok False = hanya kelola posisi (listener telat jalan).
     Return daftar pesan."""
     import qse_catat as CT
@@ -233,11 +233,13 @@ def jalankan(baru_ok=True):
 
     # 2. sinyal baru
     if CT.mati("ichimoku"):
+        _ALASAN[0] = "jalur dihentikan karena hasil live jelek"
         out.append("⛔ Jalur Ichimoku sedang dihentikan karena hasil live-nya jelek. Cek /jalur.")
         return out
     d = lihat()
     slot = min(MAKS_BARU, MAKS_BUKA - len(d["open"]))
     if slot <= 0 or not baru_ok:
+        _ALASAN[0] = "slot posisi penuh" if slot <= 0 else "robot telat, hanya kelola posisi"
         return out
     try:
         tk = B.get_tickers()
@@ -339,7 +341,7 @@ def status_singkat():
     import qse_catat as CT
     d = lihat()
     n = len(d["open"])
-    rows = []
+    rows = [baris_cek()]
     if CT.mati("ichimoku"):
         rows.append("⛔ jalur dihentikan karena hasil live jelek")
     rows.append(f"posisi robot {n}/{MAKS_BUKA}" + ("  ·  slot penuh, sinyal baru keluar setelah ada posisi selesai"
@@ -376,3 +378,31 @@ def teks():
         rows.append(f"\nSelesai {len(rs)} trade | WR {sum(x > 0 for x in rs) / len(rs) * 100:.0f}% | "
                     f"PF {w / lo if lo > 0 else 9.99:.2f} | total {sum(rs):+.1f}R")
     return "\n".join(rows)
+
+
+_ALASAN = [""]
+
+
+def jalankan(baru_ok=True):
+    """Bungkus _jalankan: catat kapan terakhir dicek, jumlah sinyal baru, dan alasan kalau kosong, untuk laporan 4 jam."""
+    _ALASAN[0] = ""
+    out = _jalankan(baru_ok)
+    n = sum(1 for m in out if "BISA DIIKUTI" in m)
+    why = _ALASAN[0] or ("" if n else "tidak ada koin yang lolos semua syarat")
+
+    def f(d):
+        d["cek"] = dict(t=time.time(), n=n, why=why)
+    try:
+        _ubah(f)
+    except Exception as ex:
+        print("[WARN] catat cek", ex)
+    return out
+
+
+def baris_cek():
+    """Contoh: 'dicek 07:03 WIB: 0 sinyal baru, tidak ada koin yang lolos semua syarat'."""
+    c = lihat().get("cek")
+    if not c:
+        return "belum pernah dicek sejak update"
+    jam = time.strftime("%H:%M", time.gmtime(c["t"] + 7 * 3600))
+    return f"dicek {jam} WIB: {c['n']} sinyal baru" + (f", {c['why']}" if c.get("why") and not c["n"] else "")

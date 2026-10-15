@@ -454,8 +454,9 @@ BUKTI = {
                        "untung tiap tahun, positif 18 dari 22 kuartal"),
     "saran utama": ("BELUM TERBUKTI", "⚠️", "0.25x", "backtest 5 tahun 108 koin dengan semua syarat robot: 83 trade, PF 0.70; "
                     "2 tahun terakhir 30 koin termasuk sinyal longgar: 30 trade, PF 1.88, 29 di antaranya SHORT"),
-    "saran GZH": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot: 98 sentuhan 0.618, hanya 6 jadi sinyal, "
-                  "2 TP2 dan 4 SL, total -1.8R. 4 dari 6 di koin rapor D buruk, hindari koin rapor D"),
+    "saran GZH": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin semua sentuhan 0.618 yang terkonfirmasi: LONG 660 "
+                  "trade PF 0.80 sampai 0.91, rugi. SHORT dengan TP 2R penuh: 632 trade, WR 41%, PF 1.06, mendekati impas. "
+                  "Saringan skor 70 justru memperburuk (PF 0.83). Aktif SHORT saja"),
     "saran 1J": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot (rapor 4J dan 1J A/B, searah bias 4J): "
                  "17 trade, WR 41%, -6.8R. Angka uji mundur 6 bulan di laporan memakai koin yang rapornya sedang bagus, jadi terlalu optimis"),
     "saran cadangan": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot: 8 trade, WR 38%, PF 0.52, -2.4R"),
@@ -466,7 +467,7 @@ BUKTI = {
                          "uji ulang 2024-2026 dengan aturan yang dipilih dari 2020-2023: PF 1.26"),
 }
 BELUM_UJI = ("BELUM DIUJI", "❔", "0.25x", "belum diuji ulang dengan data perp 5 tahun dan aturan robot lengkap")
-CT_KEY = {"saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran momentum": "momentum", "saran news": "news_searah"}
+CT_KEY = {"saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "gzh", "saran momentum": "momentum", "saran news": "news_searah"}
 NAIK_N, NAIK_PF = 30, 1.2          # syarat naik jadi TERBUKTI dari hasil live
 
 
@@ -534,6 +535,21 @@ def tingkat_bukti(jalur, arah=None, skor=None):
 IKUT = ("TERBUKTI", "TERBUKTI LIVE", "SEDANG DIUJI")
 TAMPIL_SEMUA = os.environ.get("QSE_TAMPIL_SEMUA", "0") == "1"      # 1 = sinyal yang belum terbukti tetap ditampilkan lengkap
 GARIS = "━━━━━━━━━━━━━━━━━━"
+
+
+def baris_jadwal(tf_ms=4 * 3600000, tutup_ms=None, telat_menit=5):
+    """Dua baris jam: sinyal ini dari candle jam berapa dan kapan sinyal berikutnya. Jam WIB.
+    Contoh: '🕐 Sinyal candle 4J tutup 15/10 07:00 WIB  ·  dikirim 07:04 WIB' dan '⏭ Berikutnya: 11:00 WIB (masuk sekitar 11:05)'."""
+    now = time.time()
+    if not tutup_ms:
+        tutup_ms = int(now * 1000) // tf_ms * tf_ms
+    wib = lambda ms, f: time.strftime(f, time.gmtime(ms / 1000 + 7 * 3600))
+    nxt = tutup_ms + tf_ms
+    while nxt <= now * 1000:
+        nxt += tf_ms
+    nama = "4J" if tf_ms == 4 * 3600000 else "1J" if tf_ms == 3600000 else ""
+    return (f"🕐 Sinyal candle {nama} tutup {wib(tutup_ms, '%d/%m %H:%M')} WIB  ·  dikirim {wib(now * 1000, '%H:%M')} WIB\n"
+            f"⏭ Berikutnya: candle {wib(nxt, '%H:%M')} WIB (masuk sekitar {wib(nxt + telat_menit * 60000, '%H:%M')})")
 NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadangan": "Saran cadangan",
               "saran cadangan 2": "Pola A/B pilihan robot", "saran fib": "Golden zone 0.618", "saran siklus": "Siklus", "saran GZH": "GZH", "saran momentum": "Momentum",
               "saran news": "News", "saran ichimoku": "Ichimoku",
@@ -2533,7 +2549,9 @@ def nilai_gzh(r):
 
 GZH_DEKAT_ATR = 0.5      # peringatan GZH MENDEKAT saat harga tinggal 0.5 ATR dari 0.618
 GZH_MAKS_HARI = 4        # sinyal sentuh GZH paling banyak per hari (WIB), supaya tidak banjir saat pasar bergerak serentak
-GZH_SKOR_DEKAT = 80      # peringatan MENDEKAT hanya untuk setup skor tinggi
+GZH_SKOR_DEKAT = 80      # (lama) peringatan MENDEKAT hanya untuk setup skor tinggi
+GZH_ARAH = ("SHORT",)    # uji 2 tahun semua sentuhan: LONG PF 0.8 sampai 0.9, SHORT PF 1.06 dengan TP 2R penuh
+GZH_TP_R = 2.0           # fix profit: tutup penuh di 2R dari harga entry konfirmasi
 
 
 def sentuh_fib(min_skor=70):
@@ -2583,8 +2601,7 @@ def sentuh_fib(min_skor=70):
             if 0 < jr <= GZH_DEKAT_ATR:          # peringatan persiapan, sekali per kaki fib
                 dekat[kunci] = int(now)
                 sk0, ar0, _, _, bt0 = nilai_gzh(r)
-                if (TAMPIL_SEMUA or boleh_ikut("saran GZH", ar0, sk0)[0]) and sk0 >= max(min_skor, GZH_SKOR_DEKAT) and bt0.get("n", 0) >= 8 and bt0.get("pf", 0) >= 1.2 \
-                        and jatah["n"] < GZH_MAKS_HARI:
+                if (TAMPIL_SEMUA or ar0 in GZH_ARAH) and jatah["n"] < GZH_MAKS_HARI:
                     out.append(f"👀 <b>GZH MENDEKAT {sym} {ar0}</b> | skor setup {sk0}/100\n"
                                f"Harga {fp(px, t)}, tinggal {jr:.1f} ATR ({abs(px - e) / px * 100:.1f}%) dari fib 0.618 di "
                                f"{fp(e, t)}. Siapkan order. Aku kabari lagi saat harga menyentuh dan saat candle 4J tutup.")
@@ -2597,11 +2614,8 @@ def sentuh_fib(min_skor=70):
         if now - koin.get(sym, 0) < 86400:
             continue
         skor, arah, plus, minus, bt = nilai_gzh(r)
-        if not TAMPIL_SEMUA and not boleh_ikut("saran GZH", arah, skor)[0]:
-            print(f"[GZH] {sym} {arah} disentuh, tidak dikirim: jalur GZH belum terbukti")
-            continue
-        if skor < min_skor or bt.get("n", 0) < 8 or bt.get("pf", 0) < 1.2:
-            print(f"[GZH] {sym} disentuh tapi tidak dikirim, skor {skor}")
+        if not TAMPIL_SEMUA and arah not in GZH_ARAH:
+            print(f"[GZH] {sym} {arah} disentuh, tidak dikirim: GZH {arah} rugi di uji 2 tahun")
             continue
         why = cek_lintas(sym, arah)
         if why:
@@ -2614,49 +2628,20 @@ def sentuh_fib(min_skor=70):
         koin[sym] = int(now)
         a = g.get("atr") or r["atr"]
         sl = lv["1.0"] - 0.2 * a if L else lv["1.0"] + 0.2 * a
-        tp1, tp2 = lv["0.0"], lv["-0.236"]
         risk = abs(e - sl)
-        pc = lambda x: abs(x - e) / e * 100
-        kelas = "LAYAK BANGET DIIKUTI" if skor >= 80 else "LAYAK DIIKUTI"
-        jam = bt.get("jam")
-        sinyal[sym] = dict(arah=arah, entry=e, sl=sl, tp1=tp1, tp2=tp2, skor=skor, t=int(now))
-        belum = []
-        if (r.get("pasar") or {}).get("arah") != arah:
-            belum.append(f"bias robot {(r.get('pasar') or {}).get('arah', '-')}")
-        if not (r.get("izin", "") == "LONG dan SHORT" or r.get("izin", "").startswith(arah)):
-            belum.append(f"BTC 4J hanya mengizinkan {r.get('izin', '-')}")
-        belum += btc_melawan(arah)
-        out.append(
-            f"{'🟢' if L else '🔴'} <b>{sym} {arah}</b> | skor setup {skor}/100, {kelas}\n"
-            f"Harga baru turun menyentuh fib 0.618 di {fp(e, t)}, ini sentuhan pertama di kaki fib ini. "
-            if L else
-            f"{'🟢' if L else '🔴'} <b>{sym} {arah}</b> | skor setup {skor}/100, {kelas}\n"
-            f"Harga baru naik menyentuh fib 0.618 di {fp(e, t)}, ini sentuhan pertama di kaki fib ini. ")
-        out[-1] = out[-1].replace("\n", "\n" + baris_kelas(arah, skor=skor, wr=bt.get("wr"), rr2=abs(tp2 - e) / risk,
-                                                      rapor=r.get("rapor"), tambahan=belum[:2] if belum else None,
-                                                      jalur="saran fib") + "\n", 1)
-        out[-1] += (f"Titik 0 ada di {'atas' if L else 'bawah'} ({fp(lv['0.0'], t)}), jadi harapannya harga "
-                    f"{'mantul naik' if L else 'mantul turun'} lagi ke sana.\n"
-                    f"<pre>Entry {fp(e, t)}\nSL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%\n"
-                    f"TP1   {fp(tp1, t)}  +{abs(tp1 - e) / risk:.2f}R  +{pc(tp1):.1f}%\n"
-                    f"TP2   {fp(tp2, t)}  +{abs(tp2 - e) / risk:.2f}R  +{pc(tp2):.1f}%</pre>\n"
-                    f"Yang bikin yakin: {'; '.join(plus)}\n"
-                    + (f"Yang perlu diwaspadai: {'; '.join(minus)}\n" if minus else "")
-                    + (f"Di sejarah koin ini setup yang sama rata-rata selesai sekitar {jam:.0f} jam.\n" if jam else "")
-                    + (f"Bias robot dan BTC searah {arah}: boleh serok 1/4 lot sekarang di {fp(e, t)} dengan SL di atas. "
-                       f"Sisanya masuk saat GZH TERKONFIRMASI, tutup yang 1/4 kalau GZH BATAL.\n"
-                       if not belum else f"Jangan serok dulu, belum searah: {'; '.join(belum)}.\n")
-                    + f"Aku pantau candle 4J ini. Begitu tutup, aku kirim GZH TERKONFIRMASI "
-                    f"(tutup {'di atas' if L else 'di bawah'} {fp(e, t)}, langsung masuk) atau GZH BATAL. "
-                    f"Cek detail: /cek {sym.replace('USDT', '')}")
+        tp = e + GZH_TP_R * risk if L else e - GZH_TP_R * risk          # perkiraan, angka pasti dihitung saat konfirmasi
+        sinyal[sym] = dict(arah=arah, entry=e, sl=sl, tp1=tp, tp2=tp, skor=skor, t=int(now))
+        _, tkb, ik, lot_b = boleh_ikut("saran GZH", arah, skor)
+        out.append(f"{'🟢' if L else '🔴'} <b>GZH DISENTUH  ·  {sym} {arah}</b>\n"
+                   f"{ik} {tkb}  ·  lot {lot_b} lot normal\n"
+                   f"Harga baru {'turun' if L else 'naik'} menyentuh fib 0.618 di {fp(e, t)}, sentuhan pertama di kaki fib ini.\n"
+                   f"Jangan entry dulu. Tunggu candle 4J ini tutup. Kalau tutup {'di atas' if L else 'di bawah'} {fp(e, t)}, "
+                   f"robot kirim GZH TERKONFIRMASI dengan entry, SL {fp(sl, t)}, dan TP 2R. Kalau tidak, GZH BATAL.")
         try:
             import qse_alarm as _AL
-            _AL.tambah_gzh(sym, L, e, sl, tp1, tp2, t, skor=skor, wr=bt.get("wr"), dikirim=not belum)
+            _AL.tambah_gzh(sym, L, e, sl, lv["0.0"], lv["0.0"], t, skor=skor, wr=bt.get("wr"), dikirim=True)
         except Exception as ex:
             print("[WARN] gzh tunggu", ex)
-        if belum:          # belum semua searah: tidak dikirim sebagai sinyal, robot tetap menilai saat candle 4J tutup
-            out.pop()
-            print(f"[GZH] {sym} {arah} disentuh, sinyal ditunda sampai candle tutup: {'; '.join(belum)}")
     batas = now - 7 * 86400
     with open(fpath + ".tmp", "w") as f:
         json.dump(dict(px=px_lama, sudah={k: v for k, v in sudah.items() if v > batas},
