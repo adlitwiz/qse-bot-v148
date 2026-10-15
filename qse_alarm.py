@@ -181,9 +181,8 @@ def _pesan_gzh(a, cl):
     import telegram_notify as TG
     L, t = a["L"], a["tick"]
     if not ((cl > a["harga"]) if L else (cl < a["harga"])):
-        return (f"❌ <b>GZH BATAL {a['sym']} {'LONG' if L else 'SHORT'}</b>\n"
-                f"Candle 4J tutup di {TG.fp(cl, t)}, {'tembus ke bawah' if L else 'tembus ke atas'} 0.618 "
-                f"({TG.fp(a['harga'], t)}). Zona gagal menahan, setup dilewati.")
+        return (f"❌ <b>GZH BATAL  ·  {a['sym']} {'LONG' if L else 'SHORT'}</b>\n"
+                f"Jangan entry. Candle 4J tutup {'di bawah' if L else 'di atas'} 0.618 ({TG.fp(a['harga'], t)}).")
     risk = abs(cl - a["sl"])
     if risk <= 0 or ((a["tp1"] <= cl) if L else (a["tp1"] >= cl)):          # tp1 di sini = titik 0 fib
         return (f"⚠️ <b>GZH {a['sym']}</b> candle tutup memantul di {TG.fp(cl, t)}, tapi harga sudah melewati titik 0 fib. "
@@ -200,12 +199,10 @@ def _pesan_gzh(a, cl):
         CT.tambah("gzh", a["sym"], arah, cl, a["sl"], tp, tp, berlaku_jam=4, ket="GZH konfirmasi")
     except Exception as ex:
         print("[WARN] catat gzh", ex)
-    return (f"✅ <b>GZH TERKONFIRMASI {a['sym']} {arah}</b>\n"
-            + SY.baris_kelas(arah, rr2=SY.GZH_TP_R, wr=None, skor=a.get("skor"), jalur="saran GZH") + "\n"
-            f"Candle 4J tutup {'di atas' if L else 'di bawah'} 0.618 ({TG.fp(a['harga'], t)}). Entry sama dengan uji.\n"
-            + SY.blok_salin(cl, a["sl"], tp, tp, "MARKET", t, catatan_tp="TP1 sama dengan TP2, tutup penuh di 2R") + "\n"
-            f"🛠 Masuk MARKET sekarang. Fix profit: tutup penuh di TP 2R, jangan geser SL. Kalau 10 hari belum kena, tutup manual.\n"
-            f"📊 Uji 2 tahun GZH SHORT TP 2R: 632 trade, WR 41%, PF 1.06. Belum terbukti, pakai lot kecil.")
+    return (f"{'🟢' if L else '🔴'} <b>GZH TERKONFIRMASI  ·  {a['sym']} {arah}</b>\n"
+            f"{SY.layak('saran GZH', arah, a.get('skor'))}\n"
+            + SY.blok_salin(cl, a["sl"], tp, tp, "MARKET", t) + "\n"
+            f"Masuk MARKET sekarang. Tutup penuh di TP (2R). 10 hari belum kena, tutup manual.")
 
 
 def _cek_tutup(d0):

@@ -326,7 +326,7 @@ def register(led, r, s):
                             exp_ts=start + int((8 if r["tf"] == "60" else FP["limit_hours"]) * 3600000),
                             status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r["rapor"],
                             fill_ts=start if mk else 0, p_isi=s["p_isi"], cadangan=bool(s.get("cadangan")),
-                            siklus=bool(s.get("siklus")), cad2=bool(s.get("cad2")), fib=bool(s.get("fib")),
+                            siklus=bool(s.get("siklus")), cad2=bool(s.get("cad2")), fib=bool(s.get("fib")), tt=bool(s.get("tt")),
                             skor=s.get("skor"))
     return "UPDATE" if old else "BARU"
 

@@ -125,6 +125,20 @@ def _tugas_berkala():
                 TG.send(["📊 <b>QSE v148 | ANALISA VOLUME SL</b>\n\n" + "\n\n".join(sl_v)])
         except Exception as ex:
             print("[WARN] orderblock", ex)
+        try:
+            import qse_strat as ST
+            for k, pesan in ST.jalankan(baru_ok=True).items():          # EMA Cross SHORT dan RSI 50 + Volume
+                baru = [m for m in pesan if "BISA DIIKUTI" in m]
+                lain = [m for m in pesan if "BISA DIIKUTI" not in m]
+                nama = ST.STRAT[k]["nama"].upper()
+                if lain:
+                    TG.send([f"📈 <b>QSE v148 | {nama}</b>\n\n" + "\n\n".join(lain)])
+                if baru:
+                    ids = TG.send([f"📌 <b>QSE v148 | SINYAL {nama} ({len(baru)})</b>\n{SY.baris_jadwal(telat_menit=3)}\n"
+                                   f"Jalur terbukti, disematkan.\n\n" + "\n\n".join(baru)])
+                    _pin_ichi(ids, "pin_strat")
+        except Exception as ex:
+            print("[WARN] strategi", ex)
     hari = int(now // 86400) * 86400
     if now - hari >= 300 and st.get("arah_hari", 0) < hari and now - hari <= 6 * 3600:
         # 07:05 WIB, candle harian baru tutup: kirim arah pasar otomatis (BTC, ETH, posisi kamu, berita hari ini)

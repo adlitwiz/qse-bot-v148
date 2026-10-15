@@ -57,6 +57,10 @@ def _work(sym, tick, pk, tfs):
                 out.append(qse_scan.process(sym, df, pk["h1c"], pk["d"], pk["w"], _BTC["h4c"], tick, "240",
                                             lim_h=FP["limit_hours"], btc_live=_BTC["h4"], df_live=live,
                                             h1_live=pk.get("h1")))
+                try:          # EMA 200 candle 4J tutup terakhir, untuk jalur Tembus Trendline searah tren
+                    out[-1]["e200"] = float(df["close"].ewm(span=200, adjust=False).mean().iloc[-1])
+                except Exception:
+                    pass
             else:
                 df = pk["h1c"].iloc[-(TV_BARS - 1):]
                 if len(df) < MIN_BARS:
@@ -363,7 +367,7 @@ def _evaluasi_saran(led, now):
             continue
         g = {}
         for c in cl:
-            j = ("cadangan" if c.get("cadangan") else "siklus" if c.get("siklus") else "fib" if c.get("fib")
+            j = ("trendline" if c.get("tt") else "cadangan" if c.get("cadangan") else "siklus" if c.get("siklus") else "fib" if c.get("fib")
                  else "cadangan 2" if c.get("cad2") else "1J" if c.get("tf") == "60" else "utama")
             g.setdefault(f"{c['pola']} ({j})", []).append(c["result_r"])
 
@@ -409,7 +413,7 @@ def _naikkan_pin_ichi():
     """Pin sinyal Ichimoku punya prioritas: setelah pin lain dipasang, pin Ichimoku dilepas lalu dipasang lagi
     supaya kembali tampil paling atas di grup. Berlaku 24 jam sejak sinyal Ichimoku terakhir."""
     st = _st_load()
-    for slot in ("pin_ob", "pin_ichi"):              # Ichimoku dipasang terakhir supaya paling atas
+    for slot in ("pin_strat", "pin_ob", "pin_ichi"):              # Ichimoku dipasang terakhir supaya paling atas
         mid = st.get(slot)
         if mid and time.time() - st.get(slot + "_t", 0) < 86400:
             TG.unpin(mid)
@@ -510,8 +514,24 @@ def _ada_sinyal_hari_ini(led):
     except Exception:
         pass
     try:
+        import qse_strat as ST
+        for k in ST.STRAT:
+            d = ST.lihat(k)
+            if any(it.get("t", 0) * 1000 >= h0 for it in list(d["open"].values()) + d["closed"][-100:]):
+                return True
+    except Exception:
+        pass
+    try:
+        import qse_ob as OB
+        d = OB.lihat()
+        if any(it.get("t", 0) * 1000 >= h0 for it in list(d["open"].values()) + d["closed"][-100:]):
+            return True
+    except Exception:
+        pass
+    try:
         with open(os.path.join(STATE_DIR, "sentuh_fib.json")) as f:
-            if any(g.get("t", 0) * 1000 >= h0 for g in json.load(f).get("sinyal", {}).values()):
+            if any(g.get("t", 0) * 1000 >= h0 and SY.boleh_ikut("saran GZH", g.get("arah"))[0]          # GZH belum terbukti tidak dihitung
+                   for g in json.load(f).get("sinyal", {}).values()):
                 return True
     except Exception:
         pass
@@ -906,6 +926,64 @@ def _cadangan2(results, sudah, led, tickers, ctx, maks=3):
         x["skor"] = _skor(r, x, SY.ramal_btc4())
     sel.sort(key=lambda z: z[1]["skor"], reverse=True)
     return sel[:sisa]
+
+
+def _trendline(results, sudah, led, ctx, maks=5):
+    """Jalur Tembus Trendline searah tren: pola Tembus Trendline di DASBOR, SHORT, close 4J di bawah EMA 200, saran baru
+    (belum tersentuh). Rapor, mutu, dan status DASBOR tidak dipakai, sama dengan uji 5 tahun 108 koin (PF 1.47).
+    Level entry, SL, TP1, TP2 dari DASBOR. Return [(r, x)]."""
+    if ctx["tahan"] or ctx["jeda"]:
+        return []
+    st = _st_load()
+    seen = list(st.get("tt_seen", []))
+    out = []
+    for r in results:
+        if r["tf"] != "240" or r["symbol"] in sudah or r["symbol"] in ctx["delist"] or not r.get("e200"):
+            continue
+        if r["close"] >= r["e200"]:
+            continue
+        for x in r["saran"]:
+            if x["pola"] != "Tembus Trendline" or x["arah"] != "SHORT" or x["order"] == "TUNGGU":
+                continue
+            if x.get("sudah_masuk") or x.get("tersentuh") or x.get("sl_kena") or x.get("tp1_kena"):
+                continue
+            k = f"{r['symbol']}|{x.get('idx')}|{x['entry']:.10g}"
+            if k in seen:
+                continue
+            seen.append(k)
+            why = ""
+            bd = SY.berita_depan(BERITA_DEPAN_JAM)
+            if bd:
+                why = f"berita besar {bd['judul']}"
+            for it in led["open"].values():
+                if it.get("sym") == r["symbol"] and it.get("arah") != "SHORT" and it.get("status") in ("MENUNGGU", "TERISI", "TP1"):
+                    why = "masih ada saran LONG aktif di koin ini"
+            why = why or SY.cek_lintas(r["symbol"], "SHORT")
+            if why:
+                print(f"[TRENDLINE] {r['symbol']} ditahan: {why}")
+                continue
+            y = dict(x, tt=True, eksekusi=True)
+            try:
+                y["skor"] = _skor(r, y, SY.ramal_btc4())
+            except Exception:
+                y["skor"] = None
+            out.append((r, y))
+            break
+    _st_update({"tt_seen": seen[-600:]})
+    return out[:maks]
+
+
+def _blok_tt(no, r, x, tag, led):
+    k = [f"Pola Tembus Trendline di DASBOR ({TG.e(x.get('alasan_pola', 'harga menembus garis tren'))})",
+         "Harga 4J di bawah EMA 200: tren turun"]
+    if "STOP" in x["order"]:
+        o1 = (f"Tunggu candle 4J tutup di bawah {TG.fp(x['entry'], r.get('tick'))}, lalu masuk MARKET. "
+              f"Kalau 24 jam belum terjadi, batal")
+    else:
+        o1 = f"Pasang {x['order']} di {TG.fp(x['entry'], r.get('tick'))}, berlaku 24 jam"
+    cara = [o1,
+            "TP1: tutup separuh, pindahkan SL ke harga entry", "Sisanya ke TP2"]
+    return _kartu(no, r, x, "saran trendline", "SARAN BARU" if tag == "BARU" else "entry diperbarui", led, kenapa=k, cara=cara)
 
 
 def _blok_fib(no, r, x, tag, led):
@@ -1493,6 +1571,12 @@ def scan(now, run4, tfs):
     fib = _catat_jalur(led, _fib_saran(results, sudah, led, tickers, ctx), "fib_n")
     sudah |= {r["symbol"] for r, _, _ in fib}
     cad2 = _catat_jalur(led, _cadangan2(results, sudah, led, tickers, ctx), "cad2_n")
+    if "240" in tfs:
+        sudah |= {r["symbol"] for r, _, _ in cad2}
+        for r, x in _trendline(results, sudah, led, ctx):
+            tg = FX.register(led, r, x)
+            if tg:
+                cad2.append((r, x, tg))          # ikut saluran cad2 (pin, laporan), jalur dibedakan dengan tanda tt
     for ev, it in events:
         if ev != "SL":
             continue
@@ -1598,7 +1682,7 @@ def _kelas(r, x, tambahan=None, konteks=True):
             skor = _skor(r, x, SY.ramal_btc4())
         except Exception:
             skor = None
-    jalur = ("saran cadangan 2" if x.get("cad2") else "saran cadangan" if x.get("cadangan") else "saran fib" if x.get("fib")
+    jalur = ("saran trendline" if x.get("tt") else "saran cadangan 2" if x.get("cad2") else "saran cadangan" if x.get("cadangan") else "saran fib" if x.get("fib")
              else "saran siklus" if x.get("siklus") else "saran 1J" if r.get("tf") == "60" else "saran utama")
     return SY.baris_kelas(x["arah"], skor=skor, wr=x.get("wr", r.get("wr")), rr2=abs(x["tp2"] - x["entry"]) / risk,
                           rapor=r.get("rapor"), golden=bool(x.get("golden")), longgar=bool(x.get("longgar")),
@@ -1776,6 +1860,27 @@ def _pantauan(rs, sig, kode):
     return out
 
 
+def _baru_candle(items, tutup_ms):
+    """Sinyal jalur robot (Ichimoku, Order Block, strategi) yang dikirim di candle ini, satu baris per koin,
+    lalu daftar semua posisi robot yang masih berjalan."""
+    items = list(items)
+    rows = []
+    for it in sorted(items, key=lambda z: -z.get("t", 0)):
+        if it.get("t", 0) * 1000 < tutup_ms - 60000:
+            continue
+        L = it.get("arah", "LONG") == "LONG"
+        t = it.get("tick", 0.0001)
+        tp = f"  ·  TP {TG.fp(it['tp'], t)}" if it.get("tp") else "  ·  tanpa TP, SL berjalan"
+        rows.append(f"• {'🟢' if L else '🔴'} <b>{TG.e(it['sym'])} {'LONG' if L else 'SHORT'}</b>  ·  entry {TG.fp(it['entry'], t)}  ·  "
+                    f"SL {TG.fp(it.get('sl0', it['sl']), t)}{tp}")
+    semua = sorted(items, key=lambda z: -z.get("t", 0))
+    jalan = ", ".join(f"{z['sym'].replace('USDT', '')} {z.get('arah', 'LONG')}" for z in semua)
+    out = ("\n📌 Sinyal baru candle ini:\n" + "\n".join(rows)) if rows else ""
+    if jalan:
+        out += f"\n📂 Posisi robot berjalan ({len(semua)}): {TG.e(jalan)}. Detail entry dan SL: ketik perintah jalurnya"
+    return out
+
+
 def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"), rb=None, ctx=None, cad=None, sik=None,
               fib=None, cad2=None):
     judul, kode = NAMA[tf]
@@ -1862,6 +1967,12 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             sinyal_rows.append("Order Block: " + OB.status_singkat())
         except Exception as ex:
             print("[WARN] status orderblock", ex)
+        try:
+            import qse_strat as ST
+            for k, cfg in ST.STRAT.items():
+                sinyal_rows.append(f"{cfg['nama']}: " + ST.status_singkat(k))
+        except Exception as ex:
+            print("[WARN] status strategi", ex)
     head.append(GARIS)
     head += ["🎯 <b>SINYAL</b>"] + [f"• {z}" for z in sinyal_rows] + ["", GARIS]
     if pasar:
@@ -1901,7 +2012,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     semua += [("saran cadangan", r, x, tg, _blok_cad) for r, x, tg in cad]
     semua += [("saran siklus", r, x, tg, _blok_sik) for r, x, tg in sik]
     semua += [("saran fib", r, x, tg, _blok_fib) for r, x, tg in fib]
-    semua += [("saran cadangan 2", r, x, tg, _blok_cad2) for r, x, tg in cad2]
+    semua += [("saran trendline", r, x, tg, _blok_tt) if x.get("tt") else ("saran cadangan 2", r, x, tg, _blok_cad2)
+              for r, x, tg in cad2]
     ikut = [z for z in semua if SY.boleh_ikut(z[0], z[2]["arah"], z[2].get("skor"))[0]]
     tolak = [z for z in semua if z not in ikut]
     if ikut:
@@ -1917,6 +2029,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         ("saran 1J", "SARAN VALID 1J", "saran EKSEKUSI di chart 1 jam, searah bias 4J"),
         ("saran cadangan", "SARAN CADANGAN", "zona emas searah bias, skill tambahan minimal 5 dari 8"),
         ("saran fib", "GOLDEN ZONE (fib 0.618-0.65)", "harga di golden pocket, skill dan candle konfirmasi searah"),
+        ("saran trendline", "TEMBUS TRENDLINE SEARAH TREN", "pola Tembus Trendline di DASBOR, SHORT, harga di bawah EMA 200, rapor koin tidak dipakai"),
         ("saran cadangan 2", "POLA RAPOR A/B, DIPILIHKAN ROBOT", "pola mutu A/B yang di DASBOR masih TAHAN, entry dipilih robot")]),
         ("🤖", "DARI ROBOT TELEGRAM", [
         ("saran siklus", "SIKLUS POLA KEMBAR", "pola harga mirip di sejarah koin")])]
@@ -1937,7 +2050,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             try:
                 import qse_ichimoku as IC
                 blok.append(f"{GARIS}\n🔹 <b>ICHIMOKU</b>  ·  ✅ TERBUKTI\nSinyal dikirim di pesan sendiri sekitar 3 menit setelah candle 4J tutup, "
-                            f"biasanya sebelum laporan ini. Tidak ada pesan berarti tidak ada sinyal baru.\n{TG.e(IC.status_singkat())}")
+                            f"biasanya sebelum laporan ini. Tidak ada pesan berarti tidak ada sinyal baru.\n{TG.e(IC.status_singkat())}"
+                            + _baru_candle(IC.lihat()["open"].values(), tutup))
             except Exception as ex:
                 print("[WARN] status ichimoku", ex)
             try:
@@ -1945,9 +2059,18 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                 blok.append(f"{GARIS}\n🔹 <b>ORDER BLOCK + VOLUME</b>  ·  ✅ TERBUKTI\n"
                             f"Order block bullish yang dibentuk volume besar, hanya LONG. Sinyal baru dikirim di pesan "
                             f"sendiri dan disematkan. Yang masih terjangkau masuk daftar KOIN UNGGULAN.\n"
-                            f"{TG.e(OB.status_singkat())}")
+                            f"{TG.e(OB.status_singkat())}" + _baru_candle(OB.lihat()["open"].values(), tutup))
             except Exception as ex:
                 print("[WARN] status orderblock", ex)
+            try:
+                import qse_strat as ST
+                for k, cfg in ST.STRAT.items():
+                    ok_s, tk_s, ik_s, lot_s = SY.boleh_ikut("saran " + k)
+                    blok.append(f"{GARIS}\n🔹 <b>{cfg['nama'].upper()}</b>  ·  {ik_s} {tk_s}  ·  lot {lot_s}\n"
+                                f"Sinyal dikirim di pesan sendiri dan disematkan. {cfg['bt']}.\n{TG.e(ST.status_singkat(k))}"
+                                + _baru_candle(ST.lihat(k)["open"].values(), tutup))
+            except Exception as ex:
+                print("[WARN] status strategi", ex)
             ok_g, tk_g, ik_g, lot_g = SY.boleh_ikut("saran GZH", "SHORT")
             blok.append(f"{GARIS}\n🔹 <b>GZH (golden zone hunter)</b>  ·  {ik_g} {tk_g}  ·  lot {lot_g}\nAktif, SHORT saja, fix profit "
                         f"TP 2R penuh. Dipantau tiap menit saat harga menyentuh 0.618, dikirim terpisah: GZH DISENTUH lalu "
@@ -1964,8 +2087,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
     if pos and tf == "240":
         peta = {r["symbol"]: r for r in rs}
-        out.append(f"{GARIS}\n👤 <b>ANALISA POSISI KAMU ({len(pos)})</b>")
-        out.append("\n┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n".join(_blok_posisi_analisa(it, peta.get(it["sym"]) or SY.hasil_robot(it["sym"]))
+        out.append(f"{GARIS}\n👤 <b>ANALISA POSISI KAMU ({len(pos)})</b>\n\n" + "\n┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n".join(_blok_posisi_analisa(it, peta.get(it["sym"]) or SY.hasil_robot(it["sym"]))
                                                for it in pos))
     if ev:
         out.append(f"{GARIS}\n❌ <b>2. SARAN DIBATALKAN ({len(ev)})</b>\n" + "\n".join(TG.hasil(e, it, syms) for e, it in ev))

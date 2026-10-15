@@ -203,6 +203,14 @@ def asal_saran(sym, arah, harga, r=None):
     except Exception:
         pass
     try:
+        import qse_strat as ST
+        for k, cfg in ST.STRAT.items():
+            for it in ST.lihat(k)["open"].values():
+                if it["sym"] == sym and it["arah"] == arah:
+                    return dict(jalur="saran " + k, pola=cfg["nama"], skor=None)
+    except Exception:
+        pass
+    try:
         with open(os.path.join(STATE_DIR, "sentuh_fib.json")) as f:
             g = json.load(f).get("sinyal", {}).get(sym)
         if g and g["arah"] == arah and time.time() - g["t"] <= 2 * 86400 and dekat(g["entry"], 1.0):
@@ -463,16 +471,23 @@ BUKTI = {
     "saran fib": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot: 6 trade, WR 33%, PF 0.77, -0.9R"),
     "saran siklus": ("JARANG", "❔", "0.25x", "uji 2 tahun 30 koin: tidak ada sinyal yang lolos semua syarat"),
     "saran cadangan 2": ("JARANG", "❔", "0.25x", "uji 2 tahun 30 koin: tidak ada sinyal yang lolos semua syarat"),
+    "saran trendline": ("TERBUKTI", "✅", "0.5x", "uji 5 tahun 108 koin semua pola Tembus Trendline di DASBOR, SHORT, harga di "
+                        "bawah EMA 200: 691 trade, WR 80%, PF 1.47. Aturan dipilih dari 2021-2023 (PF 1.57), uji ulang "
+                        "2024-2026 PF 1.38. 2026 melemah (PF 1.01), jadi lot 0.5x"),
+    "saran ema_short": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, maks 8 posisi: 1812 trade, WR 42%, PF 1.42, aturan dipilih "
+                        "dari 2020-2023 (PF 1.37), uji ulang 2024-2026 PF 1.47, untung tiap tahun, turun terdalam 16%"),
+    "saran rsi_vol": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 2380 trade, WR 40%, PF 1.34, "
+                      "2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.45, positif 21 dari 26 kuartal"),
     "saran orderblock": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin perp, LONG, maks 8 posisi: 969 trade, PF 1.45, "
                          "uji ulang 2024-2026 dengan aturan yang dipilih dari 2020-2023: PF 1.26"),
 }
 BELUM_UJI = ("BELUM DIUJI", "❔", "0.25x", "belum diuji ulang dengan data perp 5 tahun dan aturan robot lengkap")
-CT_KEY = {"saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "gzh", "saran momentum": "momentum", "saran news": "news_searah"}
+CT_KEY = {"saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "gzh", "saran momentum": "momentum", "saran news": "news_searah"}
 NAIK_N, NAIK_PF = 30, 1.2          # syarat naik jadi TERBUKTI dari hasil live
 
 
 def _jalur_led(it):
-    return ("saran cadangan 2" if it.get("cad2") else "saran cadangan" if it.get("cadangan") else "saran fib" if it.get("fib")
+    return ("saran trendline" if it.get("tt") else "saran cadangan 2" if it.get("cad2") else "saran cadangan" if it.get("cadangan") else "saran fib" if it.get("fib")
             else "saran siklus" if it.get("siklus") else "saran 1J" if it.get("tf") == "60" else "saran utama")
 
 
@@ -537,6 +552,19 @@ TAMPIL_SEMUA = os.environ.get("QSE_TAMPIL_SEMUA", "0") == "1"      # 1 = sinyal 
 GARIS = "━━━━━━━━━━━━━━━━━━"
 
 
+def layak(jalur, arah=None, skor=None):
+    """Satu baris jawaban 'layak entry?' dari label bukti dan hasil live."""
+    tk, ik, lot, _, lv = tingkat_bukti(jalur, arah, skor)
+    live = f" (live {lv[0]} trade, PF {lv[2]:.2f})" if lv and lv[0] >= 3 else ""
+    if tk in ("TERBUKTI", "TERBUKTI LIVE"):
+        return f"✅ Layak entry: <b>YA</b>  ·  lot {lot}{live}"
+    if tk == "SEDANG DIUJI":
+        return f"🧪 Layak entry: <b>BOLEH</b>  ·  lot {lot}, masih diuji{live}"
+    if tk == "MELEMAH DI LIVE":
+        return f"⚠️ Layak entry: <b>HATI-HATI</b>  ·  lot {lot}, hasil live melemah{live}"
+    return f"⚠️ Layak entry: <b>BOLEH COBA, RISIKO TINGGI</b>  ·  lot {lot}, belum terbukti{live}"
+
+
 def baris_jadwal(tf_ms=4 * 3600000, tutup_ms=None, telat_menit=5):
     """Dua baris jam: sinyal ini dari candle jam berapa dan kapan sinyal berikutnya. Jam WIB.
     Contoh: '🕐 Sinyal candle 4J tutup 15/10 07:00 WIB  ·  dikirim 07:04 WIB' dan '⏭ Berikutnya: 11:00 WIB (masuk sekitar 11:05)'."""
@@ -553,7 +581,8 @@ def baris_jadwal(tf_ms=4 * 3600000, tutup_ms=None, telat_menit=5):
 NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadangan": "Saran cadangan",
               "saran cadangan 2": "Pola A/B pilihan robot", "saran fib": "Golden zone 0.618", "saran siklus": "Siklus", "saran GZH": "GZH", "saran momentum": "Momentum",
               "saran news": "News", "saran ichimoku": "Ichimoku",
-              "saran orderblock": "Order Block + Volume"}
+              "saran orderblock": "Order Block + Volume", "saran trendline": "Tembus Trendline searah tren",
+              "saran ema_short": "EMA Cross 20/50 SHORT", "saran rsi_vol": "RSI 50 + Volume"}
 
 
 def boleh_ikut(jalur, arah=None, skor=None):
@@ -568,6 +597,12 @@ def bukti_pendek(jalur, arah=None, skor=None):
         return f"live {lv[0]} trade, WR {lv[1]:.0f}%, PF {lv[2]:.2f}"
     if jalur == "saran ichimoku":
         return "uji 5 tahun 111 koin: 3084 trade, PF 1.29, untung tiap tahun"
+    if jalur == "saran trendline":
+        return "uji 5 tahun 108 koin: 691 trade, WR 80%, PF 1.47, uji ulang 2024-2026 PF 1.38"
+    if jalur == "saran ema_short":
+        return "uji 6 tahun 111 koin: 1812 trade, PF 1.42, uji ulang 2024-2026 PF 1.47"
+    if jalur == "saran rsi_vol":
+        return "uji 6 tahun, 30 koin likuid: 2380 trade, PF 1.34, uji ulang 2024-2026 PF 1.45"
     if jalur == "saran orderblock":
         return "uji 6 tahun 111 koin: 969 trade, PF 1.45, uji ulang 2024-2026 PF 1.26"
     if tk == "SEDANG DIUJI":
@@ -940,6 +975,12 @@ def _sinyal_dari_harga(entry, sl=None):
         calon += [(v["sym"], "LONG", v.get("sl")) for v in OB.lihat()["open"].values() if cocok(v.get("entry"))]
     except Exception:
         pass
+    try:
+        import qse_strat as ST
+        for k in ST.STRAT:
+            calon += [(v["sym"], v["arah"], v.get("sl0")) for v in ST.lihat(k)["open"].values() if cocok(v.get("entry"))]
+    except Exception:
+        pass
     for r in _peta_robot().values():
         calon += [(r["symbol"], x["arah"], x.get("sl")) for x in r.get("saran", []) if cocok(x.get("entry"))]
     if sl:
@@ -1010,7 +1051,7 @@ def parse_entry(args):
 
 
 def _jalur_led(it):
-    return ("saran cadangan" if it.get("cadangan") else "saran siklus" if it.get("siklus")
+    return ("saran trendline" if it.get("tt") else "saran cadangan" if it.get("cadangan") else "saran siklus" if it.get("siklus")
             else "saran cadangan 2" if it.get("cad2") else "saran fib" if it.get("fib")
             else "saran 1J" if it.get("tf") == "60" else "saran utama")
 
@@ -2303,6 +2344,13 @@ def arah_aktif(sym):
         except Exception:
             pass
         try:
+            import qse_strat as ST
+            for k, cfg in ST.STRAT.items():
+                for v in ST.lihat(k)["open"].values():
+                    tambah(v["sym"], v["arah"], cfg["nama"])
+        except Exception:
+            pass
+        try:
             import qse_alarm as AL
             for a in AL._lihat()["list"]:
                 if a.get("jenis") == "gzh":
@@ -2632,11 +2680,10 @@ def sentuh_fib(min_skor=70):
         tp = e + GZH_TP_R * risk if L else e - GZH_TP_R * risk          # perkiraan, angka pasti dihitung saat konfirmasi
         sinyal[sym] = dict(arah=arah, entry=e, sl=sl, tp1=tp, tp2=tp, skor=skor, t=int(now))
         _, tkb, ik, lot_b = boleh_ikut("saran GZH", arah, skor)
-        out.append(f"{'🟢' if L else '🔴'} <b>GZH DISENTUH  ·  {sym} {arah}</b>\n"
-                   f"{ik} {tkb}  ·  lot {lot_b} lot normal\n"
-                   f"Harga baru {'turun' if L else 'naik'} menyentuh fib 0.618 di {fp(e, t)}, sentuhan pertama di kaki fib ini.\n"
-                   f"Jangan entry dulu. Tunggu candle 4J ini tutup. Kalau tutup {'di atas' if L else 'di bawah'} {fp(e, t)}, "
-                   f"robot kirim GZH TERKONFIRMASI dengan entry, SL {fp(sl, t)}, dan TP 2R. Kalau tidak, GZH BATAL.")
+        jam_k = time.strftime("%H:%M", time.gmtime((int(now // 14400) + 1) * 14400 + 7 * 3600))
+        out.append(f"👀 <b>GZH DISENTUH  ·  {sym} {arah}</b>\n"
+                   f"Belum entry. Tunggu candle 4J tutup jam {jam_k} WIB.\n"
+                   f"Kalau tutup {'di atas' if L else 'di bawah'} {fp(e, t)}, robot kirim GZH TERKONFIRMASI dengan entry, SL, TP.")
         try:
             import qse_alarm as _AL
             _AL.tambah_gzh(sym, L, e, sl, lv["0.0"], lv["0.0"], t, skor=skor, wr=bt.get("wr"), dikirim=True)
