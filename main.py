@@ -1861,24 +1861,22 @@ def _pantauan(rs, sig, kode):
 
 
 def _baru_candle(items, tutup_ms):
-    """Sinyal jalur robot (Ichimoku, Order Block, strategi) yang dikirim di candle ini, satu baris per koin,
-    lalu daftar semua posisi robot yang masih berjalan."""
-    items = list(items)
+    """Posisi jalur robot (Ichimoku, Order Block, strategi), satu koin satu kartu dipisah garis.
+    Yang dikirim di candle ini diberi tanda 🆕."""
     rows = []
-    for it in sorted(items, key=lambda z: -z.get("t", 0)):
-        if it.get("t", 0) * 1000 < tutup_ms - 60000:
-            continue
+    for it in sorted(list(items), key=lambda z: -z.get("t", 0)):
         L = it.get("arah", "LONG") == "LONG"
         t = it.get("tick", 0.0001)
-        tp = f"  ·  TP {TG.fp(it['tp'], t)}" if it.get("tp") else "  ·  tanpa TP, SL berjalan"
-        rows.append(f"• {'🟢' if L else '🔴'} <b>{TG.e(it['sym'])} {'LONG' if L else 'SHORT'}</b>  ·  entry {TG.fp(it['entry'], t)}  ·  "
-                    f"SL {TG.fp(it.get('sl0', it['sl']), t)}{tp}")
-    semua = sorted(items, key=lambda z: -z.get("t", 0))
-    jalan = ", ".join(f"{z['sym'].replace('USDT', '')} {z.get('arah', 'LONG')}" for z in semua)
-    out = ("\n📌 Sinyal baru candle ini:\n" + "\n".join(rows)) if rows else ""
-    if jalan:
-        out += f"\n📂 Posisi robot berjalan ({len(semua)}): {TG.e(jalan)}. Detail entry dan SL: ketik perintah jalurnya"
-    return out
+        baru = it.get("t", 0) * 1000 >= tutup_ms - 60000
+        jam = dt.datetime.fromtimestamp(it.get("t", 0), WIB).strftime("%d/%m %H:%M")
+        sl_now, sl0 = it.get("sl", it.get("sl0")), it.get("sl0", it.get("sl"))
+        tp = TG.fp(it["tp"], t) if it.get("tp") else "tanpa TP, pakai SL berjalan"
+        rows.append(f"{GARIS}\n{'🟢' if L else '🔴'} <b>{TG.e(it['sym'])} {'LONG' if L else 'SHORT'}</b>  ·  MARKET  ·  "
+                    + ("🆕 sinyal candle ini" if baru else f"sinyal {jam} WIB")
+                    + f"\n<pre>Entry {TG.fp(it['entry'], t)}\n"
+                    f"SL    {TG.fp(sl_now, t)}" + (f" (berjalan, awal {TG.fp(sl0, t)})" if sl_now != sl0 else "") + "\n"
+                    f"TP    {tp}</pre>")
+    return ("\n" + "\n".join(rows)) if rows else ""
 
 
 def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"), rb=None, ctx=None, cad=None, sik=None,
@@ -1959,12 +1957,12 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     if tf == "240":
         try:
             import qse_ichimoku as IC
-            sinyal_rows.append("Ichimoku: " + IC.status_singkat())
+            sinyal_rows.append(f"Ichimoku: {IC.baris_cek()}  ·  posisi {len(IC.lihat()['open'])}/{IC.MAKS_BUKA}")
         except Exception as ex:
             print("[WARN] status ichimoku", ex)
         try:
             import qse_ob as OB
-            sinyal_rows.append("Order Block: " + OB.status_singkat())
+            sinyal_rows.append(f"Order Block: {OB.baris_cek()}  ·  posisi {len(OB.lihat()['open'])}/{OB.MAKS_BUKA}")
         except Exception as ex:
             print("[WARN] status orderblock", ex)
         try:
@@ -2047,34 +2045,32 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             blok.append(f"{GARIS}\n🔹 <b>{nama_j} ({len(item)})</b>  ·  bisa diikuti {ok_n}\n<i>{ket}</i>")
             blok += [f(i, r, x, st, led) for i, (j_, r, x, st, f) in enumerate(item, 1)]
         if judul_b == "DARI ROBOT TELEGRAM" and tf == "240":
+            def _jalur_robot(nama, ik, tk, lot, n, maks, cek, items):
+                blok.append(f"{GARIS}\n🔹 <b>{nama}</b>  ·  {ik} {tk}  ·  lot {lot}  ·  posisi {n}/{maks}\n🕐 {TG.e(cek)}"
+                            + _baru_candle(items, tutup))
             try:
                 import qse_ichimoku as IC
-                blok.append(f"{GARIS}\n🔹 <b>ICHIMOKU</b>  ·  ✅ TERBUKTI\nSinyal dikirim di pesan sendiri sekitar 3 menit setelah candle 4J tutup, "
-                            f"biasanya sebelum laporan ini. Tidak ada pesan berarti tidak ada sinyal baru.\n{TG.e(IC.status_singkat())}"
-                            + _baru_candle(IC.lihat()["open"].values(), tutup))
+                d_ = IC.lihat()["open"]
+                _jalur_robot("ICHIMOKU", "✅", "TERBUKTI", "1x", len(d_), IC.MAKS_BUKA, IC.baris_cek(), d_.values())
             except Exception as ex:
                 print("[WARN] status ichimoku", ex)
             try:
                 import qse_ob as OB
-                blok.append(f"{GARIS}\n🔹 <b>ORDER BLOCK + VOLUME</b>  ·  ✅ TERBUKTI\n"
-                            f"Order block bullish yang dibentuk volume besar, hanya LONG. Sinyal baru dikirim di pesan "
-                            f"sendiri dan disematkan. Yang masih terjangkau masuk daftar KOIN UNGGULAN.\n"
-                            f"{TG.e(OB.status_singkat())}" + _baru_candle(OB.lihat()["open"].values(), tutup))
+                d_ = OB.lihat()["open"]
+                _jalur_robot("ORDER BLOCK + VOLUME (LONG)", "✅", "TERBUKTI", "1x", len(d_), OB.MAKS_BUKA, OB.baris_cek(), d_.values())
             except Exception as ex:
                 print("[WARN] status orderblock", ex)
             try:
                 import qse_strat as ST
                 for k, cfg in ST.STRAT.items():
                     ok_s, tk_s, ik_s, lot_s = SY.boleh_ikut("saran " + k)
-                    blok.append(f"{GARIS}\n🔹 <b>{cfg['nama'].upper()}</b>  ·  {ik_s} {tk_s}  ·  lot {lot_s}\n"
-                                f"Sinyal dikirim di pesan sendiri dan disematkan. {cfg['bt']}.\n{TG.e(ST.status_singkat(k))}"
-                                + _baru_candle(ST.lihat(k)["open"].values(), tutup))
+                    d_ = ST.lihat(k)["open"]
+                    _jalur_robot(cfg["nama"].upper(), ik_s, tk_s, lot_s, len(d_), ST.MAKS_BUKA, ST.baris_cek(k), d_.values())
             except Exception as ex:
                 print("[WARN] status strategi", ex)
             ok_g, tk_g, ik_g, lot_g = SY.boleh_ikut("saran GZH", "SHORT")
-            blok.append(f"{GARIS}\n🔹 <b>GZH (golden zone hunter)</b>  ·  {ik_g} {tk_g}  ·  lot {lot_g}\nAktif, SHORT saja, fix profit "
-                        f"TP 2R penuh. Dipantau tiap menit saat harga menyentuh 0.618, dikirim terpisah: GZH DISENTUH lalu "
-                        f"GZH TERKONFIRMASI saat candle 4J tutup. Uji 2 tahun: 632 trade, PF 1.06, hampir impas.")
+            blok.append(f"{GARIS}\n🔹 <b>GZH (SHORT, TP 2R)</b>  ·  {ik_g} {tk_g}  ·  lot {lot_g}\n"
+                        f"🕐 dipantau tiap menit, dikirim terpisah saat harga menyentuh 0.618")
         if len(blok) > 1:
             so.append("\n".join(blok))
     if kosong:
