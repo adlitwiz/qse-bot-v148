@@ -431,12 +431,12 @@ def baris_konteks():
     return v
 
 
-def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp=""):
-    """Blok level yang sama untuk semua sinyal. Bisa disalin lalu ditempel ke /entry untuk dicatat."""
+def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp="", sym=None, arah=None):
+    """Blok level yang sama untuk semua sinyal. Tekan lama untuk salin, lalu tempel setelah /entry untuk dicatat."""
     t = tick or tick_of(None, entry)
     risk = abs(entry - sl) or 1e-12
     pc = lambda x: abs(x - entry) / entry * 100
-    rows = [f"Entry {fp(entry, t)}" + (f" {order}" if order else ""), f"SL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%"]
+    rows = ([f"{sym} {arah}".strip()] if sym else []) + [f"Entry {fp(entry, t)}" + (f" {order}" if order else ""), f"SL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%"]
     for nm, v in (("TP1", tp1), ("TP2", tp2)):
         if v:
             rows.append(f"{nm:<5} {fp(v, t)}  +{abs(v - entry) / risk:.2f}R  +{pc(v):.1f}%")

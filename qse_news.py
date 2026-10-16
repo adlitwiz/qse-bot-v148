@@ -338,7 +338,7 @@ def _mandiri(sym, arah, kat, pub, now, eng):
     st = CT.statistik("news_mandiri")
     return (f"📰 <b>SARAN NEWS MANDIRI {arah} {sym}</b> (sejarah berita ini lebih kuat dari engine, engine condong {eng or '-'})\n"
             + SY.baris_kelas(arah, tambahan=["saran dari berita, harga bisa bergerak liar"], jalur="saran news") + "\n"
-            + SY.blok_salin(e, sl, t1, t2, "LIMIT", t) + "\n"
+            + SY.blok_salin(e, sl, t1, t2, "LIMIT", t, sym=sym, arah=arah) + "\n"
             f"↳ Backtest jalur news mandiri: {BT_MANDIRI}."
             + (f" Live: {st['n']} trade, WR {st['wr']:.0f}%, PF {st['pf']:.2f}." if st["n"] else " Live: belum ada trade selesai.")
             + f"\n↳ Pakai setengah lot. Berlaku sampai {batas}, kalau belum terisi batalkan. SL sudah memberi ruang untuk "
@@ -368,7 +368,7 @@ def _saran(sym, arah, now, kat=None, pub=None):
                 rr2 = abs(x["tp2"] - x["entry"]) / (abs(x["entry"] - x["sl"]) or 1e-12)
                 return (f"✅ <b>SARAN ENTRY {arah} {sym}</b> (berita dan engine searah)\n"
                         + SY.baris_kelas(arah, skor=SY.skor_setup(r, x), wr=x.get("wr"), rr2=rr2, rapor=r.get("rapor"), jalur="saran news") + "\n"
-                        + SY.blok_salin(x["entry"], x["sl"], x["tp1"], x["tp2"], x["order"], t) + "\n"
+                        + SY.blok_salin(x["entry"], x["sl"], x["tp1"], x["tp2"], x["order"], t, sym=sym, arah=arah) + "\n"
                         f"↳ pola {TG.e(x['pola'])} mutu {x['mutu']}, rapor robot {r['rapor']}. Berlaku sampai {batas}.")
     if kat and kuat_mandiri(kat) and sym == "BTCUSDT":
         return _mandiri(sym, arah, kat, pub, now, eng)

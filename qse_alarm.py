@@ -201,7 +201,7 @@ def _pesan_gzh(a, cl):
         print("[WARN] catat gzh", ex)
     return (f"{'🟢' if L else '🔴'} <b>GZH TERKONFIRMASI  ·  {a['sym']} {arah}</b>\n"
             f"{SY.layak('saran GZH', arah, a.get('skor'))}\n"
-            + SY.blok_salin(cl, a["sl"], tp, tp, "MARKET", t) + "\n"
+            + SY.blok_salin(cl, a["sl"], tp, tp, "MARKET", t, sym=a["sym"], arah=arah) + "\n"
             f"Masuk MARKET sekarang. Tutup penuh di TP (2R). 10 hari belum kena, tutup manual.")
 
 

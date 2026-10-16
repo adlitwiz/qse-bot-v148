@@ -317,7 +317,7 @@ def kartu(k, no, it, a):
         f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {it['arah']}</b>  ·  {cfg['nama']} 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.5% modal per trade)",
         SY.GARIS,
-        SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan"),
+        SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=it["sym"], arah=it["arah"]),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot setengah sampai pulih"] if rm else []),
         "💡 <b>Kenapa</b>",
         *[f"• {z}" for z in cfg["kenapa"]],

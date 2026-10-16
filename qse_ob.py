@@ -305,7 +305,7 @@ def kartu(no, it, sg):
         f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  Order Block + Volume 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.5% modal per trade)",
         SY.GARIS,
-        SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t,
+        SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG",
                       catatan_tp="TP1 sama dengan TP2, tutup penuh di 4R"),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih"] if rm else []),
         "💡 <b>Kenapa</b>",
@@ -492,9 +492,9 @@ def baris_unggulan(harga=None, jam=24):
         if not px or px <= it["sl"] or px > it["entry"] + 0.3 * it["risk"]:
             continue
         t = it.get("tick", 0.0001)
-        out.append(f"🟢 <b>{TG.e(it['sym'])} LONG</b>  ·  Order Block + Volume  ·  {ik} {tk}  ·  lot {lot}\n"
-                   f"↳ MARKET sekitar {TG.fp(px, t)}  ·  SL {TG.fp(it['sl'], t)}  ·  TP {TG.fp(it['tp'], t)}  ·  "
-                   f"sinyal {time.strftime('%d/%m %H:%M', time.gmtime(it['t'] + 7 * 3600))} WIB")
+        out.append(f"🟢 <b>{TG.e(it['sym'])} LONG</b>  ·  Order Block + Volume  ·  {ik} {tk}  ·  lot {lot}  ·  "
+                   f"sinyal {time.strftime('%d/%m %H:%M', time.gmtime(it['t'] + 7 * 3600))} WIB\n"
+                   + SY.blok_salin(px, it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah="LONG"))
     return out
 
 

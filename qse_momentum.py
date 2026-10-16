@@ -303,7 +303,7 @@ def scan(daftar, bias, posisi, info=None):
                 judul + f"\n{'🟢' if rc['arah'] == 'LONG' else '🔴'} <b>SARAN {rc['arah']} {sym}</b> | skor {sk}/100, "
                 + ("LAYAK BANGET DIIKUTI" if sk >= 80 else "LAYAK DIIKUTI")
                 + "\n" + SY.baris_kelas(rc["arah"], skor=sk, wr=bt.get("wr"), rr2=2.0, jalur="saran momentum")
-                + "\n" + SY.blok_salin(e, sl, t1, t2, "LIMIT", tick) + "\n"
+                + "\n" + SY.blok_salin(e, sl, t1, t2, "LIMIT", tick, sym=sym, arah=rc["arah"]) + "\n"
                 f"Yang bikin yakin: {'; '.join(plus)}\n"
                 + (f"Yang perlu diwaspadai: {'; '.join(minus)}\n" if minus else "")
                 + f"Jangan kejar harga. Pasang LIMIT di retest {_fp(e, tick)}, berlaku sampai {batas}. "

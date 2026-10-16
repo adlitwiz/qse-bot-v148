@@ -189,8 +189,7 @@ def _radar(results, sudah, maks=6):
         jam = SY.estimasi_jam(c - x["entry"], r["atr"], 4)
         v = "EKSEKUSI" if x["eksekusi"] else "TAHAN, " + x["alasan"]
         rows.append(f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b> | rapor {r['rapor']} | {TG.e(x['pola'])} "
-                    f"mutu {x['mutu']}\n{_tanda_baris(r, x)}\n{x['order']} {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | "
-                    f"TP1 {TG.fp(x['tp1'], t)} | TP2 {TG.fp(x['tp2'], t)}\n"
+                    f"mutu {x['mutu']}\n{_tanda_baris(r, x)}\n{_tabel(x, t, r['symbol'], x['arah'])}\n"
                     f"Jarak {abs(c - x['entry']) / c * 100:.2f}% | perkiraan tersentuh {SY.teks_waktu(jam)}\n↳ DASBOR: {TG.e(v)}")
     return rows
 
@@ -1212,8 +1211,7 @@ def _unggulan(results, sudah_valid, maks=10):
                         f"{IKON.get(x['arah'], '')} <b>{TG.e(r['symbol'])} {x['arah']}</b>  ·  rapor {label}"
                         + (" | 🌟 GOLDEN MOMENT" if x.get("golden") else "") + f" | {TG.e(x['pola'])} mutu {x['mutu']}"
                         f"\n{_tanda_baris(r, x)}\n"
-                        f"{x['order']} di {TG.fp(x['entry'], t)} | SL {TG.fp(x['sl'], t)} | TP1 {TG.fp(x['tp1'], t)} | "
-                        f"TP2 {TG.fp(x['tp2'], t)}\n"
+                        f"{_tabel(x, t, r['symbol'], x['arah'])}\n"
                         f"Jarak {abs(c - x['entry']) / c * 100:.2f}% ({jarak:.1f} ATR)"
                         + (f" | peluang terisi 4 jam {x.get('p_isi4', 0):.0f}%" if x["order"] != "MARKET" else "")
                         + f"\n↳ {TG.e(status)}"))
@@ -1619,7 +1617,7 @@ def _jam(ms):
     return dt.datetime.fromtimestamp(ms / 1000, WIB).strftime("%d/%m %H:%M WIB")
 
 
-def _tabel(s, t):
+def _tabel(s, t, sym=None, arah=None):
     risk = max(abs(s["entry"] - s["sl"]), t)
     pc = lambda v: abs(v - s["entry"]) / s["entry"] * 100 if s["entry"] else 0
     rows = [("Entry", s["entry"], s["order"]), ("SL", s["sl"], "-1.00R  -%.1f%%" % pc(s["sl"])),
@@ -1628,7 +1626,8 @@ def _tabel(s, t):
     px = [TG.fp(v, t) for _, v, _ in rows]
     w = max(len(p) for p in px)
     w2 = max(len(x) for _, _, x in rows)
-    return "<pre>" + "\n".join(f"{k:<5} {p:>{w}}  {x:>{w2}}" for (k, _, x), p in zip(rows, px)) + "</pre>"
+    head = f"{sym} {arah or s.get('arah', '')}\n" if sym else ""
+    return "<pre>" + head + "\n".join(f"{k:<5} {p:>{w}}  {x:>{w2}}" for (k, _, x), p in zip(rows, px)) + "</pre>"
 
 
 def _uang(x):
@@ -1717,7 +1716,7 @@ def _kartu(no, r, x, jalur, status="", led=None, kenapa=None, cara=None, catatan
             + ("  ·  🌟 GOLDEN" if x.get("golden") else ""),
             f"{ik if ok else '⛔'} <b>{head}</b>  ·  {tk}  ·  lot <b>{lot_txt}</b>",
             SY.GARIS,
-            _tabel(x, t)]
+            _tabel(x, t, r['symbol'], x['arah'])]
     k = list(kenapa or [])
     if not kenapa:
         if x.get("win", 0) + x.get("loss", 0) > 0:
@@ -1870,12 +1869,12 @@ def _baru_candle(items, tutup_ms):
         baru = it.get("t", 0) * 1000 >= tutup_ms - 60000
         jam = dt.datetime.fromtimestamp(it.get("t", 0), WIB).strftime("%d/%m %H:%M")
         sl_now, sl0 = it.get("sl", it.get("sl0")), it.get("sl0", it.get("sl"))
-        tp = TG.fp(it["tp"], t) if it.get("tp") else "tanpa TP, pakai SL berjalan"
+        tp = TG.fp(it["tp"], t) if it.get("tp") else "tanpa, pakai SL berjalan"
         rows.append(f"{GARIS}\n{'🟢' if L else '🔴'} <b>{TG.e(it['sym'])} {'LONG' if L else 'SHORT'}</b>  ·  MARKET  ·  "
                     + ("🆕 sinyal candle ini" if baru else f"sinyal {jam} WIB")
-                    + f"\n<pre>Entry {TG.fp(it['entry'], t)}\n"
-                    f"SL    {TG.fp(sl_now, t)}" + (f" (berjalan, awal {TG.fp(sl0, t)})" if sl_now != sl0 else "") + "\n"
-                    f"TP    {tp}</pre>")
+                    + f"\n<pre>{it['sym']} {'LONG' if L else 'SHORT'}\nEntry {TG.fp(it['entry'], t)} MARKET\n"
+                    f"SL    {TG.fp(sl_now, t)}\n"
+                    f"TP    {tp}</pre>" + (f"\nSL sudah digeser dari {TG.fp(sl0, t)}" if sl_now != sl0 else ""))
     return ("\n" + "\n".join(rows)) if rows else ""
 
 
