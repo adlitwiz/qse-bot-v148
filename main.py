@@ -1951,6 +1951,14 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     if bt:
         alt = next((r for r in rs if "BTC" not in r["symbol"]), bt)
         pasar.append(f"{TG.e(bt['btc'])}  ·  peluang naik 24 jam {bt['bProb']:.0f}%")
+        if tf == "240":
+            try:
+                import qse_strat as ST
+                b50 = ST.btc_ema50_teks()
+                if b50:
+                    pasar.append(b50)
+            except Exception as ex:
+                print("[WARN] btc ema50", ex)
         pasar.append(f"Arah diizinkan: {alt.get('izin', '-')}")
     scan.append(f"Dipindai {len(rs)} koin  ·  rapor A {len(rA)}  ·  rapor B {len(rB)}")
     if dasbor:
@@ -2206,6 +2214,14 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             ktx = SY.baris_konteks()
         except Exception:
             ktx = ""
+        if tf == "240":
+            try:
+                import qse_strat as ST
+                b50 = ST.btc_ema50_teks()
+                if b50:
+                    ktx = f"{b50}\n{ktx}"
+            except Exception as ex:
+                print("[WARN] btc ema50", ex)
         so.insert(0, f"🎯 <b>QSE v148 | SINYAL {judul}</b>\n{SY.baris_jadwal(rs[0]['tf_ms'] if rs else 4 * 3600000, tutup)}\n{SY.GARIS}\n{ktx}\n"
                      f"Laporan lengkap ada di pesan 📊 berikutnya.")
         return out, so, True

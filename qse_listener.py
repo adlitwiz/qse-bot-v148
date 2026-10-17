@@ -95,6 +95,10 @@ def _tugas_berkala():
         # jalur Ichimoku tren: kelola trailing SL dan cari sinyal baru sekali tiap candle 4J tutup
         _st({"ichi4": t4})
         try:
+            _btc_ema50()
+        except Exception as ex:
+            print("[WARN] btc ema50", ex)
+        try:
             import qse_ichimoku as IC
             pesan = IC.jalankan(baru_ok=True)          # telat (VPS sempat mati) tetap boleh asal harga belum lari, dicek di IC
             if pesan:
@@ -248,6 +252,23 @@ def _jalankan_main(now):
 HB = {"perintah": time.time(), "kerja": time.time()}
 BATAS_PERINTAH = 180      # loop perintah macet lebih dari 3 menit -> restart paksa
 BATAS_KERJA = 1500        # tugas berkala macet lebih dari 25 menit -> restart paksa
+
+
+def _btc_ema50():
+    """Info saja: kabari saat close BTC 4J pindah sisi EMA 50 (rata-rata sekitar 3 kali seminggu). Bukan ramalan,
+    uji 2021-2026 arah ini tepat sekitar 49% untuk 4 sampai 72 jam ke depan. Tidak menyaring sinyal."""
+    import qse_strat as ST
+    df = ST._k4("BTCUSDT", 400)
+    if df is None or len(df) < 100:
+        return
+    c = df["close"].values.astype(float)
+    naik = bool(c[-1] > ST._ema(c, 50)[-1])
+    lama = _st().get("btc50")
+    _st({"btc50": naik})
+    if lama is None or lama == naik:
+        return
+    TG.send([f"{'🟢' if naik else '🔴'} <b>QSE v148 | ARAH BTC BERUBAH</b>\n{ST.btc_ema50_teks()}\n"
+             f"Candle BTC 4J baru tutup {'di atas' if naik else 'di bawah'} EMA 50. Info saja, sinyal jalur tetap jalan seperti biasa."])
 
 
 def _pin_ichi(ids, slot="pin_ichi"):

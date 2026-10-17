@@ -246,6 +246,18 @@ def izin_btc():
     return {"LONG": not (dn and not mom), "SHORT": not (up and mom)}
 
 
+def btc_ema50_teks():
+    """Info saja: posisi close BTC 4J terakhir terhadap EMA 50. Tidak dipakai menyaring sinyal."""
+    df = _k4("BTCUSDT", 400)
+    if df is None or len(df) < 100:
+        return ""
+    c = df["close"].values.astype(float)
+    e = float(_ema(c, 50)[-1])
+    naik = c[-1] > e
+    return (f"{'🟢' if naik else '🔴'} BTC 4J {'di atas' if naik else 'di bawah'} EMA 50 "
+            f"(close {c[-1]:,.0f}, EMA 50 {e:,.0f}, {(c[-1] / e - 1) * 100:+.1f}%): condong {'LONG' if naik else 'SHORT'}")
+
+
 def btc_naik():
     df = _k4("BTCUSDT", 400)
     if df is None or len(df) < 100:
