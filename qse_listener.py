@@ -136,7 +136,7 @@ def _tugas_berkala():
                 if baru:
                     ids = TG.send([f"📌 <b>QSE v148 | SINYAL {nama} ({len(baru)})</b>\n{SY.baris_jadwal(telat_menit=3)}\n"
                                    f"Jalur terbukti, disematkan.\n\n" + "\n\n".join(baru)])
-                    _pin_ichi(ids, "pin_strat")
+                    _pin_ichi(ids, f"pin_{k}")          # slot per jalur, sinyal jalur lain tidak terlepas
         except Exception as ex:
             print("[WARN] strategi", ex)
     hari = int(now // 86400) * 86400
@@ -297,6 +297,11 @@ def _tugas_menit():
         print("[WARN] fib", ex)
     try:
         kena = AL.cek()
+        gz = [m for m in kena if "GZH TERKONFIRMASI" in m]
+        kena = [m for m in kena if m not in gz]
+        if gz:
+            ids = TG.send([f"📌 <b>QSE v148 | SINYAL GZH GOLDEN ZONE ({len(gz)})</b>\nJalur terbukti, disematkan.\n\n" + "\n\n".join(gz)])
+            _pin_ichi(ids, "pin_gzh")
         if kena:
             TG.send(["🔔 <b>QSE v148 | ALARM</b>\n\n" + "\n\n".join(kena)])
     except Exception as ex:

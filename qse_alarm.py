@@ -206,6 +206,10 @@ def _pesan_gzh(a, cl):
     ok, why = SY.gzh_searah(arah, cl, e200)
     if not ok:
         return f"❌ <b>GZH BATAL  ·  {a['sym']} {arah}</b>\nJangan entry. {why}."
+    import qse_porto as PO
+    why_p = PO.izin(a["sym"], arah, "GZH")
+    if why_p:
+        return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi ditahan batas portofolio, {why_p}. Lewati."
     d = ST.lihat("GZH")
     if len(d["open"]) >= ST.MAKS_BUKA:
         return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi posisi GZH robot sudah {ST.MAKS_BUKA}. Lewati."
@@ -213,6 +217,8 @@ def _pesan_gzh(a, cl):
     it = dict(sym=a["sym"], arah=arah, entry=cl, sl=a["sl"], sl0=a["sl"], risk=risk, best=cl, bar=0, t=now,
               last=int(a["candle"]), close=cl, tick=t)
     ST._ubah("GZH", lambda dd: dd["open"].update({f"{a['sym']}|{int(now)}": it}))
+    PO.pesan(a["sym"], arah)
+    rm_p = PO.rem()
     try:
         a14 = ST._atr(df["high"].values.astype(float), df["low"].values.astype(float), df["close"].values.astype(float))[-1]
         jarak = f"{TG.fp(3 * a14, t)} ({3 * a14 / cl * 100:.1f}%)"
@@ -220,6 +226,7 @@ def _pesan_gzh(a, cl):
         jarak = "3 ATR"
     return (f"{'🟢' if L else '🔴'} <b>GZH TERKONFIRMASI  ·  {a['sym']} {arah}</b>\n"
             f"{SY.layak('saran GZH', arah)}\n"
+            + (f"🛡 Rem portofolio aktif, lot setengah: {TG.e(rm_p)}\n" if rm_p else "")
             + SY.blok_salin(cl, a["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=a["sym"], arah=arah) + "\n"
             f"Masuk MARKET sekarang. Pasang Trailing Stop Bybit jarak {jarak}, atau ikuti pesan GESER SL. "
             f"10 hari belum kena, tutup manual.")

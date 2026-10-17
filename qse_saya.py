@@ -477,15 +477,22 @@ BUKTI = {
                         "2024-2026 PF 1.38. 2026 melemah (PF 1.01), jadi lot 0.5x"),
     "saran ema_short": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, maks 8 posisi: 1812 trade, WR 42%, PF 1.42, aturan dipilih "
                         "dari 2020-2023 (PF 1.37), uji ulang 2024-2026 PF 1.47, untung tiap tahun, turun terdalam 16%"),
-    "saran mcginley": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, maks 8 posisi: 2034 trade, WR 43%, PF 1.44, aturan dipilih "
-                       "dari 2020-2023 (PF 1.44), uji ulang 2024-2026 PF 1.44, turun terdalam 13%, TP tetap 3R"),
+    "saran snr_vol": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 692 trade, WR 39%, PF 1.33, "
+                      "2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.43, turun terdalam 12.5%. SnR tanpa syarat PF 1.09"),
+    "saran msb_hpz": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 2783 trade, WR 37%, PF 1.27, "
+                      "2020-2023 PF 1.32, uji ulang 2024-2026 PF 1.21, turun terdalam 18%. MSB tanpa syarat PF 1.0"),
+    "saran smc_choch": ("TERBUKTI", "✅", "1x", "uji 111 koin 2020-2026, 30 paling likuid, maks 8 posisi: 2929 trade, WR 38%, PF 1.25 "
+                        "(2020-2023 PF 1.30, 2024-2026 PF 1.19), lalu diuji di data lama yang belum pernah dipakai, Binance spot "
+                        "40 koin 2017-2020: 962 trade, PF 1.40, untung tiap tahun. SMC tanpa syarat PF 1.06"),
+    "saran mcginley": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, maks 8 posisi: 3328 trade, WR 40%, PF 1.24, "
+                       "2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.23, data lama 2017-2020 PF 1.10, TP tetap 3R"),
     "saran rsi_vol": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 2380 trade, WR 40%, PF 1.34, "
                       "2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.45, positif 21 dari 26 kuartal"),
     "saran orderblock": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin perp, LONG, maks 8 posisi: 969 trade, PF 1.45, "
                          "uji ulang 2024-2026 dengan aturan yang dipilih dari 2020-2023: PF 1.26"),
 }
 BELUM_UJI = ("BELUM DIUJI", "❔", "0.25x", "belum diuji ulang dengan data perp 5 tahun dan aturan robot lengkap")
-CT_KEY = {"saran mcginley": "mcginley", "saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "GZH", "saran momentum": "momentum", "saran news": "news_searah"}
+CT_KEY = {"saran snr_vol": "snr_vol", "saran msb_hpz": "msb_hpz", "saran smc_choch": "smc_choch", "saran mcginley": "mcginley", "saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "GZH", "saran momentum": "momentum", "saran news": "news_searah"}
 NAIK_N, NAIK_PF = 30, 1.2          # syarat naik jadi TERBUKTI dari hasil live
 
 
@@ -586,7 +593,8 @@ NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadang
               "saran news": "News", "saran ichimoku": "Ichimoku",
               "saran orderblock": "Order Block + Volume", "saran trendline": "Tembus Trendline searah tren",
               "saran ema_short": "EMA Cross 20/50 SHORT", "saran rsi_vol": "RSI 50 + Volume",
-              "saran mcginley": "McGinley 34 + Volume"}
+              "saran mcginley": "McGinley 34 + Volume", "saran snr_vol": "SnR Pantul + Volume",
+              "saran msb_hpz": "MSB LuxAlgo HPZ", "saran smc_choch": "SMC CHoCH searah tren"}
 
 
 def boleh_ikut(jalur, arah=None, skor=None):
@@ -605,8 +613,14 @@ def bukti_pendek(jalur, arah=None, skor=None):
         return "uji 5 tahun 108 koin: 691 trade, WR 80%, PF 1.47, uji ulang 2024-2026 PF 1.38"
     if jalur == "saran ema_short":
         return "uji 6 tahun 111 koin: 1812 trade, PF 1.42, uji ulang 2024-2026 PF 1.47"
+    if jalur == "saran snr_vol":
+        return "uji 6 tahun, 30 koin likuid: 692 trade, PF 1.33, uji ulang 2024-2026 PF 1.43"
+    if jalur == "saran msb_hpz":
+        return "uji 6 tahun, 30 koin likuid: 2783 trade, PF 1.27, uji ulang 2024-2026 PF 1.21"
+    if jalur == "saran smc_choch":
+        return "uji 2017-2026: PF 1.40 (2017-2020), 1.30 (2020-2023), 1.19 (2024-2026)"
     if jalur == "saran mcginley":
-        return "uji 6 tahun 111 koin: 2034 trade, PF 1.44, uji ulang 2024-2026 PF 1.44"
+        return "uji 6 tahun 111 koin: 3328 trade, PF 1.24, uji ulang 2024-2026 PF 1.23"
     if jalur == "saran rsi_vol":
         return "uji 6 tahun, 30 koin likuid: 2380 trade, PF 1.34, uji ulang 2024-2026 PF 1.45"
     if jalur == "saran orderblock":
@@ -710,6 +724,29 @@ RAPOR_ARTI = {"A": "robot sering untung di koin ini", "B": "hasil robot cukup ba
               "SAMPEL KURANG": "data robot di koin ini belum cukup"}
 
 
+def jalur_aktif(sym):
+    """Sinyal jalur terbukti yang masih berjalan di koin ini (Ichimoku, Order Block, strategi, GZH). List dict."""
+    out = []
+    try:
+        import qse_ichimoku as IC
+        out += [dict(nama="Ichimoku", jalur="saran ichimoku", **v) for v in IC.lihat()["open"].values() if v["sym"] == sym]
+    except Exception:
+        pass
+    try:
+        import qse_ob as OB
+        out += [dict(nama="Order Block + Volume", jalur="saran orderblock", **dict(v, arah="LONG")) for v in OB.lihat()["open"].values()
+                if v["sym"] == sym]
+    except Exception:
+        pass
+    try:
+        import qse_strat as ST
+        for k, cfg in ST.STRAT.items():
+            out += [dict(nama=cfg["nama"], jalur="saran " + k, **v) for v in ST.lihat(k)["open"].values() if v["sym"] == sym]
+    except Exception:
+        pass
+    return out
+
+
 def konsultasi(sym, arah=None, entry=None):
     import qse_fundamental as FD
     r = hasil_robot(sym)
@@ -764,8 +801,22 @@ def konsultasi(sym, arah=None, entry=None):
         p24 = f" | 24 jam {d24:+.1f}%" if d24 is not None else ""
     except Exception:
         pass
-    blok = [f"Harga {fp(px, t) if px else '-'}{p24}",
-            "<b>Kesimpulan</b>\n" + " ".join(kal) + f"\n\nPenilaian {arah}: <b>{label}</b>. {aksi}"]
+    ja = jalur_aktif(sym)
+    if ja:
+        rows = ["🎯 <b>SINYAL JALUR TERBUKTI DI KOIN INI</b>"]
+        for j_ in ja:
+            tk_, ik_, lot_, _, _ = tingkat_bukti(j_["jalur"], j_["arah"])
+            rows.append(f"{ik_} {j_['nama']} {j_['arah']}  ·  {tk_}  ·  lot {lot_}\n"
+                        f"Entry {fp(j_['entry'], t)}  ·  SL sekarang {fp(j_['sl'], t)}"
+                        + (f"  ·  TP {fp(j_['tp'], t)}" if j_.get("tp") else "  ·  tanpa TP, SL berjalan"))
+        rows.append("Untuk posisi dari jalur ini, ikuti aturan jalur: SL, TP, dan pesan GESER SL. Penilaian umum di bawah "
+                    "tidak dipakai, karena di uji 2021-2026 sinyal jalur terbukti yang dinilai BERISIKO oleh /cek tetap untung "
+                    "(PF 1.1 sampai 1.5). Jangan keluar lebih awal hanya karena penilaian ini.")
+        label_txt = f"Penilaian umum {arah}: {label} (info saja, bukan aturan jalur terbukti)."
+    else:
+        label_txt = f"Penilaian {arah}: <b>{label}</b>. {aksi}"
+    blok = [f"Harga {fp(px, t) if px else '-'}{p24}"] + (["\n".join(rows)] if ja else []) + [
+            "<b>Kesimpulan</b>\n" + " ".join(kal) + f"\n\n{label_txt}"]
 
     # ---- saran robot ----
     rows = ["<b>Saran robot</b>"]

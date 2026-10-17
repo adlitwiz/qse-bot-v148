@@ -261,7 +261,8 @@ def _jalankan(baru_ok=True):
     for sym, sg, df, _ in calon:
         if len(baru) >= slot:
             break
-        why = SY.cek_lintas(sym, "LONG")
+        import qse_porto as PO
+        why = SY.cek_lintas(sym, "LONG") or PO.izin(sym, "LONG", "orderblock")
         if why:
             print(f"[ORDERBLOCK] {sym} ditahan: {why}")
             continue
@@ -277,6 +278,7 @@ def _jalankan(baru_ok=True):
         it = dict(sym=sym, arah="LONG", entry=px, sl=sg["sl"], tp=px + TP_R * risk, risk=risk, bar=0, t=now,
                   last=sg["ts"], close=px, tick=t, vp=sg["vp"])
         baru.append(it)
+        PO.pesan(sym, "LONG")
         out.append(kartu(len(baru), it, sg))
 
     def simpan_baru(dd):
@@ -369,8 +371,8 @@ def teks():
         lo = -sum(x for x in rs if x < 0)
         rows.append(f"\nSelesai {len(rs)} trade | WR {sum(x > 0 for x in rs) / len(rs) * 100:.0f}% | "
                     f"PF {w / lo if lo > 0 else 9.99:.2f} | total {sum(rs):+.1f}R")
-    rows.append("\nYang tidak dipakai karena gagal uji 6 tahun: entry retest order block (PF di bawah 1), SMC BOS/CHoCH, "
-                "MSB LuxAlgo, SnR pivot (PF uji ulang 0.9 sampai 1.12), dan sisi SHORT order block (PF 1.10).")
+    rows.append("\nSMC CHoCH, MSB HPZ, dan SnR + Volume dipasang terpisah di /strategi dengan syarat tren. "
+                "Entry retest order block dan sisi SHORT order block tidak dipakai karena gagal uji.")
     return "\n".join(rows)
 
 

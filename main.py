@@ -412,7 +412,9 @@ def _naikkan_pin_ichi():
     """Pin sinyal Ichimoku punya prioritas: setelah pin lain dipasang, pin Ichimoku dilepas lalu dipasang lagi
     supaya kembali tampil paling atas di grup. Berlaku 24 jam sejak sinyal Ichimoku terakhir."""
     st = _st_load()
-    for slot in ("pin_strat", "pin_ob", "pin_ichi"):              # Ichimoku dipasang terakhir supaya paling atas
+    import qse_strat as ST
+    slots = ["pin_gzh"] + [f"pin_{k}" for k in ST.STRAT] + ["pin_strat", "pin_ob", "pin_ichi"]
+    for slot in slots:              # Ichimoku dipasang terakhir supaya paling atas
         mid = st.get(slot)
         if mid and time.time() - st.get(slot + "_t", 0) < 86400:
             TG.unpin(mid)
@@ -1143,7 +1145,14 @@ def _blok_posisi_analisa(it, r):
         rows += ["⚠️ <b>Waspada</b>"] + [f"• {TG.e(z)}" for z in an["minus"][:3]]
     if not sesuai and an["plus"]:
         rows += ["👍 <b>Yang masih mendukung</b>"] + [f"• {TG.e(z)}" for z in an["plus"][:2]]
-    rows.append(f"🛠 <b>Saran</b>: {TG.e(an['aksi'])}")
+    jl = it.get("jalur") or ""
+    tk_ = SY.tingkat_bukti(jl, it["arah"])[0] if jl else ""
+    if tk_ in ("TERBUKTI", "TERBUKTI LIVE"):
+        rows.append(f"🛠 <b>Saran</b>: posisi dari jalur terbukti ({TG.e(SY.NAMA_JALUR.get(jl, jl))}). Ikuti SL dan TP jalur. "
+                    f"Vonis di atas info saja: di uji 2021-2026 sinyal jalur terbukti yang dinilai berisiko tetap untung, "
+                    f"jangan keluar lebih awal hanya karena vonis ini.")
+    else:
+        rows.append(f"🛠 <b>Saran</b>: {TG.e(an['aksi'])}")
     return "\n".join(rows)
 
 
@@ -1305,16 +1314,21 @@ def cek_cepat(now, paksa=False):
     sel = [(r, x) for r, x in sel if r["symbol"] not in jalan]
     ctx = _konteks_berita(b1)
     sel = _saring_berita(sel, ctx, led)
+    if not SARAN_DASBOR_4J:
+        sel = []                       # saran dasbor 4J dimatikan, order lama yang masih menunggu ikut dibatalkan
     events += [(ev, dict(it)) for ev, it in FX.ganti(led, sel)]
     tag_of = {id(x): (FX.register(led, r, x) or "sudah dikirim") for r, x in sel}
     baru = [(r, x) for r, x in sel if tag_of[id(x)] in ("BARU", "UPDATE")]
-    cad = _catat_jalur(led, _cadangan(results, sel, led, tickers, ctx, None), "cad_n")
-    sik = _catat_jalur(led, _siklus_saran(results, sel, cad, led, tickers, ctx), "sik_n")
-    sudah = ({r["symbol"] for r, _ in sel} | {r["symbol"] for r, _, _ in cad} | {r["symbol"] for r, _, _ in sik}
-             | _posisi_kamu())
-    fib = _catat_jalur(led, _fib_saran(results, sudah, led, tickers, ctx), "fib_n")
-    sudah |= {r["symbol"] for r, _, _ in fib}
-    cad2 = _catat_jalur(led, _cadangan2(results, sudah, led, tickers, ctx), "cad2_n")
+    if SARAN_DASBOR_4J:
+        cad = _catat_jalur(led, _cadangan(results, sel, led, tickers, ctx, None), "cad_n")
+        sik = _catat_jalur(led, _siklus_saran(results, sel, cad, led, tickers, ctx), "sik_n")
+        sudah = ({r["symbol"] for r, _ in sel} | {r["symbol"] for r, _, _ in cad} | {r["symbol"] for r, _, _ in sik}
+                 | _posisi_kamu())
+        fib = _catat_jalur(led, _fib_saran(results, sudah, led, tickers, ctx), "fib_n")
+        sudah |= {r["symbol"] for r, _, _ in fib}
+        cad2 = _catat_jalur(led, _cadangan2(results, sudah, led, tickers, ctx), "cad2_n")
+    else:
+        cad, sik, fib, cad2 = [], [], [], []
     events = [(ev, it) for ev, it in events if ev == "BATAL"]
     info = []
     for e in BR.pengingat():
@@ -1330,7 +1344,7 @@ def cek_cepat(now, paksa=False):
     tutup = int(time.time() * 1000) // H4 * H4
     alarm = []
     ada = {r["symbol"] for r, _ in sel} | {r["symbol"] for r, _, _ in cad} | {r["symbol"] for r, _, _ in sik}
-    for r in results:
+    for r in (results if SARAN_DASBOR_4J else []):
         p = r.get("pasar") or {}
         if r["symbol"] in ada or r["rapor"] not in ("A", "B") or not p.get("zona_searah") or not p.get("btc_ok"):
             continue
@@ -1355,15 +1369,16 @@ def cek_cepat(now, paksa=False):
     jam = now.astimezone(WIB).strftime("%d/%m %H:%M WIB")
     judul = "🔎 <b>QSE v148 | SCAN SEKARANG TF 4J</b>" if paksa else "⏱️ <b>QSE v148 | CEK PER JAM TF 4J</b>"
     blocks = [f"{judul}\n{jam}\n" + _kartu_jam(results, b1, led)]
-    if paksa:
+    if paksa and SARAN_DASBOR_4J:
         ung = _unggulan(results, {r["symbol"] for r, _ in sel})
         if ung:
             blocks.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN DENGAN SARAN TERJANGKAU ({len(ung)})</b>\n"
                           "Rapor A+, A, B, atau GOLDEN MOMENT yang punya saran EKSEKUSI dan entry-nya dekat. "
                           "Yang belum masuk sinyal valid ditulis alasannya.\n\n" + "\n\n".join(ung))
     if paksa and not (baru or masih or cad or sik or fib or cad2):
-        blocks.append("Belum ada saran 4J baru yang lolos semua syarat di harga sekarang.")
-    if not paksa:
+        blocks.append("Belum ada saran 4J baru yang lolos semua syarat di harga sekarang." if SARAN_DASBOR_4J else
+                      "Saran 4J hanya dari jalur terbukti dan dikirim saat candle 4J tutup. Lihat pesan SINYAL 4 JAM yang disematkan.")
+    if not paksa and SARAN_DASBOR_4J:
         # notif per jam selalu punya isi yang bisa dipakai: koin unggulan dan setup terdekat, lengkap dengan harga
         sudah_j = {r["symbol"] for r, _ in sel} | {r["symbol"] for r, _, _ in cad} | {r["symbol"] for r, _, _ in sik}
         ung = _unggulan(results, sudah_j, maks=3)
@@ -1553,15 +1568,18 @@ def scan(now, run4, tfs):
     jalan = _posisi_kamu()
     sel = [(r, x) for r, x in sel if r["symbol"] not in jalan]     # koin yang kamu pegang, cegah entry ganda
     sel = _saring_berita(sel, ctx, led)
+    if not SARAN_DASBOR_4J:
+        sel = [(r, x) for r, x in sel if r.get("tf", "240") != "240"]
     events += [(ev, dict(it)) for ev, it in FX.ganti(led, sel)]
     tag_of = {id(s): (FX.register(led, r, s) or "sudah dikirim") for r, s in sel}
-    cad = _catat_jalur(led, _cadangan(results, sel, led, tickers, ctx, rb), "cad_n")
-    sik = _catat_jalur(led, _siklus_saran(results, sel, cad, led, tickers, ctx), "sik_n")
+    d4 = (lambda z: z) if SARAN_DASBOR_4J else (lambda z: [y for y in z if y[0].get("tf", "240") != "240"])
+    cad = _catat_jalur(led, d4(_cadangan(results, sel, led, tickers, ctx, rb)), "cad_n")
+    sik = _catat_jalur(led, d4(_siklus_saran(results, sel, cad, led, tickers, ctx)), "sik_n")
     sudah = ({r["symbol"] for r, _ in sel} | {r["symbol"] for r, _, _ in cad} | {r["symbol"] for r, _, _ in sik}
              | _posisi_kamu())
-    fib = _catat_jalur(led, _fib_saran(results, sudah, led, tickers, ctx), "fib_n")
+    fib = _catat_jalur(led, d4(_fib_saran(results, sudah, led, tickers, ctx)), "fib_n")
     sudah |= {r["symbol"] for r, _, _ in fib}
-    cad2 = _catat_jalur(led, _cadangan2(results, sudah, led, tickers, ctx), "cad2_n")
+    cad2 = _catat_jalur(led, d4(_cadangan2(results, sudah, led, tickers, ctx)), "cad2_n")
     if "240" in tfs:
         sudah |= {r["symbol"] for r, _, _ in cad2}
         for r, x in _trendline(results, sudah, led, ctx):
@@ -1601,6 +1619,10 @@ def scan(now, run4, tfs):
 
 
 WIB = dt.timezone(dt.timedelta(hours=7))
+# Saran dasbor 4J (saran valid, cadangan, fib, siklus, pola rapor A/B, koin unggulan rapor) dimatikan.
+# Uji 2018-2020 dan 2021-2026: PF 0.61 sampai 0.84 dengan semua cara keluar, searah jalur terbukti pun 0.66 sampai 0.92.
+# Yang tetap: Tembus Trendline SHORT searah tren (PF 1.47) dan semua jalur robot terbukti.
+SARAN_DASBOR_4J = False
 IKON = {"LONG": "🟢", "SHORT": "🔴"}
 GARIS = "━━━━━━━━━━━━━━━━━━"
 NAMA = {"240": ("4 JAM", "4J"), "60": ("1 JAM", "1J")}
@@ -1852,23 +1874,46 @@ def _pantauan(rs, sig, kode):
     return out
 
 
-def _baru_candle(items, tutup_ms):
-    """Posisi jalur robot (Ichimoku, Order Block, strategi), satu koin satu kartu dipisah garis.
-    Yang dikirim di candle ini diberi tanda 🆕."""
-    rows = []
+# Sinyal lama boleh diikuti hanya jika umurnya maks 2 candle 4J dan harga sekarang masih dalam 0.5R dari entry robot.
+# Uji 111 koin 2020-2026 (entry telat di harga close, SL jalur saat itu, TP asli), PF dev/uji: EMA 1.22/1.24, RSI 1.21/1.39,
+# McGinley 1.14/1.27, SnR 1.29/1.46, SMC 1.19/1.12, Ichimoku 1.16/1.23. MSB telat 0.99 di 2020-2023, jadi MSB, Order Block,
+# dan GZH hanya sinyal candle ini.
+TELAT_OK = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
+TELAT_CANDLE, TELAT_R = 2, 0.5
+
+
+def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
+    """Kartu sinyal jalur robot yang bisa diikuti sekarang: sinyal candle ini, atau sinyal lama (jalur TELAT_OK,
+    maks 2 candle) yang harganya masih dekat entry robot. Koin yang kamu pegang tidak ditampilkan.
+    Return (teks, ringkas, n_lewat)."""
+    rows, ring, lewat = [], [], 0
+    harga = harga or {}
     for it in sorted(list(items), key=lambda z: -z.get("t", 0)):
         L = it.get("arah", "LONG") == "LONG"
         t = it.get("tick", 0.0001)
+        umur = (tutup_ms / 1000 - it.get("t", 0)) / 14400.0
         baru = it.get("t", 0) * 1000 >= tutup_ms - 60000
-        jam = dt.datetime.fromtimestamp(it.get("t", 0), WIB).strftime("%d/%m %H:%M")
+        px = harga.get(it["sym"])
+        risk = it.get("risk") or abs(it["entry"] - it.get("sl0", it["sl"]))
+        d = ((px - it["entry"]) * (1 if L else -1) / risk) if (px and risk) else None
         sl_now, sl0 = it.get("sl", it.get("sl0")), it.get("sl0", it.get("sl"))
+        masih = (not baru and kunci in TELAT_OK and umur <= TELAT_CANDLE + 0.1 and d is not None and abs(d) <= TELAT_R
+                 and ((px > sl_now) if L else (px < sl_now))
+                 and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
+        if it["sym"] in pegang or not (baru or masih):
+            lewat += 1
+            continue
+        jam = dt.datetime.fromtimestamp(it.get("t", 0), WIB).strftime("%d/%m %H:%M")
         tp = TG.fp(it["tp"], t) if it.get("tp") else "tanpa, pakai SL berjalan"
-        rows.append(f"{GARIS}\n{'🟢' if L else '🔴'} <b>{TG.e(it['sym'])} {'LONG' if L else 'SHORT'}</b>  ·  MARKET  ·  "
-                    + ("🆕 sinyal candle ini" if baru else f"sinyal {jam} WIB")
-                    + f"\n<pre>{it['sym']} {'LONG' if L else 'SHORT'}\nEntry {TG.fp(it['entry'], t)} MARKET\n"
+        e_txt = TG.fp(it["entry"], t) if baru else TG.fp(px, t)
+        ket = ("🆕 sinyal candle ini" if baru else
+               f"sinyal {jam} WIB, harga masih dekat entry robot {TG.fp(it['entry'], t)} ({d:+.2f}R)")
+        rows.append(f"{GARIS}\n{'🟢' if L else '🔴'} <b>{TG.e(it['sym'])} {'LONG' if L else 'SHORT'}</b>  ·  MARKET  ·  {ket}"
+                    + f"\n<pre>{it['sym']} {'LONG' if L else 'SHORT'}\nEntry {e_txt} MARKET\n"
                     f"SL    {TG.fp(sl_now, t)}\n"
                     f"TP    {tp}</pre>" + (f"\nSL sudah digeser dari {TG.fp(sl0, t)}" if sl_now != sl0 else ""))
-    return ("\n" + "\n".join(rows)) if rows else ""
+        ring.append((it["sym"], "LONG" if L else "SHORT", "baru" if baru else "masih dekat entry"))
+    return (("\n" + "\n".join(rows)) if rows else ""), ring, lewat
 
 
 def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"), rb=None, ctx=None, cad=None, sik=None,
@@ -1876,10 +1921,13 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     judul, kode = NAMA[tf]
     rs = [r for r in results if r["tf"] == tf]
     sig = [(r, s) for r, s in sel if r["tf"] == tf]
+    dasbor = tf != "240" or SARAN_DASBOR_4J      # saran dasbor 4J dimatikan, sinyal 4J hanya dari jalur terbukti
+    if not dasbor:
+        sig = []
     ev = [(e, it) for e, it in events if it.get("tf", "240") == tf
           or (tf == tfs[-1] and it.get("tf", "240") not in tfs)]    # order TF lain yang berubah di run ini
     tahan, buang = [], []
-    for r in rs:
+    for r in (rs if dasbor else []):
         if r["rapor"] not in ("A", "B"):
             continue
         for s in r["saran"]:
@@ -1892,7 +1940,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     rB = [r for r in rs if r["rapor"] == "B"]
     tutup = rs[0]["time"] + rs[0]["tf_ms"] if rs else 0
     baru = sum(1 for r, s in sig if tag_of[id(s)] != "sudah dikirim")
-    cad = [z for z in (cad or []) if z[0]["tf"] == tf]
+    cad = [z for z in (cad or []) if z[0]["tf"] == tf and dasbor]
     pasar, scan = [], []
     head = [GARIS, f"📊 <b>QSE v148 | LAPORAN {judul}</b>",
             SY.baris_jadwal(rs[0]["tf_ms"], tutup) if tutup else now.astimezone(WIB).strftime("%d/%m %H:%M WIB")]
@@ -1905,11 +1953,12 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         pasar.append(f"{TG.e(bt['btc'])}  ·  peluang naik 24 jam {bt['bProb']:.0f}%")
         pasar.append(f"Arah diizinkan: {alt.get('izin', '-')}")
     scan.append(f"Dipindai {len(rs)} koin  ·  rapor A {len(rA)}  ·  rapor B {len(rB)}")
-    scan.append(f"Sinyal valid {len(sig)}  ·  baru {baru}  ·  masih valid {len(sig) - baru}" +
+    if dasbor:
+        scan.append(f"Sinyal valid {len(sig)}  ·  baru {baru}  ·  masih valid {len(sig) - baru}" +
                 (f"  ·  cadangan {len(cad)}" if cad else "") + (f"  ·  siklus {len(sik)}" if sik else ""))
-    sik = [z for z in (sik or []) if z[0]["tf"] == tf]
-    fib = [z for z in (fib or []) if z[0]["tf"] == tf]
-    cad2 = [z for z in (cad2 or []) if z[0]["tf"] == tf]
+    sik = [z for z in (sik or []) if z[0]["tf"] == tf and dasbor]
+    fib = [z for z in (fib or []) if z[0]["tf"] == tf and dasbor]
+    cad2 = [z for z in (cad2 or []) if z[0]["tf"] == tf and (dasbor or z[1].get("tt"))]    # trendline SHORT tetap
     st_open = {}
     for it in SY.lihat()["open"].values():
         st_open[it["status"]] = st_open.get(it["status"], 0) + 1
@@ -1930,20 +1979,22 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             for x in r["saran"]:
                 if x["mutu"] in ("A", "B") and not x["eksekusi"]:
                     alasan[x["alasan"]] = alasan.get(x["alasan"], 0) + 1
-    if alasan and not sig:
+    if alasan and not sig and dasbor:
         top = sorted(alasan.items(), key=lambda z: -z[1])[:3]
         scan.append("Penahan utama: " + ", ".join(f"{TG.e(k)} {v}" for k, v in top))
     eks = [(r, x) for r in rs for x in r["saran"] if x["eksekusi"] and not x["sudah_masuk"]]
     eks_ab = [(r, x) for r, x in eks if x["mutu"] in ("A", "B")]
     eks_rp = [(r, x) for r, x in eks_ab if r["rapor"] in ("A", "B")]
-    scan.append(f"Corong saran: EKSEKUSI di DASBOR {len({r['symbol'] for r, _ in eks})} koin  ·  mutu A/B "
+    if dasbor:
+        scan.append(f"Corong saran: EKSEKUSI di DASBOR {len({r['symbol'] for r, _ in eks})} koin  ·  mutu A/B "
                 f"{len({r['symbol'] for r, _ in eks_ab})}  ·  rapor A/B {len({r['symbol'] for r, _ in eks_rp})}  ·  "
                 f"lolos semua {len(sig)}")
     tahan_txt = (f"ditahan jeda berita {TG.e(ctx['jeda']['judul'])}" if ctx and ctx.get("jeda") else
                  f"ditahan karena pasar bergejolak sampai {BR.jam_wib(ctx['tahan'])}" if ctx and ctx.get("tahan") else "")
     ikut_n = sum(1 for r, s in sig if SY.boleh_ikut("saran 1J" if r["tf"] == "60" else "saran utama", s["arah"], s.get("skor"))[0])
     sinyal_rows = [f"Sinyal valid {kode}: {ikut_n}" + (f"  ·  {tahan_txt}" if tahan_txt else
-                   ("" if ikut_n else "  ·  belum ada setup yang lolos semua syarat"))]
+                   ("" if ikut_n else "  ·  belum ada setup yang lolos semua syarat"))] if dasbor else \
+                  ([f"Sinyal baru ditahan: {tahan_txt}"] if tahan_txt else [])
     if len(sig) - ikut_n > 0:
         sinyal_rows.append(f"Tidak disarankan: {len(sig) - ikut_n} (belum terbukti, satu baris di bawah)")
     if tf == "240":
@@ -1961,6 +2012,11 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             import qse_strat as ST
             for k, cfg in ST.STRAT.items():
                 sinyal_rows.append(f"{cfg['nama']}: " + ST.status_singkat(k))
+        except Exception as ex:
+            print("[WARN] status strategi", ex)
+        try:
+            import qse_porto as PO
+            sinyal_rows.append(PO.baris())
         except Exception as ex:
             print("[WARN] status strategi", ex)
     head.append(GARIS)
@@ -2006,12 +2062,59 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
               for r, x, tg in cad2]
     ikut = [z for z in semua if SY.boleh_ikut(z[0], z[2]["arah"], z[2].get("skor"))[0]]
     tolak = [z for z in semua if z not in ikut]
-    if ikut:
+    robot_blok, ring_rb = [], []          # jalur robot terbukti: hanya sinyal yang bisa diikuti sekarang
+    if tf == "240":
+        harga = {r["symbol"]: r.get("live") or r.get("close") for r in rs}
+        pegang = _posisi_kamu()
+
+        sepi = []
+        try:
+            import qse_porto as PO
+            rem_p = PO.rem()
+        except Exception as ex:
+            print("[WARN] rem portofolio", ex)
+            rem_p = ""
+
+        def _jalur_robot(kunci, nama, ik, tk, lot, n, maks, cek, items, pendek):
+            if rem_p:
+                lot = f"{SY.lot_angka(lot) / 2:g}x (rem)"
+            teks, ring, lewat = _baru_candle(items, tutup, kunci, harga, pegang)
+            if not teks:
+                sepi.append(pendek)
+                return
+            ring_rb.extend((sym, arah, pendek, ik, lot, ket) for sym, arah, ket in ring)
+            robot_blok.append(f"{GARIS}\n🔹 <b>{nama}</b>  ·  {ik} {tk}  ·  lot {lot}\n🕐 {TG.e(cek)}" + teks)
+        try:
+            import qse_ichimoku as IC
+            d_ = IC.lihat()["open"]
+            _jalur_robot("ichimoku", "ICHIMOKU", "✅", "TERBUKTI", "1x", len(d_), IC.MAKS_BUKA, IC.baris_cek(), d_.values(), "Ichimoku")
+        except Exception as ex:
+            print("[WARN] status ichimoku", ex)
+        try:
+            import qse_ob as OB
+            d_ = OB.lihat()["open"]
+            _jalur_robot("orderblock", "ORDER BLOCK + VOLUME (LONG)", "✅", "TERBUKTI", "1x", len(d_), OB.MAKS_BUKA,
+                         OB.baris_cek(), d_.values(), "Order Block")
+        except Exception as ex:
+            print("[WARN] status orderblock", ex)
+        try:
+            import qse_strat as ST
+            for k, cfg in ST.STRAT.items():
+                ok_s, tk_s, ik_s, lot_s = SY.boleh_ikut("saran " + k if k != "GZH" else "saran GZH")
+                d_ = ST.lihat(k)["open"]
+                _jalur_robot(k, cfg["nama"].upper(), ik_s, tk_s, lot_s, len(d_), ST.MAKS_BUKA, ST.baris_cek(k), d_.values(), cfg["nama"])
+        except Exception as ex:
+            print("[WARN] status strategi", ex)
+        if sepi:
+            robot_blok.append(f"{GARIS}\n⚪ Belum ada sinyal yang bisa diikuti sekarang: {TG.e(', '.join(sepi))}")
+    if ikut or ring_rb:
         rows = [GARIS, "📋 <b>RINGKAS YANG BISA DIIKUTI</b>"]
         for jl, r, x, _, _ in ikut:
             ok, tk, ik, lot = SY.boleh_ikut(jl, x["arah"], x.get("skor"))
             rows.append(f"{IKON.get(x['arah'], '')} {TG.e(r['symbol'])} {x['arah']}  ·  {SY.NAMA_JALUR.get(jl, jl)}  ·  "
                         f"{x['order']}  ·  {ik} lot {lot}")
+        for sym, arah, nama, ik, lot, ket in ring_rb:
+            rows.append(f"{IKON.get(arah, '')} {TG.e(sym)} {arah}  ·  {TG.e(nama.title())}  ·  MARKET  ·  {ik} lot {lot}  ·  {ket}")
         so.append("\n".join(rows))
     # dipisah menurut sumber: DASBOR (mesin QSE, sama dengan TradingView) dan robot Telegram
     BAGIAN = [("📊", "DARI DASBOR", [
@@ -2023,6 +2126,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         ("saran cadangan 2", "POLA RAPOR A/B, DIPILIHKAN ROBOT", "pola mutu A/B yang di DASBOR masih TAHAN, entry dipilih robot")]),
         ("🤖", "DARI ROBOT TELEGRAM", [
         ("saran siklus", "SIKLUS POLA KEMBAR", "pola harga mirip di sejarah koin")])]
+    if not dasbor:
+        BAGIAN = [("📊", "DARI DASBOR", [z for z in BAGIAN[0][2] if z[0] == "saran trendline"]), ("🤖", "DARI ROBOT TELEGRAM", [])]
     kosong = []
     for ikon_b, judul_b, isi_b in BAGIAN:
         blok = [f"{GARIS}\n{ikon_b} <b>{judul_b}</b>"]
@@ -2036,38 +2141,17 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             ok_n = sum(1 for z in item if z in ikut)
             blok.append(f"{GARIS}\n🔹 <b>{nama_j} ({len(item)})</b>  ·  bisa diikuti {ok_n}\n<i>{ket}</i>")
             blok += [f(i, r, x, st, led) for i, (j_, r, x, st, f) in enumerate(item, 1)]
-        if judul_b == "DARI ROBOT TELEGRAM" and tf == "240":
-            def _jalur_robot(nama, ik, tk, lot, n, maks, cek, items):
-                blok.append(f"{GARIS}\n🔹 <b>{nama}</b>  ·  {ik} {tk}  ·  lot {lot}  ·  posisi {n}/{maks}\n🕐 {TG.e(cek)}"
-                            + _baru_candle(items, tutup))
-            try:
-                import qse_ichimoku as IC
-                d_ = IC.lihat()["open"]
-                _jalur_robot("ICHIMOKU", "✅", "TERBUKTI", "1x", len(d_), IC.MAKS_BUKA, IC.baris_cek(), d_.values())
-            except Exception as ex:
-                print("[WARN] status ichimoku", ex)
-            try:
-                import qse_ob as OB
-                d_ = OB.lihat()["open"]
-                _jalur_robot("ORDER BLOCK + VOLUME (LONG)", "✅", "TERBUKTI", "1x", len(d_), OB.MAKS_BUKA, OB.baris_cek(), d_.values())
-            except Exception as ex:
-                print("[WARN] status orderblock", ex)
-            try:
-                import qse_strat as ST
-                for k, cfg in ST.STRAT.items():
-                    ok_s, tk_s, ik_s, lot_s = SY.boleh_ikut("saran " + k if k != "GZH" else "saran GZH")
-                    d_ = ST.lihat(k)["open"]
-                    _jalur_robot(cfg["nama"].upper(), ik_s, tk_s, lot_s, len(d_), ST.MAKS_BUKA, ST.baris_cek(k), d_.values())
-            except Exception as ex:
-                print("[WARN] status strategi", ex)
+        if judul_b == "DARI ROBOT TELEGRAM":
+            blok += robot_blok
         if len(blok) > 1:
             so.append("\n".join(blok))
     if kosong:
         so.append(f"{GARIS}\n⚪ Kosong di candle ini: {', '.join(kosong)}")
-    if not semua:
+    if not semua and not ring_rb:
         why = ("Sinyal baru ditahan sementara: jeda berita " + TG.e(ctx["jeda"]["judul"])) if ctx and ctx.get("jeda") else \
               ("Sinyal baru ditahan sementara: pasar bergejolak") if ctx and ctx.get("tahan") else \
-              "Belum ada setup yang lolos semua syarat di candle ini."
+              ("Belum ada setup yang lolos semua syarat di candle ini." if dasbor else
+               "Belum ada sinyal jalur terbukti yang bisa diikuti sekarang. Tunggu candle 4J berikutnya.")
         so.append(f"{GARIS}\n{why}")
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
     if pos and tf == "240":
@@ -2076,7 +2160,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                                                for it in pos))
     if ev:
         out.append(f"{GARIS}\n❌ <b>2. SARAN DIBATALKAN ({len(ev)})</b>\n" + "\n".join(TG.hasil(e, it, syms) for e, it in ev))
-    fl = [r for r in rs if (r.get("pasar") or {}).get("in_gp") and r["rapor"] != "D buruk"
+    fl = [r for r in rs if dasbor and (r.get("pasar") or {}).get("in_gp") and r["rapor"] != "D buruk"
           and (not r.get("tk") or r["tk"]["turnover"] >= FP["min_turnover"])]
     if fl:
         fl.sort(key=lambda r: (r["rapor"] not in ("A", "B"), -SK.konfirmasi(r.get("skill"), r["pasar"]["arah"])[0]))
@@ -2088,17 +2172,18 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                         f"konf {SK.konfirmasi(r.get('skill'), p['arah'])[0]}/8\n↳ {TG.e(SY.fib_teks(r))}")
         out.append("\n".join(rows))
     if tf == "240":
-        ung = _unggulan(rs, {r["symbol"] for r, _ in sig}, maks=8)
+        ung = _unggulan(rs, {r["symbol"] for r, _ in sig}, maks=8) if dasbor else []
         try:
             import qse_ob as OB
             ung = OB.baris_unggulan({r["symbol"]: r.get("live") or r.get("close") for r in rs if r.get("tf", "240") == "240"} or None) + ung
         except Exception as ex:
             print("[WARN] unggulan order block", ex)
-        out.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN ({len(ung)})</b>\nOrder Block + Volume yang masih terjangkau, lalu rapor A+/A/B atau golden moment yang sarannya masih terjangkau dari harga sekarang."
+        out.append(f"{GARIS}\n⭐ <b>KOIN UNGGULAN ({len(ung)})</b>\nOrder Block + Volume (TERBUKTI) yang entry-nya masih terjangkau dari harga sekarang."
                    + ("\n\n" + "\n\n".join(ung) if ung else "\nBelum ada koin unggulan yang entry-nya masih terjangkau."))
-    out += _pantauan(rs, sig +[(r, x) for r, x, _ in cad] + [(r, x) for r, x, _ in sik], kode)
+    if dasbor:
+        out += _pantauan(rs, sig + [(r, x) for r, x, _ in cad] + [(r, x) for r, x, _ in sik], kode)
     rendah = {}
-    for r, x in eks_ab:
+    for r, x in (eks_ab if dasbor else []):
         if r["rapor"] not in ("A", "B") and r["symbol"] not in rendah:
             rendah[r["symbol"]] = (r, x)
     if rendah:
@@ -2115,7 +2200,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             rows.append(f"{IKON.get(s['arah'], '')} {TG.e(r['symbol'])} {s['arah']} | {TG.e(s['pola'])}\n↳ {TG.e(why)}")
         out.append("\n".join(rows))
     out.append(_wr_baris(led))
-    ada = bool(ikut)
+    ada = bool(ikut) or bool(ring_rb)
     if ada:
         try:
             ktx = SY.baris_konteks()

@@ -40,8 +40,22 @@ STRAT = {
                 bt="uji 6 tahun 111 koin, maks 8 posisi: 1825 trade, WR 40%, PF 1.24, 2020-2023 PF 1.24, uji ulang 2024-2026 PF 1.23",
                 kenapa=["Sentuhan pertama fib 0.618 lalu candle 4J tutup memantul",
                         "Searah tren besar (EMA 200) dan searah BTC 4J"]),
+    "snr_vol": dict(nama="SnR Pantul + Volume", likuid=30, tp_r=3.0, maks_bar=45,
+                    bt="uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 692 trade, WR 39%, PF 1.33, 2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.43",
+                    kenapa=["Pivot support/resistance 20 candle baru terkonfirmasi, harga memantul darinya",
+                            "Searah tren besar (EMA 200) dan searah BTC 4J",
+                            "Volume candle masuk 20% tertinggi dari 100 candle"]),
+    "msb_hpz": dict(nama="MSB LuxAlgo HPZ", likuid=30,
+                    bt="uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 2783 trade, WR 37%, PF 1.27, 2020-2023 PF 1.32, uji ulang 2024-2026 PF 1.21",
+                    kenapa=["Market structure break: close menembus pivot 7 candle dengan momentum kuat",
+                            "Skor zona di atas 80 (HPZ): momentum dan volume besar",
+                            "Searah tren besar (EMA 200)"]),
+    "smc_choch": dict(nama="SMC CHoCH searah tren", likuid=30, tp_r=3.0, maks_bar=45,
+                      bt="uji 111 koin 2020-2026, 30 paling likuid, maks 8 posisi: 2929 trade, WR 38%, PF 1.25 (2020-2023 PF 1.30, 2024-2026 PF 1.19), data lama 2017-2020 PF 1.40",
+                      kenapa=["Change of Character (CHoCH) struktur internal: arah kecil berbalik",
+                              "Searah tren besar (EMA 200)"]),
     "mcginley": dict(nama="McGinley 34 + Volume", likuid=0, tp_r=3.0, maks_bar=45,
-                     bt="uji 6 tahun 111 koin, maks 8 posisi: 2034 trade, WR 43%, PF 1.44, 2020-2023 PF 1.44, uji ulang 2024-2026 PF 1.44, untung tiap tahun",
+                     bt="uji 6 tahun 111 koin, maks 8 posisi: 3328 trade, WR 40%, PF 1.24, 2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.23, data lama 2017-2020 PF 1.10",
                      kenapa=["Harga baru menembus McGinley Dynamic 34: arah jangka menengah berbalik",
                              "Searah tren besar: harga di sisi yang sama dari EMA 200",
                              "Volume candle masuk 20% tertinggi dari 100 candle: dorongan nyata"]),
@@ -131,6 +145,22 @@ def sinyal(df, btc_naik):
             out["mcginley"] = ("LONG", float(a[i]))
         elif c[i] < md[i] and c[i - 1] >= md[i - 1] and c[i] < e200[i]:
             out["mcginley"] = ("SHORT", float(a[i]))
+    # SnR, MSB, SMC dari dua script TradingView, fungsi deteksi sama persis dengan backtest (qse_smccore)
+    try:
+        import qse_smccore as K
+        searah = lambda ar: (c[i] > e200[i]) == (ar == 1)
+        for x in K.snr(h, l, c, 20):
+            if x[0] == i and searah(x[1]) and vp >= 80 and btc_naik is not None and btc_naik == (x[1] == 1):
+                out["snr_vol"] = ("LONG" if x[1] == 1 else "SHORT", float(a[i]))
+        vpa = K.volpct(v)
+        for x in K.msb(o, h, l, c, v, 7, 0.5, vpa):
+            if x[0] == i and x[5]["skor"] > 80 and searah(x[1]):
+                out["msb_hpz"] = ("LONG" if x[1] == 1 else "SHORT", float(a[i]))
+        for x in K.smc(o, h, l, c, 5, 50):
+            if x[0] == i and x[5]["tag"] == "choch" and searah(x[1]):
+                out["smc_choch"] = ("LONG" if x[1] == 1 else "SHORT", float(a[i]))
+    except Exception as ex:
+        print("[WARN] smc/snr/msb", ex)
     return out
 
 
@@ -203,6 +233,19 @@ def rem(k):
     return ""
 
 
+def izin_btc():
+    """Izin arah dari BTC 4J, rumus sama dengan mesin robot (qse_features): LONG ditahan saat BTC turun (close < EMA20 < EMA50)
+    dan candle terakhir merah, SHORT ditahan saat BTC naik dan candle terakhir hijau. Return dict LONG/SHORT -> bool."""
+    df = _k4("BTCUSDT", 600)
+    if df is None or len(df) < 60:
+        return {"LONG": True, "SHORT": True}
+    import qse_ta as T
+    c = df["close"].values.astype(float)[:-1]          # sama dengan izin di laporan robot: candle BTC sebelum candle sinyal
+    e20, e50 = T.ema(c, 20), T.ema(c, 50)
+    up, dn, mom = c[-1] > e20[-1] > e50[-1], c[-1] < e20[-1] < e50[-1], c[-1] > c[-2]
+    return {"LONG": not (dn and not mom), "SHORT": not (up and mom)}
+
+
 def btc_naik():
     df = _k4("BTCUSDT", 400)
     if df is None or len(df) < 100:
@@ -269,6 +312,10 @@ def jalankan(baru_ok=True):
     except Exception:
         return out
     bn = btc_naik()
+    try:
+        izin = izin_btc()
+    except Exception:
+        izin = {"LONG": True, "SHORT": True}
     pindai = [s for s in sorted(tk, key=lambda s: -tk[s]["turnover"]) if s in tick or not tick][:TOP_KOIN]
 
     def cek(sym):
@@ -280,6 +327,8 @@ def jalankan(baru_ok=True):
         semua = list(ex.map(cek, pindai))
     urut = [x[0] for x in sorted(semua, key=lambda x: -x[3])]
     now = time.time()
+    # satu koin hanya satu jalur: koin yang sudah dipegang jalur mana pun atau baru dikirim di candle ini dilewati
+    dipakai = {it["sym"] for kk in STRAT for it in lihat(kk)["open"].values()}
     for k, cfg in STRAT.items():
         if cfg.get("manual"):
             continue          # GZH: sinyal datang dari pemantau sentuhan 0.618 tiap menit, posisinya tetap dikelola di sini
@@ -292,15 +341,21 @@ def jalankan(baru_ok=True):
             _CEK[k] = (0, "slot posisi penuh")
             continue
         boleh = set(urut[:cfg["likuid"]]) if cfg["likuid"] else set(urut)
-        buka = {it["sym"] for it in d["open"].values()}
+        buka = {it["sym"] for it in d["open"].values()} | dipakai
         calon = [x for x in semua if k in x[1] and x[0] in boleh and x[0] not in buka]
         calon.sort(key=lambda x: urut.index(x[0]))
         baru = []
         for sym, sg, df, _ in calon:
             if len(baru) >= slot:
                 break
+            if sym in dipakai:
+                continue
             arah, a = sg[k]
-            why = SY.cek_lintas(sym, arah)
+            if cfg.get("izin_btc") and not izin.get(arah, True):
+                print(f"[STRAT {k}] {sym} {arah} ditahan: izin BTC 4J tidak mengizinkan {arah}")
+                continue
+            import qse_porto as PO
+            why = SY.cek_lintas(sym, arah) or PO.izin(sym, arah, k)
             if why:
                 print(f"[STRAT {k}] {sym} ditahan: {why}")
                 continue
@@ -319,6 +374,8 @@ def jalankan(baru_ok=True):
             if cfg.get("tp_r"):
                 it.update(tp=px + cfg["tp_r"] * risk if L else px - cfg["tp_r"] * risk, maks_bar=cfg["maks_bar"])
             baru.append(it)
+            dipakai.add(sym)
+            PO.pesan(sym, arah)
             out[k].append(kartu(k, len(baru), it, a))
 
         def simpan_baru(dd, baru=baru):
@@ -342,7 +399,8 @@ def kartu(k, no, it, a):
     L = it["arah"] == "LONG"
     t = it["tick"]
     _, tkb, ik, lot_b = SY.boleh_ikut("saran " + k, it["arah"])
-    rm = rem(k)
+    import qse_porto as PO
+    rm = rem(k) or PO.rem()
     if rm:
         lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
     try:
@@ -406,6 +464,7 @@ def teks():
             rows.append(f"Selesai {len(rs)} trade | WR {sum(x > 0 for x in rs) / len(rs) * 100:.0f}% | "
                         f"PF {w / lo if lo > 0 else 9.99:.2f} | total {sum(rs):+.1f}R")
         rows.append("")
-    rows.append("Gagal uji dan tidak dipakai: Donchian 20/55, Supertrend, Bollinger squeeze, mean reversion Bollinger dan RSI 2, "
+    rows.append("Gagal uji dan tidak dipakai: entry retest order block, SMC BOS, SnR tanpa volume, Donchian 20/55, Supertrend, "
+                "Bollinger squeeze, mean reversion Bollinger dan RSI 2, "
                 "pullback 3 candle, inside bar, momentum 30 hari, funding ekstrem, breakout volume.")
     return "\n".join(rows)

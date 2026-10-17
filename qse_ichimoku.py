@@ -278,6 +278,11 @@ def _jalankan(baru_ok=True):
         if telat > 1800000 and abs(px - float(df["close"].iloc[-1])) > TELAT_ATR * a:
             print(f"[ICHIMOKU] {sym} dilewati: robot telat {telat / 60000:.0f} menit dan harga sudah lari dari harga sinyal")
             continue
+        import qse_porto as PO
+        why = PO.izin(sym, arah, "ichimoku")
+        if why:
+            print(f"[ICHIMOKU] {sym} ditahan: {why}")
+            continue
         L = arah == "LONG"
         risk = SL_ATR * a
         sl = px - risk if L else px + risk
@@ -285,6 +290,7 @@ def _jalankan(baru_ok=True):
         it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now,
                   last=int(df.index[-1]), close=px, tick=t)
         baru.append(it)
+        PO.pesan(sym, arah)
         try:
             import qse_modal as MD
             lot = MD.baris_lot(px, sl)
@@ -293,7 +299,8 @@ def _jalankan(baru_ok=True):
         pc = risk / px * 100
         jarak = TRAIL_ATR * a
         _, tkb, ik, lot_b = SY.boleh_ikut("saran ichimoku", arah)
-        rm = rem()
+        import qse_porto as PO
+        rm = rem() or PO.rem()
         if rm:
             lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
         try:

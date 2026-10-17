@@ -100,7 +100,7 @@ BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
            "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n"
            "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n"
            "/ob = jalur Order Block + Volume 4J: posisi, hasil, dan hasil uji 6 tahun\n"
-           "/strategi = jalur EMA Cross SHORT, RSI 50 + Volume, McGinley: posisi, hasil, uji 6 tahun\n"
+           "/strategi = jalur EMA Cross, RSI 50, McGinley, SnR, MSB, SMC, GZH: posisi, hasil, uji 6 tahun\n"
            "/arah SOL = tren 15m sampai 1W, tanggal yang sama tahun lalu, pola kembar, dan riwayat pola robot di koin ini\n\n"
            "<b>Info</b>\n"
            "/kabar = berita 1 jam terakhir dan kalender berita besar USD\n"
@@ -243,10 +243,10 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/arah", "/tren"):
         import qse_arah as AR
         return AR.teks(args)
-    if cmd in ("/strategi", "/strat", "/ema", "/rsi", "/mcginley", "/mcg"):
+    if cmd in ("/strategi", "/strat", "/ema", "/rsi", "/mcginley", "/mcg", "/snr", "/msb", "/smc"):
         import qse_strat as ST
         return ST.teks()
-    if cmd in ("/ob", "/orderblock", "/smc"):
+    if cmd in ("/ob", "/orderblock"):
         import qse_ob as OB
         return OB.teks()
     if cmd in ("/ichimoku", "/ichi"):
