@@ -14,12 +14,14 @@ FILE = os.path.join(STATE_DIR, "catat_jalur.json")
 NAMA = {"momentum": "Momentum 15/30 menit", "news_searah": "News searah engine", "news_mandiri": "News mandiri (sejarah kuat)",
         "ichimoku": "Ichimoku tren 4J (trailing)",
         "orderblock": "Order Block + Volume 4J", "gzh": "GZH SHORT, TP 2R penuh",
-        "ema_short": "EMA Cross 20/50 SHORT 4J (trailing)", "rsi_vol": "RSI 50 + Volume 4J (trailing)"}
+        "ema_short": "EMA Cross 20/50 SHORT 4J (trailing)", "rsi_vol": "RSI 50 + Volume 4J (trailing)",
+        "mcginley": "McGinley 34 + Volume 4J (TP 3R)",
+        "GZH": "GZH Golden Zone 4J (trailing)"}
 BIAYA = 0.08
 TAHAN_JAM = 24
 TAHAN_JALUR = {"gzh": 240}          # GZH diuji dengan tahan maksimal 10 hari
 MIN_N, MIN_PF = 15, 1.0
-MIN_N_JALUR = {"ichimoku": 40, "orderblock": 40, "gzh": 30, "ema_short": 40, "rsi_vol": 40}     # jalur tren WR rendah butuh sampel lebih banyak sebelum dinilai
+MIN_N_JALUR = {"ichimoku": 40, "orderblock": 40, "gzh": 30, "ema_short": 40, "rsi_vol": 40, "mcginley": 40, "GZH": 40}     # jalur tren WR rendah butuh sampel lebih banyak sebelum dinilai
 
 
 def _ubah(fn):
@@ -169,7 +171,7 @@ def teks():
                 buka = len(IC.lihat()["open"])
             except Exception:
                 pass
-        if j in ("ema_short", "rsi_vol"):
+        if j in ("ema_short", "rsi_vol", "mcginley", "GZH"):
             try:
                 import qse_strat as ST
                 buka = len(ST.lihat(j)["open"])

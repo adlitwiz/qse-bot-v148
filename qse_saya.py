@@ -462,9 +462,10 @@ BUKTI = {
                        "untung tiap tahun, positif 18 dari 22 kuartal"),
     "saran utama": ("BELUM TERBUKTI", "⚠️", "0.25x", "backtest 5 tahun 108 koin dengan semua syarat robot: 83 trade, PF 0.70; "
                     "2 tahun terakhir 30 koin termasuk sinyal longgar: 30 trade, PF 1.88, 29 di antaranya SHORT"),
-    "saran GZH": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin semua sentuhan 0.618 yang terkonfirmasi: LONG 660 "
-                  "trade PF 0.80 sampai 0.91, rugi. SHORT dengan TP 2R penuh: 632 trade, WR 41%, PF 1.06, mendekati impas. "
-                  "Saringan skor 70 justru memperburuk (PF 0.83). Aktif SHORT saja"),
+    "saran GZH": ("TERBUKTI", "✅", "0.5x", "uji 6 tahun 111 koin, maks 8 posisi: 1825 trade, WR 40%, PF 1.24, aturan dipilih "
+                  "dari 2020-2023 (PF 1.24), uji ulang 2024-2026 PF 1.23, turun terdalam 14%. Syarat: searah EMA 200 dan BTC 4J, "
+                  "keluar dengan SL berjalan 3 ATR. GZH tanpa syarat PF 0.95, TP tetap 3R gagal di 2024-2026 (PF 0.96). "
+                  "Lot 0.5x karena paling lemah di antara jalur terbukti"),
     "saran 1J": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot (rapor 4J dan 1J A/B, searah bias 4J): "
                  "17 trade, WR 41%, -6.8R. Angka uji mundur 6 bulan di laporan memakai koin yang rapornya sedang bagus, jadi terlalu optimis"),
     "saran cadangan": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot: 8 trade, WR 38%, PF 0.52, -2.4R"),
@@ -476,13 +477,15 @@ BUKTI = {
                         "2024-2026 PF 1.38. 2026 melemah (PF 1.01), jadi lot 0.5x"),
     "saran ema_short": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, maks 8 posisi: 1812 trade, WR 42%, PF 1.42, aturan dipilih "
                         "dari 2020-2023 (PF 1.37), uji ulang 2024-2026 PF 1.47, untung tiap tahun, turun terdalam 16%"),
+    "saran mcginley": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, maks 8 posisi: 2034 trade, WR 43%, PF 1.44, aturan dipilih "
+                       "dari 2020-2023 (PF 1.44), uji ulang 2024-2026 PF 1.44, turun terdalam 13%, TP tetap 3R"),
     "saran rsi_vol": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 2380 trade, WR 40%, PF 1.34, "
                       "2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.45, positif 21 dari 26 kuartal"),
     "saran orderblock": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin perp, LONG, maks 8 posisi: 969 trade, PF 1.45, "
                          "uji ulang 2024-2026 dengan aturan yang dipilih dari 2020-2023: PF 1.26"),
 }
 BELUM_UJI = ("BELUM DIUJI", "❔", "0.25x", "belum diuji ulang dengan data perp 5 tahun dan aturan robot lengkap")
-CT_KEY = {"saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "gzh", "saran momentum": "momentum", "saran news": "news_searah"}
+CT_KEY = {"saran mcginley": "mcginley", "saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "GZH", "saran momentum": "momentum", "saran news": "news_searah"}
 NAIK_N, NAIK_PF = 30, 1.2          # syarat naik jadi TERBUKTI dari hasil live
 
 
@@ -582,7 +585,8 @@ NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadang
               "saran cadangan 2": "Pola A/B pilihan robot", "saran fib": "Golden zone 0.618", "saran siklus": "Siklus", "saran GZH": "GZH", "saran momentum": "Momentum",
               "saran news": "News", "saran ichimoku": "Ichimoku",
               "saran orderblock": "Order Block + Volume", "saran trendline": "Tembus Trendline searah tren",
-              "saran ema_short": "EMA Cross 20/50 SHORT", "saran rsi_vol": "RSI 50 + Volume"}
+              "saran ema_short": "EMA Cross 20/50 SHORT", "saran rsi_vol": "RSI 50 + Volume",
+              "saran mcginley": "McGinley 34 + Volume"}
 
 
 def boleh_ikut(jalur, arah=None, skor=None):
@@ -601,6 +605,8 @@ def bukti_pendek(jalur, arah=None, skor=None):
         return "uji 5 tahun 108 koin: 691 trade, WR 80%, PF 1.47, uji ulang 2024-2026 PF 1.38"
     if jalur == "saran ema_short":
         return "uji 6 tahun 111 koin: 1812 trade, PF 1.42, uji ulang 2024-2026 PF 1.47"
+    if jalur == "saran mcginley":
+        return "uji 6 tahun 111 koin: 2034 trade, PF 1.44, uji ulang 2024-2026 PF 1.44"
     if jalur == "saran rsi_vol":
         return "uji 6 tahun, 30 koin likuid: 2380 trade, PF 1.34, uji ulang 2024-2026 PF 1.45"
     if jalur == "saran orderblock":
@@ -2598,8 +2604,25 @@ def nilai_gzh(r):
 GZH_DEKAT_ATR = 0.5      # peringatan GZH MENDEKAT saat harga tinggal 0.5 ATR dari 0.618
 GZH_MAKS_HARI = 4        # sinyal sentuh GZH paling banyak per hari (WIB), supaya tidak banjir saat pasar bergerak serentak
 GZH_SKOR_DEKAT = 80      # (lama) peringatan MENDEKAT hanya untuk setup skor tinggi
-GZH_ARAH = ("SHORT",)    # uji 2 tahun semua sentuhan: LONG PF 0.8 sampai 0.9, SHORT PF 1.06 dengan TP 2R penuh
-GZH_TP_R = 2.0           # fix profit: tutup penuh di 2R dari harga entry konfirmasi
+_BTC_GZ = {}
+
+
+def gzh_searah(arah, close, e200):
+    """Syarat GZH dari uji 6 tahun 111 koin: searah tren besar (close vs EMA 200 4J) dan searah BTC 4J (close vs EMA 50).
+    Return (lolos, alasan)."""
+    L = arah == "LONG"
+    if e200 and ((close > e200) != L):
+        return False, f"lawan tren besar (harga {'di bawah' if L else 'di atas'} EMA 200)"
+    if time.time() - _BTC_GZ.get("t", 0) > 600:
+        try:
+            import qse_strat as ST
+            _BTC_GZ.update(t=time.time(), naik=ST.btc_naik())
+        except Exception:
+            _BTC_GZ.update(t=time.time(), naik=None)
+    bn = _BTC_GZ.get("naik")
+    if bn is not None and bn != L:
+        return False, f"BTC 4J {'turun' if L else 'naik'} (di {'bawah' if L else 'atas'} EMA 50)"
+    return True, ""
 
 
 def sentuh_fib(min_skor=70):
@@ -2649,7 +2672,7 @@ def sentuh_fib(min_skor=70):
             if 0 < jr <= GZH_DEKAT_ATR:          # peringatan persiapan, sekali per kaki fib
                 dekat[kunci] = int(now)
                 sk0, ar0, _, _, bt0 = nilai_gzh(r)
-                if (TAMPIL_SEMUA or ar0 in GZH_ARAH) and jatah["n"] < GZH_MAKS_HARI:
+                if (TAMPIL_SEMUA or gzh_searah(ar0, r["close"], r.get("e200"))[0]) and jatah["n"] < GZH_MAKS_HARI:
                     out.append(f"👀 <b>GZH MENDEKAT {sym} {ar0}</b> | skor setup {sk0}/100\n"
                                f"Harga {fp(px, t)}, tinggal {jr:.1f} ATR ({abs(px - e) / px * 100:.1f}%) dari fib 0.618 di "
                                f"{fp(e, t)}. Siapkan order. Aku kabari lagi saat harga menyentuh dan saat candle 4J tutup.")
@@ -2662,8 +2685,9 @@ def sentuh_fib(min_skor=70):
         if now - koin.get(sym, 0) < 86400:
             continue
         skor, arah, plus, minus, bt = nilai_gzh(r)
-        if not TAMPIL_SEMUA and arah not in GZH_ARAH:
-            print(f"[GZH] {sym} {arah} disentuh, tidak dikirim: GZH {arah} rugi di uji 2 tahun")
+        ok_s, why_s = gzh_searah(arah, px, r.get("e200"))
+        if not TAMPIL_SEMUA and not ok_s:
+            print(f"[GZH] {sym} {arah} disentuh, tidak dikirim: {why_s}")
             continue
         why = cek_lintas(sym, arah)
         if why:
@@ -2676,14 +2700,13 @@ def sentuh_fib(min_skor=70):
         koin[sym] = int(now)
         a = g.get("atr") or r["atr"]
         sl = lv["1.0"] - 0.2 * a if L else lv["1.0"] + 0.2 * a
-        risk = abs(e - sl)
-        tp = e + GZH_TP_R * risk if L else e - GZH_TP_R * risk          # perkiraan, angka pasti dihitung saat konfirmasi
-        sinyal[sym] = dict(arah=arah, entry=e, sl=sl, tp1=tp, tp2=tp, skor=skor, t=int(now))
+        sinyal[sym] = dict(arah=arah, entry=e, sl=sl, tp1=lv["0.0"], tp2=lv["0.0"], skor=skor, t=int(now))
         _, tkb, ik, lot_b = boleh_ikut("saran GZH", arah, skor)
         jam_k = time.strftime("%H:%M", time.gmtime((int(now // 14400) + 1) * 14400 + 7 * 3600))
         out.append(f"👀 <b>GZH DISENTUH  ·  {sym} {arah}</b>\n"
                    f"Belum entry. Tunggu candle 4J tutup jam {jam_k} WIB.\n"
-                   f"Kalau tutup {'di atas' if L else 'di bawah'} {fp(e, t)}, robot kirim GZH TERKONFIRMASI dengan entry, SL, TP.")
+                   f"Kalau tutup {'di atas' if L else 'di bawah'} {fp(e, t)} dan masih searah tren dan BTC, robot kirim "
+                   f"GZH TERKONFIRMASI dengan entry dan SL.")
         try:
             import qse_alarm as _AL
             _AL.tambah_gzh(sym, L, e, sl, lv["0.0"], lv["0.0"], t, skor=skor, wr=bt.get("wr"), dikirim=True)

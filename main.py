@@ -527,13 +527,6 @@ def _ada_sinyal_hari_ini(led):
             return True
     except Exception:
         pass
-    try:
-        with open(os.path.join(STATE_DIR, "sentuh_fib.json")) as f:
-            if any(g.get("t", 0) * 1000 >= h0 and SY.boleh_ikut("saran GZH", g.get("arah"))[0]          # GZH belum terbukti tidak dihitung
-                   for g in json.load(f).get("sinyal", {}).values()):
-                return True
-    except Exception:
-        pass
     return False
 
 
@@ -2062,14 +2055,11 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             try:
                 import qse_strat as ST
                 for k, cfg in ST.STRAT.items():
-                    ok_s, tk_s, ik_s, lot_s = SY.boleh_ikut("saran " + k)
+                    ok_s, tk_s, ik_s, lot_s = SY.boleh_ikut("saran " + k if k != "GZH" else "saran GZH")
                     d_ = ST.lihat(k)["open"]
                     _jalur_robot(cfg["nama"].upper(), ik_s, tk_s, lot_s, len(d_), ST.MAKS_BUKA, ST.baris_cek(k), d_.values())
             except Exception as ex:
                 print("[WARN] status strategi", ex)
-            ok_g, tk_g, ik_g, lot_g = SY.boleh_ikut("saran GZH", "SHORT")
-            blok.append(f"{GARIS}\n🔹 <b>GZH (SHORT, TP 2R)</b>  ·  {ik_g} {tk_g}  ·  lot {lot_g}\n"
-                        f"🕐 dipantau tiap menit, dikirim terpisah saat harga menyentuh 0.618")
         if len(blok) > 1:
             so.append("\n".join(blok))
     if kosong:

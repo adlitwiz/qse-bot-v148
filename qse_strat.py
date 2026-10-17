@@ -36,6 +36,15 @@ STRAT = {
                     kenapa=["RSI 14 baru melewati 50 searah tren besar (EMA 50 dan harga di sisi yang sama dari EMA 200)",
                             "Volume candle masuk 20% tertinggi dari 100 candle: dorongan nyata",
                             "Koin termasuk 30 paling likuid"]),
+    "GZH": dict(nama="GZH Golden Zone", likuid=0, manual=True,
+                bt="uji 6 tahun 111 koin, maks 8 posisi: 1825 trade, WR 40%, PF 1.24, 2020-2023 PF 1.24, uji ulang 2024-2026 PF 1.23",
+                kenapa=["Sentuhan pertama fib 0.618 lalu candle 4J tutup memantul",
+                        "Searah tren besar (EMA 200) dan searah BTC 4J"]),
+    "mcginley": dict(nama="McGinley 34 + Volume", likuid=0, tp_r=3.0, maks_bar=45,
+                     bt="uji 6 tahun 111 koin, maks 8 posisi: 2034 trade, WR 43%, PF 1.44, 2020-2023 PF 1.44, uji ulang 2024-2026 PF 1.44, untung tiap tahun",
+                     kenapa=["Harga baru menembus McGinley Dynamic 34: arah jangka menengah berbalik",
+                             "Searah tren besar: harga di sisi yang sama dari EMA 200",
+                             "Volume candle masuk 20% tertinggi dari 100 candle: dorongan nyata"]),
 }
 
 
@@ -88,6 +97,15 @@ def _rsi(c, n=14):
     return 100 - 100 / (1 + up / np.maximum(dn, 1e-12))
 
 
+def _mcginley(c, n=34, k=0.6):
+    md = np.empty(len(c))
+    md[0] = c[0]
+    for i in range(1, len(c)):
+        # pembagi minimal 1 supaya McGinley tidak melompati harga (rumus asli tidak stabil saat harga jauh dari garis)
+        md[i] = md[i - 1] + (c[i] - md[i - 1]) / max(k * n * (c[i] / md[i - 1]) ** 4, 1.0)
+    return md
+
+
 def sinyal(df, btc_naik):
     """Cek candle tutup terakhir untuk semua strategi. Return dict kunci -> (arah, atr). Aturan persis backtest."""
     o, h, l, c, v = (df[k].values.astype(float) for k in ("open", "high", "low", "close", "volume"))
@@ -106,6 +124,13 @@ def sinyal(df, btc_naik):
             out["rsi_vol"] = ("LONG", float(a[i]))
         elif r[i] < 50 and r[i - 1] >= 50 and c[i] < e200[i] and e50[i] < e200[i]:
             out["rsi_vol"] = ("SHORT", float(a[i]))
+    md = _mcginley(c[-600:])          # sama dengan backtest: dihitung dari 600 candle terakhir
+    md = np.r_[np.full(len(c) - len(md), np.nan), md]
+    if vp >= 80:
+        if c[i] > md[i] and c[i - 1] <= md[i - 1] and c[i] > e200[i]:
+            out["mcginley"] = ("LONG", float(a[i]))
+        elif c[i] < md[i] and c[i - 1] >= md[i - 1] and c[i] < e200[i]:
+            out["mcginley"] = ("SHORT", float(a[i]))
     return out
 
 
@@ -131,6 +156,15 @@ def _kelola(it, df):
         hi, lo, cl = float(df["high"].iloc[k]), float(df["low"].iloc[k]), float(df["close"].iloc[k])
         if (lo <= it["sl"]) if L else (hi >= it["sl"]):
             return "SL", ((it["sl"] - e) if L else (e - it["sl"])) / risk - BIAYA * e / risk, sl_lama
+        if it.get("tp"):          # jalur TP tetap (McGinley): TP tidak dicek di candle masuk, sama dengan backtest
+            if it["bar"] > 0 and ((hi >= it["tp"]) if L else (lo <= it["tp"])):
+                return "TP", abs(it["tp"] - e) / risk - BIAYA * e / risk, sl_lama
+            it["bar"] += 1
+            it["last"] = int(ts)
+            it["close"] = cl
+            if it["bar"] >= it.get("maks_bar", MAKS_BAR):
+                return "WAKTU", ((cl - e) if L else (e - cl)) / risk - BIAYA * e / risk, sl_lama
+            continue
         if L:
             it["best"] = max(it["best"], hi)
             it["sl"] = max(it["sl"], it["best"] - TRAIL_ATR * a[k])
@@ -203,12 +237,13 @@ def jalankan(baru_ok=True):
         for key, (it, st, R, sl_lama) in hasil.items():
             t = it.get("tick", 0.0001)
             kabar = (it["sym"], it["arah"]) in pegang
-            if st in ("SL", "WAKTU"):
+            if st in ("SL", "WAKTU", "TP"):
                 _catat_ledger(k, it, R)
                 if kabar:
                     out[k].append(f"{'✅' if R > 0 else '🛑'} <b>{STRAT[k]['nama'].upper()} SELESAI  ·  {it['sym']} {it['arah']}  ·  {R:+.2f}R</b>\n"
-                                  + (f"Kena SL berjalan di sekitar {TG.fp(it['sl'], t)}. Kalau SL di Bybit sudah digeser, posisi sudah tutup."
-                                     if st == "SL" else f"Sudah {MAKS_BAR} candle 4J (10 hari). Tutup sekarang di harga pasar."))
+                                  + (f"TP {TG.fp(it['tp'], t)} tersentuh." if st == "TP" else
+                                     f"Kena SL di sekitar {TG.fp(it['sl'], t)}. Analisa volume menyusul." if st == "SL" else
+                                     f"Sudah {it.get('maks_bar', MAKS_BAR)} candle 4J. Tutup sekarang di harga pasar."))
             elif kabar and abs(it["sl"] - sl_lama) >= 0.25 * it["risk"]:
                 L = it["arah"] == "LONG"
                 kunci = ((it["sl"] - it["entry"]) if L else (it["entry"] - it["sl"])) / it["risk"]
@@ -220,7 +255,7 @@ def jalankan(baru_ok=True):
             for key, (it, st, R, _) in hasil.items():
                 if key not in dd["open"]:
                     continue
-                if st in ("SL", "WAKTU"):
+                if st in ("SL", "WAKTU", "TP"):
                     dd["open"].pop(key)
                     dd["closed"].append(dict(it, status=st, R=round(R, 2), selesai=time.time()))
                 else:
@@ -246,6 +281,8 @@ def jalankan(baru_ok=True):
     urut = [x[0] for x in sorted(semua, key=lambda x: -x[3])]
     now = time.time()
     for k, cfg in STRAT.items():
+        if cfg.get("manual"):
+            continue          # GZH: sinyal datang dari pemantau sentuhan 0.618 tiap menit, posisinya tetap dikelola di sini
         if CT.mati(k):
             _CEK[k] = (0, "jalur dihentikan karena hasil live jelek")
             continue
@@ -279,6 +316,8 @@ def jalankan(baru_ok=True):
             t = tick.get(sym, 0.0001)
             it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now,
                       last=int(df.index[-1]), close=px, tick=t)
+            if cfg.get("tp_r"):
+                it.update(tp=px + cfg["tp_r"] * risk if L else px - cfg["tp_r"] * risk, maks_bar=cfg["maks_bar"])
             baru.append(it)
             out[k].append(kartu(k, len(baru), it, a))
 
@@ -317,21 +356,28 @@ def kartu(k, no, it, a):
         f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {it['arah']}</b>  ·  {cfg['nama']} 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.5% modal per trade)",
         SY.GARIS,
-        SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=it["sym"], arah=it["arah"]),
+        (SY.blok_salin(it["entry"], it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah=it["arah"]) if it.get("tp") else
+         SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=it["sym"], arah=it["arah"])),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot setengah sampai pulih"] if rm else []),
         "💡 <b>Kenapa</b>",
         *[f"• {z}" for z in cfg["kenapa"]],
         f"• Bukti: {cfg['bt']}",
         "🛠 <b>Cara</b>",
-        f"1. Masuk MARKET sekarang. SL di {TG.fp(it['sl'], t)} ({it['risk'] / it['entry'] * 100:.1f}%). Jangan pasang TP",
-        f"2. Pasang Trailing Stop Bybit dengan jarak {TG.fp(jarak, t)} ({jarak / it['entry'] * 100:.1f}%), atau ikuti pesan GESER SL",
-        "3. Kalau 10 hari belum kena SL, tutup manual",
-        "4. Catat dengan /entry supaya pesan GESER SL dan analisa volume SL dikirim"
-        + (f"\n{lot}" if lot else ""),
+        *([f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)}, TP {TG.fp(it['tp'], t)} ({cfg['tp_r']:g}R). Tutup penuh di TP",
+            "2. Jangan geser SL. Fix profit 3R lebih bagus dari trailing di data 2020-2023",
+            f"3. Kalau {it.get('maks_bar', MAKS_BAR) // 6} hari belum kena SL atau TP, tutup manual",
+            "4. Catat dengan /entry supaya ada pengingat dan analisa volume kalau kena SL"] if it.get("tp") else
+          [f"1. Masuk MARKET sekarang. SL di {TG.fp(it['sl'], t)} ({it['risk'] / it['entry'] * 100:.1f}%). Jangan pasang TP",
+           f"2. Pasang Trailing Stop Bybit dengan jarak {TG.fp(jarak, t)} ({jarak / it['entry'] * 100:.1f}%), atau ikuti pesan GESER SL",
+           "3. Kalau 10 hari belum kena SL, tutup manual",
+           "4. Catat dengan /entry supaya pesan GESER SL dan analisa volume SL dikirim"]),
+        *([lot] if lot else []),
     ])
 
 
 def baris_cek(k):
+    if STRAT.get(k, {}).get("manual"):
+        return "dipantau tiap menit saat harga menyentuh fib 0.618, dikirim terpisah"
     c = lihat(k).get("cek")
     if not c:
         return "belum pernah dicek sejak update"

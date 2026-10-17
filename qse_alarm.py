@@ -188,21 +188,41 @@ def _pesan_gzh(a, cl):
         return (f"⚠️ <b>GZH {a['sym']}</b> candle tutup memantul di {TG.fp(cl, t)}, tapi harga sudah melewati titik 0 fib. "
                 f"Lewati.")
     import qse_saya as SY
+    import qse_strat as ST
     arah = "LONG" if L else "SHORT"
     bd = SY.berita_depan(3)
     if bd:
         return (f"⏸️ <b>GZH {a['sym']} {arah}</b>: candle 4J tutup memantul di {TG.fp(cl, t)}, tapi ada berita besar "
                 f"{TG.e(bd['judul'])} dalam 3 jam. Lewati.")
-    tp = cl + SY.GZH_TP_R * risk if L else cl - SY.GZH_TP_R * risk
+    # syarat uji 6 tahun: searah tren besar (EMA 200 4J candle konfirmasi) dan searah BTC 4J
+    e200 = None
     try:
-        import qse_catat as CT
-        CT.tambah("gzh", a["sym"], arah, cl, a["sl"], tp, tp, berlaku_jam=4, ket="GZH konfirmasi")
+        df = ST._k4(a["sym"], 600)
+        if df is not None and len(df) > 210:
+            e200 = float(ST._ema(df["close"].values.astype(float), 200)[-1])
     except Exception as ex:
-        print("[WARN] catat gzh", ex)
+        print("[WARN] gzh ema200", ex)
+    SY._BTC_GZ.clear()
+    ok, why = SY.gzh_searah(arah, cl, e200)
+    if not ok:
+        return f"❌ <b>GZH BATAL  ·  {a['sym']} {arah}</b>\nJangan entry. {why}."
+    d = ST.lihat("GZH")
+    if len(d["open"]) >= ST.MAKS_BUKA:
+        return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi posisi GZH robot sudah {ST.MAKS_BUKA}. Lewati."
+    now = time.time()
+    it = dict(sym=a["sym"], arah=arah, entry=cl, sl=a["sl"], sl0=a["sl"], risk=risk, best=cl, bar=0, t=now,
+              last=int(a["candle"]), close=cl, tick=t)
+    ST._ubah("GZH", lambda dd: dd["open"].update({f"{a['sym']}|{int(now)}": it}))
+    try:
+        a14 = ST._atr(df["high"].values.astype(float), df["low"].values.astype(float), df["close"].values.astype(float))[-1]
+        jarak = f"{TG.fp(3 * a14, t)} ({3 * a14 / cl * 100:.1f}%)"
+    except Exception:
+        jarak = "3 ATR"
     return (f"{'🟢' if L else '🔴'} <b>GZH TERKONFIRMASI  ·  {a['sym']} {arah}</b>\n"
-            f"{SY.layak('saran GZH', arah, a.get('skor'))}\n"
-            + SY.blok_salin(cl, a["sl"], tp, tp, "MARKET", t, sym=a["sym"], arah=arah) + "\n"
-            f"Masuk MARKET sekarang. Tutup penuh di TP (2R). 10 hari belum kena, tutup manual.")
+            f"{SY.layak('saran GZH', arah)}\n"
+            + SY.blok_salin(cl, a["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=a["sym"], arah=arah) + "\n"
+            f"Masuk MARKET sekarang. Pasang Trailing Stop Bybit jarak {jarak}, atau ikuti pesan GESER SL. "
+            f"10 hari belum kena, tutup manual.")
 
 
 def _cek_tutup(d0):
