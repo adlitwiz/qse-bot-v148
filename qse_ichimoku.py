@@ -311,7 +311,7 @@ def _jalankan(baru_ok=True):
         out.append("\n".join([
             SY.GARIS,
             f"{'🟢' if L else '🔴'} <b>{len(baru)}. {sym} {arah}</b>  ·  Ichimoku 4J",
-            f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.5% modal per trade)",
+            f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
             SY.GARIS,
             SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=sym, arah=arah),
             *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih. Di uji 5 tahun rem ini "

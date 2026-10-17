@@ -6,13 +6,18 @@ Uji 111 koin perp 4J, 2021-2026, biaya 0.15% plus funding, risiko 0.5% per trade
   rem lot setengah saat hasil gabungan turun lebih dari 16R (8% modal) atau rugi 8 kali beruntun:
   6219 trade, PF 1.19, +244%, drawdown 16%, bulan terburuk -7%. Rasio profit/drawdown 6.9 -> 15.1,
   dev 2021-2023 dan uji 2024-2026 sama-sama naik.
+Supaya sinyal lebih ramai: batas 16 posisi searah (jalur lemah saat kurang dari 8) dengan risiko 0.25% per trade.
+  Sinyal 2.9 -> 4.6 per hari, hari tanpa sinyal 16% -> 8%, rasio profit/drawdown tetap (13.8), drawdown sekitar 19%.
+  Rem 32R = 8% modal di risiko 0.25%.
+Teknik tambahan (double top/bottom, head and shoulders, triangle, wedge, divergensi RSI) diuji 2017-2026:
+  untung sendiri-sendiri, tapi di portofolio gabungan tidak menambah sinyal berarti dan rasio tidak naik. Tidak dipasang.
 """
 import time
 
-MAKS_SEARAH = 8
+MAKS_SEARAH = 16
 LEMAH = {"smc_choch", "msb_hpz", "GZH"}          # PF terendah, hanya mengisi slot saat portofolio masih longgar
-LEMAH_MAKS = 4
-REM_DD_R, REM_RUGI = 16.0, 8
+LEMAH_MAKS = 8
+REM_DD_R, REM_RUGI = 32.0, 8              # 32R = 8% modal di risiko 0.25% per trade
 BOBOT = {"GZH": 0.5}
 _RES = {}            # reservasi posisi yang baru dibuka tapi belum tersimpan di catatan jalur
 
@@ -66,7 +71,7 @@ def pesan(sym, arah):
 
 
 def rem():
-    """Rem gabungan: lot setengah saat hasil semua jalur turun lebih dari 16R dari puncak atau rugi 8 kali beruntun."""
+    """Rem gabungan: lot setengah saat hasil semua jalur turun lebih dari 32R (8% modal) dari puncak atau rugi 8 kali beruntun."""
     cl = []
     try:
         import qse_ichimoku as IC

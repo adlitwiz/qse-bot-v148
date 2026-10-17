@@ -305,7 +305,7 @@ def kartu(no, it, sg):
     return "\n".join([
         SY.GARIS,
         f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  Order Block + Volume 4J",
-        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.5% modal per trade)",
+        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
         SY.GARIS,
         SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG",
                       catatan_tp="TP1 sama dengan TP2, tutup penuh di 4R"),

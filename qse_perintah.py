@@ -150,7 +150,7 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "⚠️ MELEMAH DI LIVE = terbukti, tapi live 40 trade lebih PF di bawah 1. Setengah lot\n"
            "⚠️ Waspada di kartu = BTC 1 jam melawan atau berita dekat, lot sudah dipotong setengah\n\n"
            "<b>Atur</b>\n"
-           "/modal 1000 risk 0.5 = modal dan risiko per trade\n"
+           "/modal 1000 risk 0.25 = modal dan risiko per trade (saran 0.25%)\n"
            "/bantuan semua = daftar semua perintah")
 
 

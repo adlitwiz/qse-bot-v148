@@ -1788,7 +1788,7 @@ def ringkas_rapi(judul, closed, why_ok=("SL", "BE", "TP2", "TUTUP")):
             teks += f"\n     untung +{up:.2f}R  ·  rugi -{abs(dn):.2f}R"
         rows.append(teks)
     if not risk_pct:
-        rows.append("Isi /modal 1000 risk 0.5 supaya hasil tampil dalam persen modal dan USDT.")
+        rows.append("Isi /modal 1000 risk 0.25 supaya hasil tampil dalam persen modal dan USDT.")
     return "\n".join(rows)
 
 
