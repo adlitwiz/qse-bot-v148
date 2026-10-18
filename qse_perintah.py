@@ -90,12 +90,9 @@ BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
            "/tunggu SOL atas 150 4j = kabari saat candle 4J TUTUP di atas 150 (bawah juga bisa, TF 15m, 1j, 4j, 1d)\n"
            "/tunggu = daftar, /tunggu hapus SOL = hapus. Sentuhan GZH otomatis dipantau sampai candle 4J tutup\n\n"
            "<b>Sinyal</b>\n"
-           "/sinyal4j = saran TF 4 jam yang masih aktif, dengan harga sekarang\n"
-           "/sinyal1j = saran TF 1 jam yang masih aktif\n"
-           "/scan = scan sekarang dengan harga terkini, hasil dalam 1 sampai 3 menit\n"
+           "/sinyal4j atau /scan = sinyal jalur terbukti yang masih bisa diikuti di harga sekarang\n"
            "/laporan4j = buat ulang laporan 4 jam sekarang (laporan susulan), hasil dalam 10 sampai 20 menit\n"
            "/berita = uji news ke trade: sumber berita, terjemahan, harga Bybit\n"
-           "/ujimomentum = backtest saran momentum 15/30 menit di koin rapor A/B (atau /ujimomentum SOL)\n"
            "/jalur = hasil live saran momentum, news searah, dan news mandiri\n"
            "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n"
            "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n"
@@ -230,12 +227,11 @@ def balas(cmd, args, dari_main=False):
         return AL.perintah(args)
     if cmd in ("/tunggu", "/close"):
         return AL.tunggu(args)
-    if cmd in ("/sinyal4j", "/sinyal4", "/sinyal"):
-        return SY.saran_aktif("240")
+    if cmd in ("/sinyal4j", "/sinyal4", "/sinyal", "/scan"):
+        return SY.sinyal_jalur()
     if cmd in ("/sinyal1j", "/sinyal1"):
-        return SY.saran_aktif("60")
-    if cmd == "/scan":
-        return mulai_scan()
+        return ("Saran 1J dimatikan. Uji 111 koin data 1 jam 2020-2026: 9 jalur terbukti versi 1J PF 1.00 sampai 1.11, "
+                "tidak ada yang untung setelah biaya. Pakai /sinyal4j.")
     if cmd in ("/laporan4j", "/laporan", "/susul"):
         return mulai_laporan4j()
     if cmd in ("/jalur", "/rekapjalur"):
@@ -257,6 +253,8 @@ def balas(cmd, args, dari_main=False):
         import qse_altseason as AS
         return AS.teks() or "Data altcoin gagal diambil, coba lagi nanti."
     if cmd in ("/ujimomentum", "/ujimom"):
+        return ("Momentum 15/30 menit dimatikan. Uji 40 koin paling likuid data 15 menit 2021-2026: aturan robot PF 0.58 (15 menit) "
+                "dan 0.67 (30 menit). Variasi terbaik PF 1.06, tetap tidak lolos.")
         import qse_momentum as MO
         try:
             with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:

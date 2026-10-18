@@ -52,6 +52,12 @@ def _st(upd=None):
     return st
 
 
+# Momentum 15/30 menit dimatikan. Uji 40 koin paling likuid data 15 menit 2021-2026, aturan robot persis:
+# 15 menit PF 0.58, 30 menit PF 0.67. Variasi terbaik (30 menit, MARKET, trailing, volume 4x, searah EMA200 4J) PF 1.06.
+# Info momentum di posisi kamu juga tidak membantu: geser SL ke entry saat momentum searah, profit turun 45%.
+MOMENTUM_AKTIF = False
+
+
 def _tugas_berkala():
     """Tiap 15 menit: peringatan dini posisi, BTC berbalik, scan momentum 15/30 menit.
     Tiap jam menit ke-2: jalankan main.py (cadangan jadwal GitHub yang sering telat). Ganda dicegah oleh main.py."""
@@ -77,6 +83,8 @@ def _tugas_berkala():
         except Exception as ex:
             print("[WARN] catat", ex)
         try:
+            if not MOMENTUM_AKTIF:
+                raise StopIteration
             import qse_momentum as MO
             with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
                 lama = json.load(f)
@@ -88,6 +96,8 @@ def _tugas_berkala():
             if pesan:
                 TG.send(["⚡ <b>QSE v148 | MOMENTUM 15/30 MENIT</b>\nHanya momentum yang lolos penilaian semua aspek "
                          "yang jadi saran.\n\n" + "\n\n".join(pesan)])
+        except StopIteration:
+            pass
         except Exception as ex:
             print("[WARN] momentum", ex)
     t4 = int(now // 14400) * 14400

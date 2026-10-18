@@ -318,7 +318,7 @@ def main():
     tutup4 = (int(time.time() * 1000) // H4) * H4          # jam tutup candle 4J terakhir
     st = _st_load()
     run4 = "240" in TFS and (semua or tutup4 > st.get("scan4", 0))
-    tfs = [t for t in TFS if t == "60" or (t == "240" and run4)]
+    tfs = [t for t in TFS if (t == "60" and SARAN_DASBOR_1J) or (t == "240" and run4)]
     try:
         perintah()
         if tfs:
@@ -1020,6 +1020,12 @@ def cek_1j(now, jalur_aktif=True, paksa=False):
     """Saran TF 1J selektif: hanya koin rapor 4J A/B, arah 1J searah bias 4J, lolos semua syarat v148 di chart 1 jam.
     Statistik rapor robot 1J dicatat sebagai uji jalur 1J. Tidak menghapus cek per jam TF 4J."""
     t0 = time.time()
+    if not SARAN_DASBOR_1J:
+        if paksa:
+            _SCAN["1j"] = dict(blocks=["🔎 <b>QSE v148 | SCAN SEKARANG TF 1J</b>\nSaran 1J dimatikan: uji 111 koin data 1 jam "
+                                       "2020-2026, tidak ada aturan 1J yang untung setelah biaya (PF 1.00 sampai 1.11). "
+                                       "Pakai sinyal 4J jalur terbukti."], baru=[], n=0)
+        return
     try:
         with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
             lama = json.load(f)
@@ -1629,6 +1635,9 @@ WIB = dt.timezone(dt.timedelta(hours=7))
 # Uji 2018-2020 dan 2021-2026: PF 0.61 sampai 0.84 dengan semua cara keluar, searah jalur terbukti pun 0.66 sampai 0.92.
 # Yang tetap: Tembus Trendline SHORT searah tren (PF 1.47) dan semua jalur robot terbukti.
 SARAN_DASBOR_4J = False
+# Saran 1J dimatikan. Uji 111 koin data 1 jam 2020-2026: 9 jalur terbukti versi 1J PF 1.00 sampai 1.11, tahun 2026 semua di bawah 1.
+# Saran dasbor 1J (uji 2 tahun 30 koin) 17 trade -6.8R. Tidak ada aturan 1J yang lolos.
+SARAN_DASBOR_1J = False
 IKON = {"LONG": "🟢", "SHORT": "🔴"}
 GARIS = "━━━━━━━━━━━━━━━━━━"
 NAMA = {"240": ("4 JAM", "4J"), "60": ("1 JAM", "1J")}

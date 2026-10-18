@@ -2945,3 +2945,53 @@ def kartu_sl(tidur=False):
 def TG_e(x):
     import telegram_notify as TG
     return TG.e(x)
+
+
+def sinyal_jalur():
+    """/scan dan /sinyal4j: sinyal jalur terbukti yang bisa diikuti SEKARANG, aturan sama dengan pesan 4 jam:
+    sinyal maks 2 candle 4J dan harga masih dalam 0.5R dari entry robot (EMA, RSI, McGinley, SnR, SMC, Ichimoku),
+    MSB, Order Block, dan GZH hanya sinyal candle terakhir. Koin yang kamu pegang tidak ditampilkan."""
+    import qse_strat as ST
+    sumber = []
+    try:
+        import qse_ichimoku as IC
+        sumber.append(("ichimoku", "Ichimoku", IC.lihat()["open"].values()))
+    except Exception:
+        pass
+    try:
+        import qse_ob as OB
+        sumber.append(("orderblock", "Order Block", OB.lihat()["open"].values()))
+    except Exception:
+        pass
+    for k, cfg in ST.STRAT.items():
+        sumber.append((k, cfg["nama"], ST.lihat(k)["open"].values()))
+    telat_ok = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
+    pegang = {v["sym"] for v in _load()["open"].values() if v["status"] in ("TERISI", "TP1")}
+    now = time.time()
+    tutup = int(now // 14400) * 14400
+    kartu = []
+    for k, nama, items in sumber:
+        for it in items:
+            if it["sym"] in pegang:
+                continue
+            L = it["arah"] == "LONG"
+            t = it.get("tick") or 1e-8
+            baru = it.get("t", 0) >= tutup - 60
+            px = harga_live(it["sym"]) or 0
+            risk = it.get("risk") or abs(it["entry"] - it.get("sl0", it["sl"]))
+            d = ((px - it["entry"]) * (1 if L else -1) / risk) if (px and risk) else None
+            umur = (now - it.get("t", now)) / 14400
+            sl = it["sl"]
+            masih = (k in telat_ok and umur <= 2.1 and d is not None and abs(d) <= 0.5 and ((px > sl) if L else (px < sl))
+                     and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
+            if not (baru or masih):
+                continue
+            tp = fp(it["tp"], t) if it.get("tp") else "tanpa, pakai SL berjalan"
+            ket = "🆕 sinyal candle ini" if baru else f"harga masih dekat entry robot {fp(it['entry'], t)} ({d:+.2f}R)"
+            kartu.append(f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
+                         f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>")
+    kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
+    if not kartu:
+        return (kepala + "\nBelum ada sinyal jalur terbukti yang bisa diikuti di harga sekarang. Sinyal baru dikirim tiap candle 4J tutup "
+                "(03, 07, 11, 15, 19, 23 WIB lewat 5 menit).")
+    return kepala + "\nHanya sinyal yang masih bisa diikuti di harga sekarang.\n\n" + "\n\n".join(kartu)
