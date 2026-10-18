@@ -140,7 +140,7 @@ def recheck(led, res_map, tfs_now):
         same = [s for s in r["saran"] if s["pola"] == it["pola"] and s["arah"] == it["arah"]]
         ok = [s for s in same if (s["eksekusi"] or (it.get("cad2") and s["mutu"] in ("A", "B"))) and not s["sudah_masuk"]]
         why = ""
-        if r["rapor"] not in RAPOR_OK:
+        if r["rapor"] not in RAPOR_OK and not it.get("tt"):      # Tembus Trendline diuji tanpa rapor
             why = "rapor turun ke %s" % r["rapor"]
         elif not ok:
             why = "vonis berubah: " + (same[0]["alasan"] if same else "saran hilang")

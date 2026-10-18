@@ -134,6 +134,7 @@ BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
            "/hapus SOL long = hapus catatan yang salah\n\n"
            "<b>Lihat</b>\n"
            "/status = posisi, jarak TP SL, analisa, dan WR\n"
+           "/tidur = cara aman meninggalkan posisi semalam, SL dan Trailing Stop tiap posisi\n"
            "/cek SOL = analisa lengkap satu koin\n"
            "/arah SOL = tren 15m sampai 1W dan pola sejarah koin\n"
            "/kabar = berita kripto 1 jam terakhir dan berita besar USD sampai 10 jam ke depan, dengan arahnya\n"
@@ -304,6 +305,10 @@ def balas(cmd, args, dari_main=False):
                 bag.append(f"{jalan} posisi kamu masih jalan, pakai /tutup {a} HARGA untuk keluar")
             rows.append(f"➡️ {sym}: " + ("; ".join(bag) if bag else "tidak ada order terbuka"))
         return "\n".join(rows)
+    if cmd in ("/tidur", "/sl_terbaru", "/slterbaru"):
+        teks, _ = SY.kartu_sl(tidur=cmd == "/tidur")
+        return teks or ("😴 <b>QSE v148 | SIAP TIDUR</b>\nTidak ada posisi jalan. Tidak ada yang perlu diatur. Sinyal jam 23:00 dan "
+                        "03:00 WIB masih bisa kamu ikuti pagi di laporan 07:05, selama harga masih dekat entry robot.")
     if cmd == "/status":
         try:
             with open(os.path.join(STATE_DIR, "state.json")) as f:

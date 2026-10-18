@@ -143,7 +143,23 @@ def _tugas_berkala():
                     _pin_ichi(ids, f"pin_{k}")          # slot per jalur, sinyal jalur lain tidak terlepas
         except Exception as ex:
             print("[WARN] strategi", ex)
+        try:
+            teks, tanda = SY.kartu_sl()
+            if teks and [list(x) for x in tanda] != _st().get("sl_tanda"):
+                _st({"sl_tanda": [list(x) for x in tanda]})
+                _pin_ichi(TG.send([teks]), "pin_sl")
+        except Exception as ex:
+            print("[WARN] kartu SL", ex)
     hari = int(now // 86400) * 86400
+    if now - hari >= 15 * 3600 and st.get("tidur_hari", 0) < hari and now - hari <= 16 * 3600:
+        # 22:00 WIB: kartu siap tidur kalau ada posisi jalan
+        _st({"tidur_hari": hari})
+        try:
+            teks, _ = SY.kartu_sl(tidur=True)
+            if teks:
+                TG.send([teks])
+        except Exception as ex:
+            print("[WARN] kartu tidur", ex)
     if now - hari >= 300 and st.get("arah_hari", 0) < hari and now - hari <= 6 * 3600:
         # 07:05 WIB, candle harian baru tutup: kirim arah pasar otomatis (BTC, ETH, posisi kamu, berita hari ini)
         _st({"arah_hari": hari})

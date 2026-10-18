@@ -413,7 +413,7 @@ def _naikkan_pin_ichi():
     supaya kembali tampil paling atas di grup. Berlaku 24 jam sejak sinyal Ichimoku terakhir."""
     st = _st_load()
     import qse_strat as ST
-    slots = ["pin_gzh"] + [f"pin_{k}" for k in ST.STRAT] + ["pin_strat", "pin_ob", "pin_ichi"]
+    slots = ["pin_sl", "pin_gzh"] + [f"pin_{k}" for k in ST.STRAT] + ["pin_strat", "pin_ob", "pin_ichi"]
     for slot in slots:              # Ichimoku dipasang terakhir supaya paling atas
         mid = st.get(slot)
         if mid and time.time() - st.get(slot + "_t", 0) < 86400:
@@ -1228,8 +1228,13 @@ def _kartu_jam(results, b1, led):
     try:
         c = b1["close"].values
         ch1, ch3 = (c[-1] / c[-2] - 1) * 100, (c[-1] / c[-4] - 1) * 100
-        bt = next((r["btc"] for r in results), "")
-        rows.append(f"₿ {TG.e(bt)} | 1 jam {ch1:+.2f}% | 3 jam {ch3:+.2f}%")
+        try:
+            import qse_strat as ST
+            bt = ST.btc_ema50_teks()          # satu patokan arah BTC yang sama di semua pesan
+        except Exception:
+            bt = ""
+        bt = bt or TG.e(next((r["btc"] for r in results), ""))
+        rows.append(f"₿ {bt} | 1 jam {ch1:+.2f}% | 3 jam {ch3:+.2f}%")
     except Exception:
         pass
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
@@ -1241,6 +1246,7 @@ def _kartu_jam(results, b1, led):
             fl = SY.floating(it, px) if px else None
             bag.append(f"{it['sym']} {it['arah']} " + (f"{fl['pct']:+.1f}% ({fl['r']:+.2f}R)" if fl else "-"))
         rows.append("👤 Posisi: " + " | ".join(bag))
+        rows.append("↳ Diam, biarkan SL dan TP jalur bekerja. Gerak BTC 1 jam bukan alasan keluar.")
     aktif = [v for v in led["open"].values() if v["status"] == "MENUNGGU"]
     rows.append(f"📡 Saran LIMIT aktif: {len(aktif)}" + (" (ketik /sinyal4j)" if aktif else ""))
     peta_px = {r["symbol"]: (r.get("live") or r["close"], r["tick"]) for r in results}
@@ -1253,7 +1259,7 @@ def _kartu_jam(results, b1, led):
     gerak = []
     for r in results:
         o = ((r.get("pasar") or {}).get("k_now") or (0,))[0]
-        if o and r.get("live") and r["rapor"] in ("A", "B"):
+        if o and r.get("live"):
             gerak.append(((r["live"] / o - 1) * 100, r["symbol"]))
     if gerak:
         gerak.sort(key=lambda z: -abs(z[0]))
@@ -1960,7 +1966,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             except Exception as ex:
                 print("[WARN] btc ema50", ex)
         pasar.append(f"Arah diizinkan: {alt.get('izin', '-')}")
-    scan.append(f"Dipindai {len(rs)} koin  ·  rapor A {len(rA)}  ·  rapor B {len(rB)}")
+    scan.append(f"Dipindai {len(rs)} koin")
     if dasbor:
         scan.append(f"Sinyal valid {len(sig)}  ·  baru {baru}  ·  masih valid {len(sig) - baru}" +
                 (f"  ·  cadangan {len(cad)}" if cad else "") + (f"  ·  siklus {len(sik)}" if sik else ""))
