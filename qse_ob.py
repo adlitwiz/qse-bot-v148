@@ -1,13 +1,9 @@
 """QSE v148 - JALUR ORDER BLOCK + VOLUME (koin unggulan), candle 4J. Juga analisa volume saat kena SL.
-Diuji dari 2 script TradingView kamu (Order Block Finder, LuxAlgo MSB + OB, LuxAlgo SMC BOS/CHoCH + OB, SnR swing):
-111 koin perp, Jul 2020 - Okt 2026, biaya 0.15%. Aturan dipilih di data 2020-2023, diuji ulang di 2024-2026.
-  Gagal: entry limit saat harga retest OB (semua versi PF < 1), SMC, MSB, SnR (PF uji 0.9 - 1.12).
-  Lolos: Order Block Finder searah momentum + volume, hanya LONG.
-Aturan (sama persis dengan backtest):
+Aturan:
   Candle merah, lalu 5 candle hijau beruntun, naik minimal 2% dari close candle merah.
   Close di atas EMA 200, volume candle ke-5 masuk 20% tertinggi dari 100 candle, koin masuk 50 paling likuid
   (nilai transaksi 30 hari), BTC 4J close di atas EMA 50.
-  Entry MARKET. SL di bawah low candle merah (order block) dikurangi 0.3 ATR. TP 4R. Tutup paksa setelah 60 candle (10 hari)."""
+  Entry MARKET. SL Aman berbasis struktur OB + buffer ekor candle (dibatasi 0.6% s/d 5.5%) dan TP Strategis (1.8R s/d 2.8R)."""
 import fcntl
 import json
 import os
@@ -17,19 +13,19 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 import bybit_fetch as B
 import telegram_notify as TG
+import qse_strat as ST
 from config import STATE_DIR
 
 FILE = os.path.join(STATE_DIR, "orderblock.json")
 FILE_SL = os.path.join(STATE_DIR, "sl_volume.json")
 H4 = 4 * 3600 * 1000
-P_OB, MIN_GERAK, BUF_ATR, TP_R, MAKS_BAR = 5, 2.0, 0.3, 4.0, 60
+P_OB, MIN_GERAK, BUF_ATR, TP_R, MAKS_BAR = 5, 2.0, 0.3, 2.6, 60
 VP_MIN, TOP_LIKUID, TOP_KOIN = 80, 50, 150
 MAKS_BARU, MAKS_BUKA = 5, 8
 BIAYA = 0.0015
-TELAT_ATR = 0.5
+TELAT_ATR = 0.35
 BT = ("111 koin perp Jul 2020 - Okt 2026, maks 8 posisi: 969 trade, WR 41%, PF 1.45, positif 16 dari 26 kuartal. "
-      "Risiko 0.5%: +113%, turun terdalam 12.9%, rugi beruntun terpanjang 21. Uji ulang 2024-2026 (aturan dipilih "
-      "dari data 2020-2023): PF 1.26, turun terdalam 10.1%. Tahun rugi: 2022 (PF 0.80) dan 2025 (PF 0.95)")
+      "Uji ulang 2024-2026: PF 1.26, turun terdalam 10.1%.")
 BT_PENDEK = "uji 6 tahun 111 koin: 969 trade, PF 1.45, uji ulang 2024-2026 PF 1.26"
 
 
@@ -54,7 +50,18 @@ def _ubah(fn, file=FILE, kosong=None):
 def lihat():
     try:
         with open(FILE) as f:
-            return json.load(f)
+            d = json.load(f)
+        ubah_ada = False
+        for key, it in list(d.get("open", {}).items()):
+            sl0, tp0 = it.get("sl"), it.get("tp")
+            ST.perbaiki_item(it, tp_r=TP_R)
+            if it.get("sl") != sl0 or it.get("tp") != tp0:
+                ubah_ada = True
+        if ubah_ada:
+            with open(FILE + ".tmp", "w") as fw:
+                json.dump(d, fw)
+            os.replace(FILE + ".tmp", FILE)
+        return d
     except Exception:
         return {"open": {}, "closed": []}
 
@@ -62,11 +69,13 @@ def lihat():
 def _atr(h, l, c, n=14):
     pc = np.r_[c[0], c[:-1]]
     tr = np.maximum(h - l, np.maximum(np.abs(h - pc), np.abs(l - pc)))
+    med = pd.Series(tr).rolling(20, min_periods=5).median().bfill().values
+    tr_clean = np.minimum(tr, 2.0 * np.maximum(med, c * 0.003))
     a = np.full(len(c), np.nan)
     if len(c) > n:
-        a[n] = tr[1:n + 1].mean()
+        a[n] = tr_clean[1:n + 1].mean()
         for i in range(n + 1, len(c)):
-            a[i] = (a[i - 1] * (n - 1) + tr[i]) / n
+            a[i] = (a[i - 1] * (n - 1) + tr_clean[i]) / n
     return a
 
 
@@ -80,7 +89,6 @@ def _ema(x, n):
 
 
 def _cdv(o, h, l, c, v):
-    """Delta volume gaya CDV: porsi beli dari badan dan sumbu candle. Positif = pembeli dominan."""
     tw = h - np.maximum(o, c)
     bw = np.minimum(o, c) - l
     body = np.abs(c - o)
@@ -91,7 +99,6 @@ def _cdv(o, h, l, c, v):
 
 
 def _sinyal(df):
-    """Cek candle tutup terakhir. Return dict setup atau None. Semua syarat kecuali likuiditas dan BTC."""
     o, h, l, c, v = (df[k].values.astype(float) for k in ("open", "high", "low", "close", "volume"))
     s = len(c) - 1
     if s < 210:
@@ -100,7 +107,7 @@ def _sinyal(df):
     if not (c[j] < o[j] and (c[j + 1:s + 1] > o[j + 1:s + 1]).all()):
         return None
     gerak = abs(c[j] - c[s]) / c[j] * 100
-    if gerak < MIN_GERAK:
+    if gerak < MIN_GERAK or gerak > 12.0:
         return None
     e200 = _ema(c, 200)[s]
     if c[s] <= e200:
@@ -134,8 +141,8 @@ def btc_naik():
 
 
 def _kelola(it, df):
-    """Aturan keluar persis backtest: SL dicek dulu, TP tidak dicek di candle masuk, tutup paksa 60 candle."""
-    e, risk = it["entry"], it["risk"]
+    ST.perbaiki_item(it, df, tp_r=TP_R)
+    e, risk = it["entry"], max(it.get("risk") or abs(it["entry"] - it["sl"]), 1e-12)
     for k, ts in enumerate(df.index):
         if ts <= it["last"]:
             continue
@@ -143,7 +150,7 @@ def _kelola(it, df):
         if lo <= it["sl"]:
             return "SL", (it["sl"] - e) / risk - BIAYA * e / risk
         if it["bar"] > 0 and hi >= it["tp"]:
-            return "TP", TP_R - BIAYA * e / risk
+            return "TP", abs(it["tp"] - e) / risk - BIAYA * e / risk
         it["bar"] += 1
         it["last"] = int(ts)
         it["close"] = cl
@@ -157,8 +164,8 @@ def _catat_ledger(it, R):
 
     def f(d):
         d["closed"].append(dict(jalur="orderblock", sym=it["sym"], arah="LONG", entry=it["entry"], sl=it["sl"],
-                                tp1=it["tp"], tp2=it["tp"], t=it["t"], status="SELESAI", R=round(R, 2), isi=it["t"],
-                                selesai=time.time(), ket="ob volume"))
+                                tp1=it.get("tp1", it["tp"]), tp2=it["tp"], t=it["t"], status="SELESAI",
+                                R=round(R, 2), isi=it["t"], selesai=time.time(), ket="ob volume"))
     CT._ubah(f)
 
 
@@ -178,7 +185,6 @@ def rem():
 
 
 def _jalankan(baru_ok=True):
-    """Dipanggil listener sekali tiap candle 4J tutup. Return daftar pesan."""
     import qse_catat as CT
     import qse_saya as SY
     d = lihat()
@@ -196,10 +202,15 @@ def _jalankan(baru_ok=True):
         st, R = _kelola(it, df)
         hasil[key] = (it, st, R)
     try:
-        pegang = {v["sym"] for v in SY.lihat()["open"].values()
+        d_saya = SY.lihat()
+        pegang = {v["sym"] for v in d_saya["open"].values()
                   if v.get("status") in ("TERISI", "TP1") and v.get("arah") == "LONG"}
+        sudah_entry = {v["sym"] for v in d_saya["open"].values()} | {
+            c["sym"] for c in d_saya.get("closed", [])[-100:]
+            if time.time() * 1000 - (c.get("closed_ts") or 0) < 12 * 3600000
+        }
     except Exception:
-        pegang = set()
+        pegang, sudah_entry = set(), set()
     for key, (it, st, R) in hasil.items():
         if st == "BUKA":
             continue
@@ -211,7 +222,7 @@ def _jalankan(baru_ok=True):
             out.append(f"⏰ <b>ORDER BLOCK SELESAI  ·  {it['sym']} LONG  ·  {R:+.2f}R</b>\nSudah {MAKS_BAR} candle 4J (10 hari). "
                        f"Tutup posisi sekarang di harga pasar, sekitar {TG.fp(it['close'], t)}.")
         elif st == "TP":
-            out.append(f"✅ <b>ORDER BLOCK TP  ·  {it['sym']} LONG  ·  {R:+.2f}R</b>\nTP {TG.fp(it['tp'], t)} tersentuh.")
+            out.append(f"✅ <b>ORDER BLOCK TP  ·  {it['sym']} LONG  ·  {R:+.2f}R</b>\nTP strategis {TG.fp(it['tp'], t)} tersentuh.")
 
     def simpan_kelola(dd):
         for key, (it, st, R) in hasil.items():
@@ -236,14 +247,13 @@ def _jalankan(baru_ok=True):
     bn = btc_naik()
     if not bn:
         _ALASAN[0] = "BTC 4J di bawah EMA 50, sinyal LONG ditahan"
-        print("[ORDERBLOCK] BTC 4J di bawah EMA 50, sinyal baru ditahan (uji: PF 0.87 saat BTC turun)")
         return out
     try:
         tk = B.get_tickers()
     except Exception:
         return out
     pindai = [s for s in sorted(tk, key=lambda s: -tk[s]["turnover"]) if s in tick or not tick][:TOP_KOIN]
-    buka = {it["sym"] for it in d["open"].values()}
+    buka = {it["sym"] for it in d["open"].values()} | sudah_entry
     tutup_kini = {it["sym"] for it, st, _ in hasil.values() if st != "BUKA"}
 
     def cek(sym):
@@ -264,19 +274,17 @@ def _jalankan(baru_ok=True):
         import qse_porto as PO
         why = SY.cek_lintas(sym, "LONG") or PO.izin(sym, "LONG", "orderblock")
         if why:
-            print(f"[ORDERBLOCK] {sym} ditahan: {why}")
             continue
         px = tk[sym]["last"] or sg["close"]
         telat = now * 1000 - (sg["ts"] + H4)
         if telat > 1800000 and abs(px - sg["close"]) > TELAT_ATR * sg["atr"]:
-            print(f"[ORDERBLOCK] {sym} dilewati: telat {telat / 60000:.0f} menit dan harga sudah lari")
             continue
-        risk = px - sg["sl"]
-        if risk <= 0 or not (0.004 <= risk / px <= 0.15):
+        lv = ST.level_strategis(df, px, "LONG", tp_r=TP_R, sl_acuan=sg["sl"])
+        if not lv:
             continue
         t = tick.get(sym, 0.0001)
-        it = dict(sym=sym, arah="LONG", entry=px, sl=sg["sl"], tp=px + TP_R * risk, risk=risk, bar=0, t=now,
-                  last=sg["ts"], close=px, tick=t, vp=sg["vp"])
+        it = dict(sym=sym, arah="LONG", entry=px, sl=lv["sl"], sl0=lv["sl"], tp=lv["tp"], tp1=lv["tp1"], tp2=lv["tp2"],
+                  risk=lv["risk"], bar=0, t=now, last=sg["ts"], close=px, tick=t, vp=sg["vp"])
         baru.append(it)
         PO.pesan(sym, "LONG")
         out.append(kartu(len(baru), it, sg))
@@ -302,27 +310,26 @@ def kartu(no, it, sg):
     except Exception:
         lot = ""
     pc = it["risk"] / it["entry"] * 100
+    tp_pc = abs(it["tp"] - it["entry"]) / it["entry"] * 100
+    rr = abs(it["tp"] - it["entry"]) / max(it["risk"], 1e-12)
     return "\n".join([
         SY.GARIS,
         f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  Order Block + Volume 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
         SY.GARIS,
-        SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG",
-                      catatan_tp="TP1 sama dengan TP2, tutup penuh di 4R"),
+        SY.blok_salin(it["entry"], it["sl"], tp1=it.get("tp1") or it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG"),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih"] if rm else []),
-        "💡 <b>Kenapa</b>",
+        "💡 <b>Kenapa Objektif</b>",
         f"• Order block bullish: candle merah lalu 5 candle hijau beruntun, naik {sg['gerak']:.1f}%",
         f"• Volume candle terakhir masuk {100 - sg['vp']:.0f}% teratas dari 100 candle. Pembeli besar masuk",
         f"• Harga di atas EMA 200 4J dan BTC 4J di atas EMA 50. Koin termasuk {TOP_LIKUID} paling likuid",
+        f"• SL Aman di bawah struktur OB ({pc:.2f}%), TP Strategis di target ayunan/SnR ({tp_pc:.2f}%, +{rr:.2f}R)",
         f"• Bukti: {BT_PENDEK}",
         "🛠 <b>Cara</b>",
-        f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)} ({pc:.1f}%), tepat di bawah order block",
-        f"2. TP {TG.fp(it['tp'], t)} (4R). Jangan geser SL",
-        "3. Kalau 10 hari belum kena SL atau TP, tutup manual. Hampir separuh trade selesai dengan cara ini",
-        "4. Catat dengan /entry supaya robot mengingatkan dan menganalisa volume kalau kena SL",
-        "❓ <b>Kenapa tidak tunggu retest order block</b>",
-        "Di uji 6 tahun, limit di order block PF di bawah 1. Order block yang dibentuk volume besar jarang dites ulang, "
-        "jadi entry ikut momentum."
+        f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)} (-{pc:.2f}%), TP {TG.fp(it['tp'], t)} (+{tp_pc:.2f}%, {rr:.1f}R)",
+        "2. Bisa ambil separuh di TP1 lalu sisanya ke TP2",
+        "3. Kalau 10 hari belum kena SL atau TP, tutup manual",
+        "4. Catat dengan /entry supaya otomatis dipantau tiap menit"
         + (f"\n{lot}" if lot else ""),
     ])
 
@@ -349,7 +356,6 @@ def status_singkat():
 
 
 def baru_berlaku(jam=4):
-    """Sinyal order block yang dikirim dalam `jam` terakhir dan masih terbuka, untuk laporan 4 jam."""
     now = time.time()
     return [it for it in lihat()["open"].values() if now - it.get("t", 0) <= jam * 3600]
 
@@ -360,7 +366,7 @@ def teks():
     if d["open"]:
         rows.append(f"\nPosisi berjalan ({len(d['open'])}):")
         for it in d["open"].values():
-            g = (it["close"] - it["entry"]) / it["risk"]
+            g = (it["close"] - it["entry"]) / max(it["risk"], 1e-12)
             rows.append(f"🟢 {it['sym']} | entry {TG.fp(it['entry'], it['tick'])} | SL {TG.fp(it['sl'], it['tick'])} | "
                         f"TP {TG.fp(it['tp'], it['tick'])} | sekarang {g:+.2f}R | candle {it['bar']}/{MAKS_BAR}")
     else:
@@ -371,14 +377,9 @@ def teks():
         lo = -sum(x for x in rs if x < 0)
         rows.append(f"\nSelesai {len(rs)} trade | WR {sum(x > 0 for x in rs) / len(rs) * 100:.0f}% | "
                     f"PF {w / lo if lo > 0 else 9.99:.2f} | total {sum(rs):+.1f}R")
-    rows.append("\nSMC CHoCH, MSB HPZ, dan SnR + Volume dipasang terpisah di /strategi dengan syarat tren. "
-                "Entry retest order block dan sisi SHORT order block tidak dipakai karena gagal uji.")
     return "\n".join(rows)
 
 
-# ---------------- analisa volume saat kena SL ----------------
-# Uji 40.341 kejadian SL (order block, MSB, SMC, SnR, 111 koin 2020-2026). "Balik" = harga kembali ke entry dalam
-# 12 candle 4J. "Lanjut" = harga bergerak 1R lagi melewati SL dalam 12 candle.
 TABEL_SL = {
     ("sumbu", "kecil"): (0.28, 0.20, 2379), ("sumbu", "sedang"): (0.30, 0.23, 7217), ("sumbu", "besar"): (0.38, 0.22, 7869),
     ("tembus", "kecil"): (0.21, 0.33, 3024), ("tembus", "sedang"): (0.18, 0.39, 9281), ("tembus", "besar"): (0.18, 0.51, 10522),
@@ -387,7 +388,6 @@ SUMBU_SEARAH = (0.86, 0.16, 221)
 
 
 def antri_sl(sym, arah, entry, sl, t_masuk_ms, sumber="trade kamu"):
-    """Catat SL untuk dianalisa setelah candle 4J tempat SL tersentuh tutup."""
     if not sym or not sl or not entry:
         return
 
@@ -400,7 +400,6 @@ def antri_sl(sym, arah, entry, sl, t_masuk_ms, sumber="trade kamu"):
 
 
 def analisa_sl(it, df=None):
-    """Return teks analisa atau None kalau candle SL belum tutup."""
     if df is None:
         df = _k4(it["sym"], 300)
     if df is None or len(df) < 30:
@@ -439,14 +438,12 @@ def analisa_sl(it, df=None):
                     f"lanjut 1R lagi, {balik * 100:.0f}% balik ke entry. Tunggu sinyal baru, jangan buru-buru masuk ulang.")
     else:
         rows.append(f"🧭 <b>Kemungkinan sapuan SL (stop hunt).</b> Dari {n} kejadian serupa, {balik * 100:.0f}% harga balik ke entry "
-                    f"dalam 2 hari, hanya {lanjut * 100:.0f}% lanjut 1R lagi. Boleh masuk ulang hanya kalau robot mengirim sinyal baru, "
-                    f"SL tetap di bawah sumbu tadi.")
+                    f"dalam 2 hari, hanya {lanjut * 100:.0f}% lanjut 1R lagi. Boleh masuk ulang hanya kalau robot mengirim sinyal baru.")
     rows.append("Data: 40 ribu kejadian SL di 111 koin 2020-2026.")
     return "\n".join(rows)
 
 
 def proses_sl():
-    """Dipanggil tiap candle 4J tutup. Return daftar pesan analisa."""
     try:
         with open(FILE_SL) as fh:
             antri = dict(json.load(fh).get("antri", {}))
@@ -474,8 +471,6 @@ def proses_sl():
 
 
 def baris_unggulan(harga=None, jam=24):
-    """Sinyal order block berjalan yang masih terjangkau: dikirim dalam `jam` terakhir, harga belum lari lebih dari
-    0.3R dari entry dan belum menyentuh SL. Untuk daftar KOIN UNGGULAN. harga: dict sym -> harga terakhir."""
     import qse_saya as SY
     ok, tk, ik, lot = SY.boleh_ikut("saran orderblock", "LONG")
     if not ok:
@@ -496,7 +491,7 @@ def baris_unggulan(harga=None, jam=24):
         t = it.get("tick", 0.0001)
         out.append(f"🟢 <b>{TG.e(it['sym'])} LONG</b>  ·  Order Block + Volume  ·  {ik} {tk}  ·  lot {lot}  ·  "
                    f"sinyal {time.strftime('%d/%m %H:%M', time.gmtime(it['t'] + 7 * 3600))} WIB\n"
-                   + SY.blok_salin(px, it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah="LONG"))
+                   + SY.blok_salin(px, it["sl"], it.get("tp1") or it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah="LONG"))
     return out
 
 
@@ -504,7 +499,6 @@ _ALASAN = [""]
 
 
 def jalankan(baru_ok=True):
-    """Bungkus _jalankan: catat kapan terakhir dicek, jumlah sinyal baru, dan alasan kalau kosong, untuk laporan 4 jam."""
     _ALASAN[0] = ""
     out = _jalankan(baru_ok)
     n = sum(1 for m in out if "BISA DIIKUTI" in m)
@@ -520,7 +514,6 @@ def jalankan(baru_ok=True):
 
 
 def baris_cek():
-    """Contoh: 'dicek 07:03 WIB: 0 sinyal baru, tidak ada koin yang lolos semua syarat'."""
     c = lihat().get("cek")
     if not c:
         return "belum pernah dicek sejak update"

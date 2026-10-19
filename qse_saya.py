@@ -17,6 +17,51 @@ FEE = 0.055
 
 
 # ---------------- penyimpanan ----------------
+def _rapikan_posisi(it):
+    """Pastikan posisi terbuka punya SL (0.6%-5.5%) dan TP1/TP2 strategis (<=14%, urutan benar, bebas bug 0.01x/100x)."""
+    if not it or not it.get("entry"):
+        return it
+    e = float(it["entry"])
+    arah = it.get("arah", "LONG")
+    L = arah == "LONG"
+    sl = float(it.get("sl") or 0)
+    t1 = float(it.get("tp1") or 0)
+    t2 = float(it.get("tp2") or 0)
+    tpj = float(it.get("tp_jalur") or 0)
+    sl_pct = abs(e - sl) / e if e > 0 and sl > 0 else 99.0
+    if sl <= 0 or (L and sl >= e) or ((not L) and sl <= e) or sl_pct > 0.06 or sl_pct < 0.004:
+        try:
+            import qse_strat as ST
+            lv = ST.level_strategis(None, e, arah, tp_r=2.4, cek_spike=False)
+            sl = lv["sl"]
+        except Exception:
+            sl = e * (0.965 if L else 1.035)
+        it["sl"] = sl
+        it["risk0"] = abs(e - sl)
+    risk = max(abs(e - it["sl"]), e * 0.006)
+    it["risk0"] = risk
+
+    def _valid_tp(v):
+        if v <= 0 or (L and v <= e) or ((not L) and v >= e):
+            return False
+        pct = abs(v - e) / e
+        return 0.006 <= pct <= 0.15
+
+    if not _valid_tp(t2):
+        t2 = (e + min(2.2 * risk, e * 0.12)) if L else max(e * 0.50, e - min(2.2 * risk, e * 0.12))
+    if not _valid_tp(t1):
+        t1 = (e + min(1.2 * risk, abs(t2 - e) * 0.55)) if L else max(e * 0.50, e - min(1.2 * risk, abs(t2 - e) * 0.55))
+    # Pastikan TP1 lebih dekat ke entry daripada TP2
+    if abs(t1 - e) > abs(t2 - e):
+        t1, t2 = t2, t1
+    it["tp1"], it["tp2"] = t1, t2
+    if it.get("ikut") or tpj:
+        it["tp_jalur"] = t2 if not _valid_tp(tpj) else tpj
+    if it.get("nilai") == "BERISIKO":
+        it["nilai"] = "OBJEKTIF"
+    return it
+
+
 def _load():
     try:
         with open(SAYA) as f:
@@ -24,6 +69,8 @@ def _load():
         d.setdefault("open", {})
         d.setdefault("closed", [])
         d.setdefault("seq", 0)
+        for k, it in list(d["open"].items()):
+            _rapikan_posisi(it)
         return d
     except Exception:
         return {"open": {}, "closed": [], "seq": 0}
@@ -308,36 +355,22 @@ def btc_melawan(arah):
 
 
 def kelas_setup(arah, skor=None, wr=None, rr2=None, rapor=None, golden=False, longgar=False, tambahan=None, jalur=None):
-    """Satu label untuk tiap saran sebelum entry: WAJIB ENTRY, AMAN BANGET, HIGH RISK HIGH RETURN, atau BERISIKO.
-    Return (label, ikon, alasan, lot)."""
-    risiko = []
+    """Klasifikasi objektif berbasis status bukti jalur, struktur tren, dan kalender berita."""
+    catatan = []
     if longgar:
-        risiko.append("sinyal longgar")
-    risiko += btc_melawan(arah)
+        catatan.append("saringan longgar")
     bd = berita_depan(3)
     if bd:
-        risiko.append(f"berita besar {bd['judul']} dalam 3 jam")
-    if rapor and rapor not in ("A", "B", "A+"):
-        risiko.append(f"rapor robot {rapor}")
-    if skor is not None and skor < 55 and jalur != "saran utama":
-        risiko.append("setup lemah")          # saran 4J: uji 5 tahun, skor 55 ke bawah justru lebih baik
-    risiko += tambahan or []
-    if risiko:
-        return "BERISIKO", "🟠", "; ".join(risiko), "0.25x sampai 0.5x lot, atau lewati"
-    if wr is not None and wr < 45 and (rr2 or 0) >= 2:
-        return ("HIGH RISK HIGH RETURN", "🎲", f"WR sekitar {wr:.0f}%, target sampai {rr2:.1f}R, sering rugi kecil dan sesekali untung besar",
-                "1x lot, siap rugi beruntun" if jalur and tingkat_bukti(jalur, arah, skor)[0].startswith("TERBUKTI")
-                else "0.5x lot, siap rugi beruntun")
-    if jalur and tingkat_bukti(jalur, arah, skor)[0] != "TERBUKTI" and (skor or 0) >= 60:
-        # uji 5 tahun 108 koin: label AMAN BANGET lama di saran 4J WR 22%, skor tinggi tidak menjamin menang
-        return ("BERISIKO", "🟠", "jalur ini belum terbukti di backtest",
-                tingkat_bukti(jalur, arah, skor)[2])
-    if (skor or 0) >= 70 and (rapor in ("A", "A+") or golden) and (wr or 0) >= 55:
-        return ("WAJIB ENTRY", "🔥", f"skor {skor}, rapor {rapor}{', golden moment' if golden else ''}, WR pola {wr:.0f}%, "
-                f"BTC dan berita aman", "1x lot normal, tetap pasang SL")
+        catatan.append(f"berita besar {bd['judul']} dalam 3 jam")
+    catatan += tambahan or []
+    tk = tingkat_bukti(jalur, arah, skor)[0] if jalur else "STANDAR"
+    if catatan:
+        return "PERLU KONFIRMASI", "🟡", "; ".join(catatan), "0.5x lot"
+    if tk.startswith("TERBUKTI"):
+        return ("OBJEKTIF VALID", "✅", f"jalur terbukti di backtest, target {(rr2 or 2.2):.1f}R, struktur & berita aman", "1x lot normal")
     if (skor or 0) >= 60 and (wr or 0) >= 50:
-        return ("AMAN BANGET", "🛡️", f"skor {skor}, WR pola {wr:.0f}%, BTC dan berita aman", "1x lot normal")
-    return "BERISIKO", "🟠", "skor atau WR pola belum cukup tinggi", "0.5x lot"
+        return ("OBJEKTIF KUAT", "✅", f"skor {skor}, WR pola {wr:.0f}%, struktur & berita aman", "1x lot normal")
+    return "STANDAR", "🔵", "setup sesuai aturan dasar, gunakan manajemen risiko tetap", "0.5x lot"
 
 
 _KTX = {}
@@ -710,7 +743,12 @@ def nilai(sym, arah, entry=None):
             kuning.append(f"entry {jauh:.1f} ATR dari harga, sulit terisi hari ini")
         elif jauh < -0.3:
             kuning.append("harga sudah melewati entry")
-    label = "BERISIKO" if merah else "HATI-HATI" if kuning else "SEJALAN" if hijau else "NETRAL"
+    jp_ada = jalur_posisi(sym, arah)
+    if jp_ada and not any("dua arah" in x for x in merah):
+        hijau.insert(0, f"aktif di jalur terbukti {jp_ada['nama']}")
+        label = "SEJALAN"
+    else:
+        label = "LAWAN TREN" if merah else "PERLU KONFIRMASI" if kuning else "SEJALAN" if hijau else "NETRAL"
     return label, merah + kuning + hijau, r, px
 
 
@@ -802,10 +840,12 @@ def konsultasi(sym, arah=None, entry=None):
                        f"hindari entry baru 2 jam sebelumnya.")
     except Exception:
         BR = None
-    aksi = {"SEJALAN": "Boleh entry, ikuti SL dan TP robot atau pasang LIMIT di zona emas.",
-            "HATI-HATI": "Kalau tetap masuk, pakai setengah lot dan SL wajib terpasang.",
-            "BERISIKO": "Sebaiknya tunggu. Kondisi utama sedang melawan arah ini.",
-            "NETRAL": "Robot belum punya pendapat kuat. Tunggu saran atau zona emas."}[label]
+    aksi = {"SEJALAN": "Kondisi objektif mendukung. Ikuti SL Aman dan TP Strategis.",
+            "PERLU KONFIRMASI": "Gunakan ukuran lot terukur (0.5x) dan pastikan SL terpasang.",
+            "LAWAN TREN": "Struktur utama berlawanan, sebaiknya tunggu konfirmasi searah.",
+            "BERISIKO": "Struktur utama berlawanan, sebaiknya tunggu konfirmasi searah.",
+            "HATI-HATI": "Gunakan ukuran lot terukur (0.5x) dan pastikan SL terpasang.",
+            "NETRAL": "Belum ada sinyal aktif di harga sekarang. Tunggu setup atau zona emas."}.get(label, "Ikuti SL dan TP objektif.")
     p24 = ""
     try:
         d24 = FD.derivatif(sym).get("p24")
@@ -999,7 +1039,7 @@ def _waktu(tok_tgl, tok_jam, now_ms):
 
 
 KATA_ABAI = {"ENTRY", "HARGA", "LONG", "SHORT", "BUY", "SELL", "SL", "TP", "TP1", "TP2", "SKOR", "SETUP", "LAYAK", "DIIKUTI",
-             "BANGET", "MARKET", "LIMIT", "STOP", "PENILAIAN", "WAJIB", "AMAN", "BERISIKO", "HIGH", "RISK", "RETURN", "LOT",
+             "BANGET", "MARKET", "LIMIT", "STOP", "CONDITIONAL", "PENILAIAN", "WAJIB", "AMAN", "BERISIKO", "HIGH", "RISK", "RETURN", "LOT",
              "BARU", "GZH", "TERKONFIRMASI", "ICHIMOKU", "SARAN", "MOMENTUM", "NEWS", "GOLDEN", "MOMENT", "TF", "CANDLE",
              "MKT", "TERISI", "FILLED", "SUDAH", "ISI", "JAM", "PADA", "DI", "LEV", "LEVERAGE", "QSE", "V148", "R", "TAJAM"}
 
@@ -1073,8 +1113,8 @@ def parse_entry(args):
             arah = arah or "LONG"
         elif a in ("SHORT", "SELL", "S"):
             arah = arah or "SHORT"
-        elif a in ("LIMIT", "MARKET", "MKT"):
-            order = "MARKET" if a != "LIMIT" else "LIMIT"
+        elif a in ("LIMIT", "MARKET", "MKT", "STOP", "CONDITIONAL"):
+            order = "STOP" if a in ("STOP", "CONDITIONAL") else ("LIMIT" if a == "LIMIT" else "MARKET")
         elif a in ("TERISI", "FILLED", "SUDAH", "ISI"):
             terisi = True
         elif re.fullmatch(r"\d{1,2}:\d{2}", a):
@@ -1087,12 +1127,12 @@ def parse_entry(args):
         elif re.fullmatch(r"\d+(\.\d+)?X", a):
             kv["LEV"] = _angka(a[:-1])
         elif a in ("SL", "TP", "TP1", "TP2") and nxt is not None:
-            kv["TP1" if a == "TP" else a] = nxt
+            kv[a] = nxt
             i += 1
         elif a in ("ENTRY", "HARGA", "LIMIT") and nxt is not None:
             kv["ENTRY"] = nxt
             i += 1
-        elif re.fullmatch(r"[\d.,]+R|[\d.,]+%|\d+/\d+", a):
+        elif re.fullmatch(r"[+-]?[\d.,]+R|[+-]?[\d.,]+%|\d+/\d+", a):
             pass                                            # kolom R, persen, dan skor dari blok sinyal
         elif _angka(a) is not None:
             nums.append(_angka(a))
@@ -1106,8 +1146,8 @@ def parse_entry(args):
         sym = next((k + "USDT" for k in kandidat if not ada or k + "USDT" in ada), None)
     tempel = "ENTRY" in kv
     harga = kv.pop("ENTRY", None) or (nums[0] if nums else None)
-    if tempel and order is None:
-        terisi = True          # blok sinyal ditempel: dianggap sudah masuk di harga entry itu
+    if tempel and order in (None, "MARKET"):
+        terisi = True          # blok sinyal MARKET ditempel: langsung terisi; LIMIT dan STOP menunggu harga
     if harga and kv.get("SL"):
         tebak = None if (sym and arah) else _sinyal_dari_harga(harga, kv.get("SL"))
         if tebak:
@@ -1198,28 +1238,36 @@ def entry(args):
             return "Format waktu salah. Contoh: terisi 02:00 atau terisi 29/09 23:10 (jam WIB)"
     elif order == "MARKET":
         isi_ts = now
-    elif (L and px <= harga) or ((not L) and px >= harga):
-        isi_ts = now          # LIMIT yang harganya sudah dilewati pasti langsung terisi
+    elif order == "LIMIT" and ((L and px <= harga) or ((not L) and px >= harga)):
+        isi_ts = now          # Hanya LIMIT yang harganya sudah dilewati yang langsung terisi; STOP menunggu tembus
     catatan_isi = ""
     if isi_ts is not None and order == "LIMIT" and not kv.get("terisi"):
         catatan_isi = "Harga sekarang sudah melewati entry, jadi LIMIT ini dicatat langsung terisi."
+    elif isi_ts is None and order == "STOP":
+        catatan_isi = f"Order CONDITIONAL STOP tercatat menunggu harga tembus {'di atas' if L else 'di bawah'} {harga:g} (belum entry)."
     r = hasil_robot(sym)
     t = min(tick_of(r, px), tick_of(r, harga))
     sumber = "kamu"
     dari_sinyal = None
-    sl, tp1, tp2 = kv.get("SL"), kv.get("TP1"), kv.get("TP2")
+    sl, tp_single, tp1, tp2 = kv.get("SL"), kv.get("TP"), kv.get("TP1"), kv.get("TP2")
     jp = jalur_posisi(sym, arah)
-    if jp and kv.get("TP1") is None and kv.get("TP2") is None:
+    import qse_strat as ST
+    if jp and tp1 is None and tp2 is None:
         sl = sl if sl is not None else jp["sl"]
-        far = harga * (100 if L else 0.01)            # TP1/TP2 tidak dipakai: keluar dari SL berjalan atau TP jalur
-        tp1 = tp2 = jp.get("tp") or far
-        sumber = f"jalur {jp['nama']} (aturan jalur terbukti)"
+        tp_j_raw = tp_single or jp.get("tp")
+        lv_j = ST.level_strategis(None, harga, arah, sl_acuan=sl, cek_spike=False)
+        if sl is None or abs(harga - sl) / harga > 0.06 or (L and sl >= harga) or ((not L) and sl <= harga):
+            sl = lv_j["sl"]
+        if not tp_j_raw or abs(tp_j_raw - harga) / harga > 0.15 or (L and tp_j_raw <= harga) or ((not L) and tp_j_raw >= harga):
+            tp_j_raw = lv_j["tp"]
+        tp1 = lv_j["tp1"]
+        tp2 = tp_j_raw
+        sumber = f"jalur {jp['nama']} (SL Aman & TP Strategis)"
     a_ref = (r or {}).get("atr") or 0.0
     cocok = [s for s in (r["saran"] if r else []) if s["arah"] == arah
              and a_ref > 0 and abs(s["entry"] - harga) <= 0.5 * a_ref
              and ((s["sl"] < harga) if L else (s["sl"] > harga))]
     if sl is None and not cocok:
-        # tidak ada saran yang entry-nya dekat: pakai sinyal terakhir koin dan arah ini yang SL-nya masih di sisi benar
         s = sinyal_terakhir(sym, arah, harga)
         if s:
             sl, tp1, tp2 = s["sl"], tp1 or s["tp1"], tp2 or s["tp2"]
@@ -1231,31 +1279,44 @@ def entry(args):
             sl, tp1, tp2 = s["sl"], tp1 or s["tp1"], tp2 or s["tp2"]
             sumber = f"robot ({s['pola']}, entry robot {fp(s['entry'], t)})"
         else:
-            a = (r or {}).get("atr") or atr_4j(sym)
-            if a <= 0:
-                return "Data ATR belum ada. Tulis SL sendiri, contoh /entry long limit AUSDT 1.022 sl 0.99"
-            ps = (r or {}).get("pasar", {})
-            jarak = abs(harga - ps["batal"]) + a * P["slBuf"] if ps.get("batal") and ps.get("arah") == arah else a * 1.5
-            jarak = min(max(jarak, a * P["slMinA"]), a * P["slMaxA"])
-            sl = harga - jarak if L else harga + jarak
-            sumber = "otomatis (swing dan ATR, gaya robot)"
+            lv_auto = ST.level_strategis(None, harga, arah, cek_spike=False)
+            sl, tp1, tp2 = lv_auto["sl"], tp1 or lv_auto["tp1"], tp2 or (tp_single or lv_auto["tp2"])
+            sumber = "otomatis (SL Aman struktur & TP Strategis)"
+    # Jika user menempel satu baris TP (tanpa TP1/TP2), jadikan TP2 = TP dan TP1 di separuh jalan
+    if tp_single is not None and tp2 is None:
+        tp2 = tp_single
+    # Sanitasi ketat bila SL > 6% atau TP > 15% (misal dari sinyal lama sebelum perbaikan)
+    if sl is not None and kv.get("SL") is None and abs(harga - sl) / harga > 0.06:
+        lv_fix = ST.level_strategis(None, harga, arah, cek_spike=False)
+        sl = lv_fix["sl"]
     risk = abs(harga - sl)
     if risk <= 0 or (L and sl >= harga) or ((not L) and sl <= harga):
         return "SL harus di bawah entry untuk LONG dan di atas entry untuk SHORT."
     if risk < harga * 0.001:
         return "SL terlalu dekat dengan entry (kurang dari 0.1%). Hasil R jadi tidak masuk akal, pakai SL yang lebih jauh."
-    tp1 = tp1 or (harga + risk * 0.8 if L else harga - risk * 0.8)
-    tp2 = tp2 or (harga + risk * 1.8 if L else harga - risk * 1.8)
-    a_now = (r or {}).get("atr") or atr_4j(sym) or risk
+    if tp2 is None or (kv.get("TP2") is None and kv.get("TP") is None and abs(tp2 - harga) / harga > 0.15):
+        d2 = min(2.2 * risk, harga * 0.12)
+        tp2 = (harga + d2) if L else max(harga * 0.50, harga - d2)
+    if tp1 is None or (kv.get("TP1") is None and abs(tp1 - harga) / harga > 0.15):
+        d1 = min(1.2 * risk, abs(tp2 - harga) * 0.55)
+        tp1 = (harga + d1) if L else max(harga * 0.50, harga - d1)
+    # Pastikan urutan TP1 selalu lebih dekat ke entry dibanding TP2
+    if abs(tp1 - harga) > abs(tp2 - harga):
+        tp1, tp2 = tp2, tp1
+    a_now = min((r or {}).get("atr") or atr_4j(sym) or risk, harga * 0.03)
     label, alasan, _, _ = nilai(sym, arah, harga)
     asal = asal_saran(sym, arah, harga, r)
     if jp:
         asal = dict(jalur=jp["jalur"], pola=jp["nama"], skor=None)
-    if asal["jalur"] == "manual" and dari_sinyal:          # SL dan TP diambil dari sinyal robot: asal ikut sinyal itu
+    if asal["jalur"] == "manual" and dari_sinyal:
         asal = dict(jalur=dari_sinyal["jalur"], pola=dari_sinyal["pola"], skor=dari_sinyal["skor"])
     jalur, pola_asal = asal["jalur"], asal["pola"]
+    ikut = bool(jp and kv.get("TP1") is None and kv.get("TP2") is None)
+    tp_j = tp2 if ikut else None
     lv_user = {k: kv[k] for k in ("SL", "TP1", "TP2") if kv.get(k) is not None}
-    baru_isi = isi_ts is not None and now - isi_ts <= 5 * 60000      # terisi lampau: riwayat candle dicek dulu
+    if kv.get("TP") is not None and "TP2" not in lv_user:
+        lv_user["TP2"] = tp2
+    baru_isi = isi_ts is not None and now - isi_ts <= 5 * 60000
 
     def simpan(d):
         d["seq"] += 1
@@ -1266,7 +1327,7 @@ def entry(args):
                               status="TERISI" if isi_ts is not None else "MENUNGGU",
                               fill_ts=isi_ts or 0, alert=[], lev=kv.get("LEV"), risk0=abs(harga - sl),
                               sisa=1.0, real=0.0, jalur=jalur, pola=pola_asal, skor=asal["skor"],
-                              **(dict(ikut=jp["jalur"], tp_jalur=jp.get("tp")) if jp and kv.get("TP1") is None else {}))
+                              **(dict(ikut=jp["jalur"], tp_jalur=tp_j) if ikut else {}))
         lama_tp1 = any(v["sym"] == sym and v["arah"] == arah and v["status"] == "TP1" for v in d["open"].values())
         ada_jalan = any(v["sym"] == sym and v["arah"] == arah and v["status"] == "TERISI" and v.get("id") != tid
                         for v in d["open"].values())
@@ -1277,14 +1338,12 @@ def entry(args):
     n_open = len(_load()["open"])
     kd = sym.replace("USDT", "")
     sk_txt = f" | skor setup {asal['skor']}/100" if asal["skor"] is not None else ""
-    ikut = bool(jp and kv.get("TP1") is None)
-    tp_j = jp.get("tp") if ikut else None
     rows = [f"<b>TRADE KAMU TERCATAT</b> (posisi terbuka {n_open})",
             f"{sym} {arah} {order}" + (f" (sudah terisi, sejak {_jam_wib(isi_ts)})" if isi_ts is not None
-                                       else " (menunggu terisi)"),
+                                       else " (menunggu harga menyentuh/tembus entry, belum aktif)"),
             (f"<pre>Entry {fp(harga, t)}\nSL    {fp(sl, t)}  -1.00R  -{abs(sl - harga) / harga * 100:.2f}%\n"
-             + (f"TP    {fp(tp_j, t)}  +{abs(tp_j - harga) / risk:.2f}R  +{abs(tp_j - harga) / harga * 100:.2f}%</pre>" if tp_j
-                else "TP    tanpa, pakai SL berjalan jalur</pre>")) if ikut else
+             f"TP1   {fp(tp1, t)}  +{abs(tp1 - harga) / risk:.2f}R  +{abs(tp1 - harga) / harga * 100:.2f}%\n"
+             f"TP2   {fp(tp_j, t)}  +{abs(tp_j - harga) / risk:.2f}R  +{abs(tp_j - harga) / harga * 100:.2f}%</pre>") if ikut else
             f"<pre>Entry {fp(harga, t)}\nSL    {fp(sl, t)}  -1.00R  -{abs(sl - harga) / harga * 100:.2f}%\n"
             f"TP1   {fp(tp1, t)}  +{abs(tp1 - harga) / risk:.2f}R  +{abs(tp1 - harga) / harga * 100:.2f}%\n"
             f"TP2   {fp(tp2, t)}  +{abs(tp2 - harga) / risk:.2f}R  +{abs(tp2 - harga) / harga * 100:.2f}%</pre>",
@@ -1292,9 +1351,8 @@ def entry(args):
             f" | lot disarankan {lot_jalur(jalur):g}x lot normal",
             f"SL dan TP dari {sumber}. Fee pulang pergi sekitar {fee_r:.2f}R.",
             (f"✅ <b>JALUR TERBUKTI {jp['nama'].upper()}</b>\n" + TEKS_IKUT.format(sl=fp(sl, t), tp=_tp_teks(tp_j, t))
-             + f"\nRobot menyamakan SL kamu dengan SL berjalan jalur tiap menit, dan mengabari saat jalur keluar."
-             + f"\nPenilaian umum: {label}. Info saja, bukan alasan batal.") if ikut else
-            f"<b>Penilaian robot: {label}</b>"]
+             + "\nRobot memantau SL berjalan & TP strategis tiap menit.") if ikut else
+            f"<b>Status struktur: {label}</b>"]
     try:
         import qse_modal as MD
         bl = MD.baris_lot(harga, sl, lot_jalur(jalur), int(kv["LEV"]) if kv.get("LEV") else None)
@@ -1304,10 +1362,8 @@ def entry(args):
         pass
     if kv.get("LEV"):
         rows.insert(4, f"Leverage {kv['LEV']:g}x dicatat, /status menampilkan ROE.")
-    rows += ["➡️ " + x for x in alasan] if not ikut else []
-    if label == "BERISIKO" and not ikut:
-        rows.append(f"⛔ Robot tidak akan memberi sinyal di kondisi ini. Kalau belum terlanjur masuk di Bybit, jangan masuk dulu "
-                    f"dan hapus catatan ini dengan /hapus {kd} {arah.lower()}.")
+    if isi_ts is not None and not ikut:
+        rows += ["➡️ " + x for x in alasan[:4]]
     for g in gab:
         rows.append("\n" + teks_gabung(g) + "\nSL dan TP mengikuti posisi lama, kecuali yang kamu tulis di /entry ini.")
     if lama_tp1 and not gab:
@@ -1633,11 +1689,16 @@ def _jalan(it, rows, iv):
             continue
         it["last_ts"] = ts + iv
         if it["status"] == "MENUNGGU":
-            if not (lo <= e if L else hi >= e):
+            if it.get("order") in ("STOP", "CONDITIONAL STOP"):
+                kena = (cl >= e) if L else (cl <= e)
+            else:
+                kena = (lo <= e) if L else (hi >= e)
+            if not kena:
                 continue
             it["status"], it["fill_ts"] = "TERISI", ts
             it.setdefault("risk0", max(abs(e - it["sl"]), 1e-12))
             ev.append(("TERISI", "ORDER TERISI"))
+            continue
         if it.get("ikut") and it["status"] == "TERISI":
             sl, tpj = it["sl"], it.get("tp_jalur")
             if (lo <= sl) if L else (hi >= sl):
@@ -1759,12 +1820,12 @@ def _sinkron_jalur(it, jp):
     if not it.get("ikut"):
         if not jp:
             return out
-        it["ikut"], it["tp_jalur"] = jp["jalur"], jp.get("tp")
-        it["tp1"] = it["tp2"] = jp.get("tp") or it["entry"] * (100 if L else 0.01)
-        out.append(f"🔄 <b>{it['sym']} {it['arah']}</b>\n↳ Posisi ini dari jalur {jp['nama']}. TP1 dan TP2 umum dihapus, "
-                   f"sekarang ikut aturan jalur: SL berjalan {fp(jp['sl'], t)}, {_tp_teks(jp.get('tp'), t)}. "
-                   f"Uji 2021-2026: aturan jalur +4568R, TP1/TP2 umum +2371R. Samakan di Bybit: "
-                   f"/modify {kd} sl {fp(jp['sl'], t)}")
+        _rapikan_posisi(it)
+        tp_j = jp.get("tp") or it["tp2"]
+        it["ikut"], it["tp_jalur"] = jp["jalur"], tp_j
+        it["tp2"] = tp_j
+        out.append(f"🔄 <b>{it['sym']} {it['arah']}</b>\n↳ Posisi ini disinkronkan dengan jalur {jp['nama']}: "
+                   f"SL Aman {fp(jp['sl'], t)}, {_tp_teks(tp_j, t)}. Samakan di Bybit: /modify {kd} sl {fp(jp['sl'], t)}")
     if jp:
         lebih = (jp["sl"] > it["sl"]) if L else (jp["sl"] < it["sl"])
         if lebih and not it.get("sl_manual"):
@@ -1975,10 +2036,12 @@ def blok_posisi(no, it, px, r=None, pasar=None):
     a = (r or {}).get("atr") or it.get("atr") or 0
     sl_now = it["entry"] if it["status"] == "TP1" and not it.get("sl_manual") else it["sl"]
     lv = [("🛑", "SL" + (" (di entry)" if sl_now == it["entry"] and it["status"] == "TP1" else ""), sl_now, "SL")]
+    _rapikan_posisi(it)
     if it.get("ikut"):
         lv[0] = ("🛑", "SL berjalan jalur", sl_now, "SL")
-        if it.get("tp_jalur"):
-            lv.append(("🏁", "TP jalur (tutup penuh)", it["tp_jalur"], "TPJ"))
+        if it.get("tp1") and abs(it["tp1"] - it.get("tp_jalur", it["tp2"])) > t:
+            lv.append(("🎯", "TP1 (ambil separuh opsional)", it["tp1"], "TP1"))
+        lv.append(("🏁", "TP strategis jalur", it.get("tp_jalur") or it["tp2"], "TPJ"))
     else:
         if it["status"] != "TP1":
             lv.append(("🎯", "TP1", it["tp1"], "TP1"))
@@ -1995,8 +2058,7 @@ def blok_posisi(no, it, px, r=None, pasar=None):
         try:
             an = analisa_lengkap(it, r, px or None)
             ik = {"MASIH SESUAI ANALISA": "✅", "MELEMAH": "⚠️", "BERBALIK": "🛑"}.get(an["vonis"], "🧭")
-            rows.append(f"🧭 <b>Analisa sekarang: {ik} {an['vonis']}</b>"
-                        + (f" (saat entry {it['nilai']})" if it.get("nilai") else ""))
+            rows.append(f"🧭 <b>Analisa objektif sekarang: {ik} {an['vonis']}</b>")
             rows.append(f"🛠 <b>Saran</b>: {an['aksi']}")
             if an["vonis"] == "MASIH SESUAI ANALISA":
                 if an["plus"]:
@@ -2574,7 +2636,11 @@ def peringatan_dini():
     except Exception:
         btc15 = 0.0
     ganti = {}
+    now_ms = int(time.time() * 1000)
     for it in jalan:
+        t_isi = it.get("fill_ts") or it.get("created_ts") or 0
+        if t_isi and now_ms - t_isi < 15 * 60000:
+            continue          # baru saja entry (< 15 menit): jangan kirim peringatan dini prematur
         px = harga_live(it["sym"])
         a = it.get("atr") or 0
         if not px or a <= 0:
@@ -2948,9 +3014,8 @@ def TG_e(x):
 
 
 def sinyal_jalur():
-    """/scan dan /sinyal4j: sinyal jalur terbukti yang bisa diikuti SEKARANG, aturan sama dengan pesan 4 jam:
-    sinyal maks 2 candle 4J dan harga masih dalam 0.5R dari entry robot (EMA, RSI, McGinley, SnR, SMC, Ichimoku),
-    MSB, Order Block, dan GZH hanya sinyal candle terakhir. Koin yang kamu pegang tidak ditampilkan."""
+    """/scan dan /sinyal4j: sinyal jalur terbukti yang bisa diikuti SEKARANG, lengkap dengan SL Aman & TP Strategis.
+    Koin yang sedang atau baru saja kamu entry (12 jam terakhir) tidak ditampilkan ulang."""
     import qse_strat as ST
     sumber = []
     try:
@@ -2966,32 +3031,55 @@ def sinyal_jalur():
     for k, cfg in ST.STRAT.items():
         sumber.append((k, cfg["nama"], ST.lihat(k)["open"].values()))
     telat_ok = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
-    pegang = {v["sym"] for v in _load()["open"].values() if v["status"] in ("TERISI", "TP1")}
+    d_saya = _load()
     now = time.time()
+    pegang = {v["sym"] for v in d_saya["open"].values()} | {
+        c["sym"] for c in d_saya.get("closed", [])[-100:]
+        if now * 1000 - (c.get("closed_ts") or 0) < 12 * 3600000
+    }
     tutup = int(now // 14400) * 14400
     kartu = []
+    sudah_sym = set()
     for k, nama, items in sumber:
         for it in items:
-            if it["sym"] in pegang:
+            if it["sym"] in pegang or it["sym"] in sudah_sym:
                 continue
+            ST.perbaiki_item(it)
             L = it["arah"] == "LONG"
             t = it.get("tick") or 1e-8
             baru = it.get("t", 0) >= tutup - 60
-            px = harga_live(it["sym"]) or 0
-            risk = it.get("risk") or abs(it["entry"] - it.get("sl0", it["sl"]))
+            px = harga_live(it["sym"]) or it["entry"]
+            risk = max(it.get("risk") or abs(it["entry"] - it.get("sl0", it["sl"])), 1e-12)
             d = ((px - it["entry"]) * (1 if L else -1) / risk) if (px and risk) else None
             umur = (now - it.get("t", now)) / 14400
-            sl = it["sl"]
-            masih = (k in telat_ok and umur <= 2.1 and d is not None and abs(d) <= 0.5 and ((px > sl) if L else (px < sl))
-                     and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
+            sl, tp = it["sl"], it.get("tp")
+            # Jika harga bergeser dari entry robot, sesuaikan & validasi SL dan TP terhadap harga sekarang
+            e_now = px if not baru else it["entry"]
+            if not ((e_now > sl) if L else (e_now < sl)):
+                continue
+            if tp and ((e_now >= tp) if L else (e_now <= tp)):
+                continue
+            risk_now = abs(e_now - sl)
+            if risk_now / e_now > 0.06 or risk_now / e_now < 0.004:
+                lv_n = ST.level_strategis(None, e_now, it["arah"], cek_spike=False)
+                sl, tp, risk_now = lv_n["sl"], lv_n["tp"], lv_n["risk"]
+            elif not tp or abs(tp - e_now) / e_now > 0.15 or abs(tp - e_now) / risk_now < 1.4:
+                lv_n = ST.level_strategis(None, e_now, it["arah"], sl_acuan=sl, cek_spike=False)
+                tp = lv_n["tp"]
+            rr_now = abs(tp - e_now) / max(risk_now, 1e-12)
+            masih = (k in telat_ok and umur <= 2.1 and d is not None and abs(d) <= 0.35 and rr_now >= 1.5)
             if not (baru or masih):
                 continue
-            tp = fp(it["tp"], t) if it.get("tp") else "tanpa, pakai SL berjalan"
-            ket = "🆕 sinyal candle ini" if baru else f"harga masih dekat entry robot {fp(it['entry'], t)} ({d:+.2f}R)"
+            sudah_sym.add(it["sym"])
+            sl_pct = risk_now / e_now * 100
+            tp_pct = abs(tp - e_now) / e_now * 100
+            ket = "🆕 sinyal candle ini" if baru else f"harga dekat entry robot {fp(it['entry'], t)} ({d:+.2f}R)"
             kartu.append(f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
-                         f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>")
+                         f"<pre>{it['sym']} {it['arah']}\nEntry {fp(e_now, t)} MARKET\n"
+                         f"SL    {fp(sl, t)}  -1.00R  -{sl_pct:.2f}%\n"
+                         f"TP    {fp(tp, t)}  +{rr_now:.2f}R  +{tp_pct:.2f}%</pre>")
     kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
     if not kartu:
         return (kepala + "\nBelum ada sinyal jalur terbukti yang bisa diikuti di harga sekarang. Sinyal baru dikirim tiap candle 4J tutup "
                 "(03, 07, 11, 15, 19, 23 WIB lewat 5 menit).")
-    return kepala + "\nHanya sinyal yang masih bisa diikuti di harga sekarang.\n\n" + "\n\n".join(kartu)
+    return kepala + "\nHanya sinyal yang masih valid dengan SL Aman & TP Strategis di harga sekarang.\n\n" + "\n\n".join(kartu)

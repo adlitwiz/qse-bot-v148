@@ -138,7 +138,7 @@ def _pola_robot(sym):
                     + (", sampel kecil" if n < 12 else ""))
     if not rows:
         rows.append("Belum ada pola robot yang aktif di koin ini.")
-    rows.append(f"Rapor robot koin ini {r['rapor']} | {r['trd']} trade | WR {r['wr']:.0f}% | PF {r['pf']:.2f}")
+    rows.append(f"Statistik historis koin ini: {r['trd']} trade | WR {r['wr']:.0f}% | PF {r['pf']:.2f}")
     return rows
 
 

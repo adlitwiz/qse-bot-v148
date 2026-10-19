@@ -224,7 +224,7 @@ def _susun_scan(now):
         kond.append(TG.e(mb))
     kartu = ((d4.get("blocks") or [""])[0]).split("\n")
     kond += [x for x in kartu if x.startswith(("🚀", "👤", "📡"))]
-    kond.append(f"Dinilai ulang: {len(res)} koin rapor A/B dan posisi kamu (4J), {d1.get('n', 0)} koin (1J)")
+    kond.append(f"Dinilai ulang: {len(res)} koin aktif dan posisi kamu (4J)")
     pas.append("🧭 <b>KONDISI PASAR</b>\n" + "\n".join(kond))
     # kesimpulan
     if siap or s1j:
@@ -704,8 +704,13 @@ def _catat_cadangan(led, cad):
 
 
 def _posisi_kamu():
-    """Koin yang sedang kamu pegang (dari /entry): posisi jalan atau sudah TP1."""
-    return {v["sym"] for v in SY.lihat()["open"].values() if v["status"] in ("TERISI", "TP1")}
+    """Koin yang sedang kamu pegang atau pasang order (/entry), ditambah yang baru selesai 12 jam terakhir."""
+    d = SY.lihat()
+    now_ms = time.time() * 1000
+    return {v["sym"] for v in d["open"].values()} | {
+        c["sym"] for c in d.get("closed", [])[-100:]
+        if now_ms - (c.get("closed_ts") or 0) < 12 * 3600000
+    }
 
 
 def _catat_jalur(led, items, kunci):
@@ -941,6 +946,13 @@ def _trendline(results, sudah, led, ctx, maks=5):
                 continue
             if x.get("sudah_masuk") or x.get("tersentuh") or x.get("sl_kena") or x.get("tp1_kena"):
                 continue
+            px_now = r.get("live") or r["close"]
+            # Jika masih CONDITIONAL STOP namun harga masih terlalu jauh (> 0.5 ATR di atas garis), tunggu sampai mendekat
+            if "STOP" in str(x.get("order", "")) and r.get("atr") and abs(px_now - x["entry"]) > 0.5 * r["atr"]:
+                continue
+            import qse_scan as QS
+            e_n, sl_n, t1_n, t2_n = QS._rapikan_level_saran(x["entry"], x["sl"], x["tp1"], x["tp2"], False, r.get("atr", 0), r.get("tick", 0.0001))
+            x = dict(x, entry=e_n, sl=sl_n, tp1=t1_n, tp2=t2_n)
             k = f"{r['symbol']}|{x.get('idx')}|{x['entry']:.10g}"
             if k in seen:
                 continue
@@ -1003,7 +1015,7 @@ def _baris_waktu(r, x):
 def _blok_cad(no, r, x, tag, led):
     k = [f"Harga di zona emas searah bias robot, BTC mengizinkan",
          f"Skill searah {x['konf']}/8: {', '.join(x['konf_ok'])}",
-         f"Rapor robot {r['rapor']}, WR {r['wr']:.0f}%"]
+         f"Riwayat koin ini: WR {r['wr']:.0f}%"]
     return _kartu(no, r, x, "saran cadangan", "SARAN BARU" if tag == "BARU" else "entry diperbarui", led, kenapa=k)
 
 
@@ -1254,11 +1266,12 @@ def _kartu_jam(results, b1, led):
         rows.append("👤 Posisi: " + " | ".join(bag))
         rows.append("↳ Diam, biarkan SL dan TP jalur bekerja. Gerak BTC 1 jam bukan alasan keluar.")
     aktif = [v for v in led["open"].values() if v["status"] == "MENUNGGU"]
-    rows.append(f"📡 Saran LIMIT aktif: {len(aktif)}" + (" (ketik /sinyal4j)" if aktif else ""))
+    rows.append(f"📡 Order saran menunggu: {len(aktif)}" + (" (cek sinyal siap masuk: /sinyal4j)" if aktif else ""))
     peta_px = {r["symbol"]: (r.get("live") or r["close"], r["tick"]) for r in results}
     for v in sorted(aktif, key=lambda v: abs((peta_px.get(v["sym"], (v["entry"], 0))[0] - v["entry"]) / v["entry"]))[:5]:
         px, t = peta_px.get(v["sym"], (None, 0.0001))
-        rows.append(f"↳ {v['sym']} {v['arah']} entry {TG.fp(v['entry'], t)}"
+        ord_lbl = v.get("order", "LIMIT")
+        rows.append(f"↳ {v['sym']} {v['arah']} ({ord_lbl}) entry {TG.fp(v['entry'], t)}"
                     + (f", harga {TG.fp(px, t)}, jarak {abs(px - v['entry']) / v['entry'] * 100:.2f}%" if px else ""))
     sisa = (H4 - int(time.time() * 1000) % H4) / 60000
     rows.append(f"⏳ Laporan 4 jam berikutnya {int(sisa // 60)} jam {int(sisa % 60)} menit lagi")
@@ -1753,7 +1766,7 @@ def _kartu(no, r, x, jalur, status="", led=None, kenapa=None, cara=None, catatan
             k.append(f"Pola {TG.e(x['pola'])}, di koin ini {x['win']} TP dan {x['loss']} SL (WR {x['wr']:.0f}%)")
         else:
             k.append(f"Pola {TG.e(x['pola'])}")
-        k.append(f"Rapor robot {r['rapor']}, WR {r['wr']:.0f}%, PF {r['pf']:.2f}")
+        k.append(f"Riwayat pola koin ini: WR {r['wr']:.0f}%, PF {r['pf']:.2f}")
         nk, kf = _konfluensi(r, arah, x.get("zona_emas"))
         if nk:
             k.append("Pendukung: " + ", ".join(kf))
@@ -1898,35 +1911,52 @@ TELAT_CANDLE, TELAT_R = 2, 0.5
 
 
 def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
-    """Kartu sinyal jalur robot yang bisa diikuti sekarang: sinyal candle ini, atau sinyal lama (jalur TELAT_OK,
-    maks 2 candle) yang harganya masih dekat entry robot. Koin yang kamu pegang tidak ditampilkan.
-    Return (teks, ringkas, n_lewat)."""
+    """Kartu sinyal jalur robot yang bisa diikuti sekarang: lengkap dengan SL Aman & TP Strategis.
+    Koin yang sudah kamu pegang/entry tidak ditampilkan ulang. Return (teks, ringkas, n_lewat)."""
+    import qse_strat as ST
     rows, ring, lewat = [], [], 0
     harga = harga or {}
     for it in sorted(list(items), key=lambda z: -z.get("t", 0)):
+        ST.perbaiki_item(it)
         L = it.get("arah", "LONG") == "LONG"
         t = it.get("tick", 0.0001)
         umur = (tutup_ms / 1000 - it.get("t", 0)) / 14400.0
         baru = it.get("t", 0) * 1000 >= tutup_ms - 60000
-        px = harga.get(it["sym"])
-        risk = it.get("risk") or abs(it["entry"] - it.get("sl0", it["sl"]))
+        px = harga.get(it["sym"]) or it["entry"]
+        risk = max(it.get("risk") or abs(it["entry"] - it.get("sl0", it["sl"])), 1e-12)
         d = ((px - it["entry"]) * (1 if L else -1) / risk) if (px and risk) else None
         sl_now, sl0 = it.get("sl", it.get("sl0")), it.get("sl0", it.get("sl"))
-        masih = (not baru and kunci in TELAT_OK and umur <= TELAT_CANDLE + 0.1 and d is not None and abs(d) <= TELAT_R
-                 and ((px > sl_now) if L else (px < sl_now))
-                 and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
+        tp_now = it.get("tp")
+        e_val = it["entry"] if baru else px
+        if not ((e_val > sl_now) if L else (e_val < sl_now)):
+            lewat += 1
+            continue
+        if tp_now and ((e_val >= tp_now) if L else (e_val <= tp_now)):
+            lewat += 1
+            continue
+        risk_now = abs(e_val - sl_now)
+        if risk_now / e_val > 0.06 or risk_now / e_val < 0.004:
+            lv_n = ST.level_strategis(None, e_val, "LONG" if L else "SHORT", cek_spike=False)
+            sl_now, tp_now, risk_now = lv_n["sl"], lv_n["tp"], lv_n["risk"]
+        elif not tp_now or abs(tp_now - e_val) / e_val > 0.15 or abs(tp_now - e_val) / risk_now < 1.4:
+            lv_n = ST.level_strategis(None, e_val, "LONG" if L else "SHORT", sl_acuan=sl_now, cek_spike=False)
+            tp_now = lv_n["tp"]
+        rr_now = abs(tp_now - e_val) / max(risk_now, 1e-12)
+        masih = (not baru and kunci in TELAT_OK and umur <= TELAT_CANDLE + 0.1 and d is not None and abs(d) <= 0.35 and rr_now >= 1.5)
         if it["sym"] in pegang or not (baru or masih):
             lewat += 1
             continue
         jam = dt.datetime.fromtimestamp(it.get("t", 0), WIB).strftime("%d/%m %H:%M")
-        tp = TG.fp(it["tp"], t) if it.get("tp") else "tanpa, pakai SL berjalan"
-        e_txt = TG.fp(it["entry"], t) if baru else TG.fp(px, t)
+        sl_pct = risk_now / e_val * 100
+        tp_pct = abs(tp_now - e_val) / e_val * 100
+        e_txt = TG.fp(e_val, t)
         ket = ("🆕 sinyal candle ini" if baru else
-               f"sinyal {jam} WIB, harga masih dekat entry robot {TG.fp(it['entry'], t)} ({d:+.2f}R)")
+               f"sinyal {jam} WIB, harga dekat entry robot {TG.fp(it['entry'], t)} ({d:+.2f}R)")
         rows.append(f"{GARIS}\n{'🟢' if L else '🔴'} <b>{TG.e(it['sym'])} {'LONG' if L else 'SHORT'}</b>  ·  MARKET  ·  {ket}"
                     + f"\n<pre>{it['sym']} {'LONG' if L else 'SHORT'}\nEntry {e_txt} MARKET\n"
-                    f"SL    {TG.fp(sl_now, t)}\n"
-                    f"TP    {tp}</pre>" + (f"\nSL sudah digeser dari {TG.fp(sl0, t)}" if sl_now != sl0 else ""))
+                    f"SL    {TG.fp(sl_now, t)}  -1.00R  -{sl_pct:.2f}%\n"
+                    f"TP    {TG.fp(tp_now, t)}  +{rr_now:.2f}R  +{tp_pct:.2f}%</pre>"
+                    + (f"\nSL sudah digeser dari {TG.fp(sl0, t)}" if sl_now != sl0 else ""))
         ring.append((it["sym"], "LONG" if L else "SHORT", "baru" if baru else "masih dekat entry"))
     return (("\n" + "\n".join(rows)) if rows else ""), ring, lewat
 

@@ -1,10 +1,10 @@
-"""QSE v148 - FIX PROFIT: saringan tambahan di atas vonis DASBOR + buku catatan sinyal live yang belajar dari hasil nyata.
-Engine tidak diubah. Lapisan ini hanya memutuskan sinyal mana yang layak dikirim."""
+"""QSE v148 - FIX PROFIT: saringan objektif di atas vonis DASBOR + buku catatan sinyal live.
+Bebas filter rapor subjektif; memvalidasi likuiditas, spread, funding, serta jarak SL/TP yang objektif."""
 import fcntl
 import json
 import os
 import time
-from config import FP, RAPOR_OK, STATE_DIR, MAX_SIGNALS
+from config import FP, STATE_DIR, MAX_SIGNALS
 
 LEDGER = os.path.join(STATE_DIR, "ledger.json")
 ANTRIAN = os.path.join(STATE_DIR, "batal_antrian.json")
@@ -96,7 +96,7 @@ def update(led, sym, df):
 
 
 def recheck(led, res_map, tfs_now):
-    """Batalkan LIMIT yang belum terisi bila vonis robot berubah atau peluang terisi turun."""
+    """Batalkan order menunggu yang belum terisi hanya bila struktur teknikal objeknya batal (tanpa rapor)."""
     ev = []
     for key in list(led["open"].keys()):
         it = led["open"][key]
@@ -106,10 +106,24 @@ def recheck(led, res_map, tfs_now):
         r = res_map.get((it["sym"], tf))
         if r is None:
             continue
+        L = it["arah"] == "LONG"
+        px = r.get("live") or r["close"]
+        if (L and px <= it["sl"]) or ((not L) and px >= it["sl"]):
+            _close(led, key, it, 0.0, "harga sudah melewati level SL sebelum order terisi", r["time"])
+            it["status"] = "BATAL"
+            ev.append(("BATAL", it))
+            continue
+        if it.get("tt"):
+            # Tembus Trendline SHORT: hanya batal jika harga tutup kembali jauh di atas EMA 200
+            if r.get("e200") and r["close"] >= r["e200"] * 1.005:
+                _close(led, key, it, 0.0, "harga kembali di atas EMA 200", r["time"])
+                it["status"] = "BATAL"
+                ev.append(("BATAL", it))
+            continue
         if it.get("fib"):
             p = r.get("pasar") or {}
             if not (p.get("in_gp") and p.get("zona_searah") and p.get("arah") == it["arah"]) and \
-                    abs((r.get("live") or r["close"]) - it["entry"]) > 1.0 * r["atr"]:
+                    abs(px - it["entry"]) > 1.0 * r["atr"]:
                 _close(led, key, it, 0.0, "harga keluar dari golden pocket", r["time"])
                 it["status"] = "BATAL"
                 ev.append(("BATAL", it))
@@ -124,13 +138,11 @@ def recheck(led, res_map, tfs_now):
         if it.get("cadangan"):
             p = r.get("pasar") or {}
             why = ""
-            if r["rapor"] not in ("A", "B"):
-                why = "rapor turun ke %s" % r["rapor"]
-            elif p.get("arah") != it["arah"]:
-                why = "bias robot berbalik ke %s" % p.get("arah")
+            if p.get("arah") != it["arah"]:
+                why = "bias tren berbalik ke %s" % p.get("arah")
             elif not p.get("btc_ok"):
                 why = "BTC 4J melawan"
-            elif not p.get("zona_searah") and abs((r.get("live") or r["close"]) - it["entry"]) > 1.5 * r["atr"]:
+            elif not p.get("zona_searah") and abs(px - it["entry"]) > 1.5 * r["atr"]:
                 why = "harga keluar dari zona emas"
             if why:
                 _close(led, key, it, 0.0, why, r["time"])
@@ -140,10 +152,10 @@ def recheck(led, res_map, tfs_now):
         same = [s for s in r["saran"] if s["pola"] == it["pola"] and s["arah"] == it["arah"]]
         ok = [s for s in same if (s["eksekusi"] or (it.get("cad2") and s["mutu"] in ("A", "B"))) and not s["sudah_masuk"]]
         why = ""
-        if r["rapor"] not in RAPOR_OK and not it.get("tt"):      # Tembus Trendline diuji tanpa rapor
-            why = "rapor turun ke %s" % r["rapor"]
-        elif not ok:
-            why = "vonis berubah: " + (same[0]["alasan"] if same else "saran hilang")
+        if not ok:
+            al = same[0]["alasan"] if same else "saran hilang"
+            if "rapor" not in al and "sampel" not in al:
+                why = "struktur berubah: " + al
         elif ok[0]["p_isi"] < FP["min_fill"] * 0.8:
             why = "peluang terisi turun ke %d%%" % round(ok[0]["p_isi"])
         if why:
@@ -190,8 +202,7 @@ def _p_live(s, gap_atr, kunci="p_tab", awal="p_isi"):
 
 
 def _order_live(r, s):
-    """Ubah saran jadi order yang bisa dipasang sekarang, memakai harga live saat pesan dibuat.
-    MARKET bila harga di entry, LIMIT bila masih ada gap dan peluang terisi cukup. Return alasan buang atau ''."""
+    """Ubah saran jadi order yang bisa dipasang sekarang memakai harga live, sekaligus validasi batas SL & TP."""
     c = r.get("live") or r["close"]
     a, e = r["atr"], s["entry"]
     L = s["arah"] == "LONG"
@@ -206,9 +217,11 @@ def _order_live(r, s):
         return "harga sudah lewat TP1"
     gap = (c - e) if L else (e - c)
     if abs(c - e) <= FP["market_atr"] * a:
-        risk = abs(c - s["sl"])
-        s.update(order="MARKET", entry=c, jarak_atr=0.0, peluang=99, p_isi=100.0, p_isi4=100.0,
-                 rr1=abs(s["tp1"] - c) / risk, rr2=abs(s["tp2"] - c) / risk)
+        import qse_scan as QS
+        _, sl_n, t1_n, t2_n = QS._rapikan_level_saran(c, s["sl"], s["tp1"], s["tp2"], L, a, r.get("tick", 0.0001))
+        risk = max(abs(c - sl_n), 1e-12)
+        s.update(order="MARKET", entry=c, sl=sl_n, tp1=t1_n, tp2=t2_n, jarak_atr=0.0, peluang=99, p_isi=100.0, p_isi4=100.0,
+                 rr1=abs(t1_n - c) / risk, rr2=abs(t2_n - c) / risk)
         s["ev"] = s["wr"] / 100 * s["rr1"] - (1 - s["wr"] / 100)
         return ""
     if gap > 0:
@@ -228,15 +241,13 @@ def _order_live(r, s):
 
 
 def select(results, tickers, led):
-    """Pilih sinyal yang dikirim. Return (dikirim, jumlah disaring, alasan_saring)."""
+    """Pilih sinyal yang dikirim secara objektif (tanpa saringan rapor)."""
     cand, drop = [], {}
 
     def tolak(why):
         drop[why] = drop.get(why, 0) + 1
 
     for r in results:
-        if r["rapor"] not in RAPOR_OK:
-            continue
         tk = tickers.get(r["symbol"], {})
         for s in r["saran"]:
             if not s["eksekusi"] or s["sudah_masuk"] or s["mutu"] not in ("A", "B"):
@@ -273,14 +284,14 @@ def select(results, tickers, led):
                 s["fee_r"] = fee_r
             else:
                 s["fee_r"] = 0.0
-            s["prio"] = (s["golden"], r["rapor"] == "A", s["mutu"] == "A", s["order"] == "MARKET",
+            s["prio"] = (s["golden"], s["mutu"] == "A", s["order"] == "MARKET",
                          r["tf"] == "240", s["p_isi"], s["net_r"])
             cand.append((r, s))
     cand.sort(key=lambda x: x[1]["prio"], reverse=True)
     out, nd, dipakai = [], {"LONG": 0, "SHORT": 0}, set()
     for r, s in cand:
         if (r["symbol"], r["tf"]) in dipakai:
-            s["kalah"] = True          # satu koin satu sinyal per TF, ambil saran terbaik
+            s["kalah"] = True
             continue
         if FP["on"] and nd[s["arah"]] >= FP["max_same_dir"]:
             tolak("batas sinyal searah")
@@ -297,7 +308,6 @@ def select(results, tickers, led):
 
 
 def ganti(led, sel):
-    """Batalkan LIMIT lama di koin dan TF yang sama bila saran terbaiknya sekarang berbeda."""
     ev = []
     pilih = {(r["symbol"], r["tf"]): (s["pola"], s["arah"]) for r, s in sel}
     for key in list(led["open"].keys()):
@@ -311,7 +321,6 @@ def ganti(led, sel):
 
 
 def register(led, r, s):
-    """Catat sinyal. Return 'BARU', 'UPDATE', atau '' bila sama dengan yang sudah dikirim."""
     key = "%s|%s|%s|%s" % (r["symbol"], r["tf"], s["pola"], s["arah"])
     old = led["open"].get(key)
     if old and old["status"] != "MENUNGGU":
@@ -324,7 +333,7 @@ def register(led, r, s):
                             sl=s["sl"], tp1=s["tp1"], tp2=s["tp2"], order=s["order"], sent_ts=r["time"],
                             start_ts=start, last_ts=start - 1,
                             exp_ts=start + int((8 if r["tf"] == "60" else FP["limit_hours"]) * 3600000),
-                            status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r["rapor"],
+                            status="TERISI" if mk else "MENUNGGU", golden=s["golden"], rapor=r.get("rapor", "A"),
                             fill_ts=start if mk else 0, p_isi=s["p_isi"], cadangan=bool(s.get("cadangan")),
                             siklus=bool(s.get("siklus")), cad2=bool(s.get("cad2")), fib=bool(s.get("fib")), tt=bool(s.get("tt")),
                             skor=s.get("skor"))
@@ -332,7 +341,6 @@ def register(led, r, s):
 
 
 def batal_manual(led, sym):
-    """Hapus semua order koin ini dari catatan (tidak dihitung di hasil live). Return jumlah order."""
     keys = [k for k, v in led["open"].items() if v["sym"] == sym]
     for k in keys:
         it = led["open"].pop(k)
@@ -366,7 +374,6 @@ def antrian_lihat():
 
 
 def antrian_terapkan(led):
-    """Terapkan /batal yang masuk saat bot sedang scan. Dipanggil sebelum ledger disimpan."""
     syms = _antrian(lambda d: ([], [x["sym"] for x in d]))
     for s in syms:
         batal_manual(led, s)
@@ -374,7 +381,6 @@ def antrian_terapkan(led):
 
 
 def peringatan(led, res_map):
-    """Posisi sinyal robot yang sudah jalan: kabari sekali bila BTC, bias, atau robot berbalik melawan."""
     pesan = []
     for it in led["open"].values():
         if it["status"] not in ("TERISI", "TP1"):

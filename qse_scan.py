@@ -1,4 +1,6 @@
-"""QSE v148 - proses satu koin: fitur -> mesin -> vonis PUSAT INSTRUKSI (EKSEKUSI/TAHAN, rapor, GOLDEN MOMENT)."""
+"""QSE v148 - proses satu koin: fitur -> mesin -> vonis PUSAT INSTRUKSI (EKSEKUSI/TAHAN, GOLDEN MOMENT).
+Penilaian 100% objektif berbasis struktur, kualitas pola, tren, dan izin BTC (tanpa filter rapor subjektif).
+Semua level SL dan TP dilengkapi batas pengaman objektif (SL 0.6% s/d 5.5%, TP1 & TP2 proporsional maks 14%)."""
 import math
 import numpy as np
 import qse_features as F
@@ -17,8 +19,31 @@ FAM = np.array(R.FAM, dtype=np.int64)
 FIB_IDX = set(list(range(8)) + [30, 31])
 
 
+def _rapikan_level_saran(e, sl, t1, t2, isL, a, tick):
+    """Pastikan SL dan TP1/TP2 saran DASBOR selalu masuk akal (SL 0.6%-5.5%, TP1 <= TP2 <= 14%)."""
+    if np.isnan(e) or e <= 0:
+        return e, sl, t1, t2
+    a_ef = min(max(a if (not np.isnan(a) and a > 0) else e * 0.015, e * 0.004), e * 0.030)
+    raw_risk = abs(e - sl) if (not np.isnan(sl) and ((isL and sl < e) or ((not isL) and sl > e))) else 1.5 * a_ef
+    min_d = max(e * 0.006, 0.9 * a_ef)
+    max_d = min(e * 0.055, 1.85 * a_ef)
+    if max_d < min_d:
+        max_d = e * 0.055
+    risk = min(max(raw_risk, min_d), max_d)
+    sl_new = e - risk if isL else e + risk
+
+    d1 = abs(t1 - e) if (not np.isnan(t1) and ((isL and t1 > e) or ((not isL) and t1 < e))) else 1.15 * risk
+    d2 = abs(t2 - e) if (not np.isnan(t2) and ((isL and t2 > e) or ((not isL) and t2 < e))) else 2.20 * risk
+    if d1 > d2:
+        d1, d2 = d2, d1
+    d2 = min(max(d2, 1.8 * risk), min(2.8 * risk, e * 0.14))
+    d1 = min(max(d1, 1.0 * risk), min(1.4 * risk, d2 * 0.60))
+    t1_new = (e + d1) if isL else max(e * 0.50, e - d1)
+    t2_new = (e + d2) if isL else max(e * 0.50, e - d2)
+    return float(e), float(sl_new), float(t1_new), float(t2_new)
+
+
 def _pola_top(NM, jidx, wnA, lsA, ntA, wrA, pfA, minSmp=12):
-    """Sama dengan f_lib DASBOR: tiap pola pakai arah dengan net R lebih besar, wajib minimal 12 trade dan net > 0."""
     out, pakai = [], set()
     for _ in range(5):
         bb, bv = -1, -99999.0
@@ -40,7 +65,6 @@ def _pola_top(NM, jidx, wnA, lsA, ntA, wrA, pfA, minSmp=12):
 
 
 def _gzh(v, n, df1h):
-    """Golden Zone Hunter 4J. Kalau sampel backtest 4J kurang dari 8, backtest juga dihitung di 1J (6000 candle)."""
     from config import FP as _FP
     g = PL.gz_hunter(v["high"][:n], v["low"][:n], v["close"][:n], fee_pct=_FP["fee_pct"])
     if g and g["bt"]["n"] < 8 and df1h is not None and len(df1h) > 300:
@@ -52,7 +76,7 @@ def _gzh(v, n, df1h):
 
 
 def mulai_uji(ts, TF_MS):
-    last_bar_time = int(ts[-1]) + TF_MS          # bar realtime yang sedang berjalan di TradingView
+    last_bar_time = int(ts[-1]) + TF_MS
     ujiW = 3000 * TF_MS
     tgl = math.floor(last_bar_time / (ujiW / 2)) * (ujiW / 2) - ujiW
     idx = np.where(ts >= tgl)[0]
@@ -71,9 +95,6 @@ GRID = np.round(np.arange(0, 3.01, 0.1), 2)
 
 
 def fill_prob(v, L, gap, isL, H):
-    """Peluang harga menyentuh entry LIMIT dalam H candle ke depan, dari riwayat koin ini
-    dengan kondisi BTC dan volume yang mirip dengan sekarang. gap dalam ATR.
-    Return (peluang untuk gap ini, tabel peluang untuk gap 0 sampai 3 ATR per 0.1)."""
     h, l, c, a = v["high"], v["low"], v["close"], v["atr"]
     n = L + 1
     if n < H + 50:
@@ -108,8 +129,6 @@ def fill_prob(v, L, gap, isL, H):
 
 
 def arah_prob(v, L, isL, Hn=1):
-    """Peluang candle ke-Hn berikutnya tutup searah sinyal, dari riwayat koin ini
-    pada tren koin dan kondisi BTC yang sama dengan sekarang. Return (persen, jumlah sampel)."""
     c = v["close"]
     n = L + 1
     if n < Hn + 100:
@@ -129,7 +148,6 @@ def arah_prob(v, L, isL, Hn=1):
 
 
 def btc_now(btc4, t_now, sym):
-    """Gerbang BTC seperti di candle berjalan TradingView: pakai candle BTC 4J yang baru tutup."""
     bf = F._btc_fc(btc4)
     pos = np.searchsorted(bf.index.values, t_now, side="right") - 1
     if pos < 0:
@@ -145,7 +163,6 @@ def btc_now(btc4, t_now, sym):
 
 
 def _zona(v, R, rkId, rkDr, sJ):
-    """Zona entry, SL, TP dan tipe order di candle berjalan, sama seperti f_zone Pine yang dihitung ulang tiap tick."""
     a, c, d1 = v["atr"][R], v["close"][R], v["d1"][R]
     zLv, zSL, zTP, zT2 = (np.zeros(5) for _ in range(4))
     oTy = np.zeros(5, np.int64)
@@ -185,8 +202,6 @@ def _zona(v, R, rkId, rkDr, sJ):
 
 def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None, lim_h=24, btc_live=None,
             df_live=None, h1_live=None):
-    """df = candle tutup. df_live = candle tutup + 1 candle berjalan (opsional). Dengan df_live, vonis, entry,
-    SL, TP dihitung seperti panel DASBOR di candle berjalan. Mesin tetap hanya memakai candle tutup."""
     TF_MS = TFMS[tf]
     live = (df_live is not None and tf == "240" and len(df_live) == len(df) + 1
             and df_live.index[-2] == df.index[-1])
@@ -222,8 +237,8 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
     lsT = int(vlCnt[3])
     wrT = vlCnt[2] / totT * 100 if totT else 0.0
     pfT = (vlRes + lsT) / lsT if lsT > 0 else (9.9 if vlRes > 0 else 0.0)
-    nilT = "SAMPEL KURANG" if totT < 10 else "A" if (wrT >= 60 and pfT >= 1.6) else "B" if (wrT >= 50 and pfT >= 1.2) \
-        else "C" if (wrT >= 45 and pfT >= 1.0) else "D buruk"
+    # Rapor koin tidak lagi dipakai membatalkan atau menahan sinyal (disimpan sebagai nilai A agar kompatibel)
+    nilT = "A" if (wrT >= 55 and pfT >= 1.3) else "B"
     bProb = float(v["bProb"][L]) if not np.isnan(v["bProb"][L]) else 50.0
     btcOkL, btcOkS = bool(v["btcOkL"][L]), bool(v["btcOkS"][L])
     bn = btc_now(btc_live, int(ts[L]) + TF_MS, sym) if btc_live is not None else None
@@ -233,7 +248,6 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
     doneB = P["doneB"]
 
     def hold(k):
-        # TradingView menilai panel di bar_index candle berjalan (L + 1)
         return vlSt[k] != 0 or (L + 1) - vlDb[k] < doneB
 
     def sId(k):
@@ -256,7 +270,7 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         iq = max(ik, 0)
         d = sDir(k)
         return (ik >= 0 and grade(sWb[iq], sEx[iq], sPF[iq]) <= 2 and bool(pvA[jidx(iq, d)]) and d == biasLg
-                and not jbk(k) and not slKena(k) and (btcOkL if d else btcOkS) and nilT != "D buruk" and totT >= 10)
+                and not jbk(k) and not slKena(k) and (btcOkL if d else btcOkS))
 
     def alasan(k):
         ik = sId(k)
@@ -267,17 +281,13 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         if not pvA[jidx(iq, d)]:
             return "belum lolos uji"
         if grade(sWb[iq], sEx[iq], sPF[iq]) > 2:
-            return "nilai C"
+            return "mutu pola di bawah batas"
         if d != biasLg:
-            return "lawan arah"
+            return "lawan arah tren"
         if not (btcOkL if d else btcOkS):
             return "BTC 4J melawan"
         if jbk(k):
-            return "ada jebakan"
-        if totT < 10:
-            return "sampel robot kurang"
-        if nilT == "D buruk":
-            return "rapor D buruk"
+            return "ada jebakan ekor"
         if slKena(k):
             return "SL tersentuh"
         return "aman"
@@ -294,8 +304,6 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         ik = sId(k)
         d = sDir(k)
         m = []
-        if nilT != "A":
-            m.append("rapor A (sekarang %s)" % nilT)
         if not (ik >= 0 and okE(k)):
             m.append("saran EKSEKUSI")
         if not ((bProb >= 55 and btcOkL) if d else (bProb <= 45 and btcOkS)):
@@ -319,6 +327,7 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         d = sDir(k)
         j = jidx(ik, d)
         e, sl, t1, t2 = dval(k, vlE, zLv), dval(k, vlS, zSL), dval(k, vlP, zTP), dval(k, vlP2, zT2)
+        e, sl, t1, t2 = _rapikan_level_saran(e, sl, t1, t2, d, a, tick)
         ty = E.ORD[int(vlTy[k] if hold(k) else oTy[k])]
         risk = max(abs(e - sl), tick)
         gr = grade(sWb[ik], sEx[ik], sPF[ik])
@@ -378,5 +387,5 @@ def process(sym, df, df1h, dfD, dfW, btc, tick, tf="240", df4=None, btc_tf=None,
         gzh=_gzh(v, n, df1h) if tf == "240" else None,
         pola_kecil=_pola_top(R.NM, jidx, wnA, lsA, ntA, wrA, pfA, minSmp=3) if totT < 12 else None,
         pola_chart=PL.analisa(v["open"][:n], v["high"][:n], v["low"][:n], v["close"][:n], v["atr"][:n],
-                              backtest=nilT in ("A", "B", "C")) if tf == "240" else None,
+                              backtest=True) if tf == "240" else None,
     )

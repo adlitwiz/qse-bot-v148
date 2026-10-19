@@ -369,7 +369,7 @@ def _saran(sym, arah, now, kat=None, pub=None):
                 return (f"✅ <b>SARAN ENTRY {arah} {sym}</b> (berita dan engine searah)\n"
                         + SY.baris_kelas(arah, skor=SY.skor_setup(r, x), wr=x.get("wr"), rr2=rr2, rapor=r.get("rapor"), jalur="saran news") + "\n"
                         + SY.blok_salin(x["entry"], x["sl"], x["tp1"], x["tp2"], x["order"], t, sym=sym, arah=arah) + "\n"
-                        f"↳ pola {TG.e(x['pola'])} mutu {x['mutu']}, rapor robot {r['rapor']}. Berlaku sampai {batas}.")
+                        f"↳ pola {TG.e(x['pola'])} mutu {x['mutu']}. Berlaku sampai {batas}.")
     if kat and kuat_mandiri(kat) and sym == "BTCUSDT":
         return _mandiri(sym, arah, kat, pub, now, eng)
     if not r:

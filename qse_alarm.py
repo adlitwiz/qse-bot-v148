@@ -94,7 +94,6 @@ def perintah(args):
             f"Harga sekarang {_fp(px)}. Kamu dikabari begitu harga menyentuh level itu.")
 
 
-# ---------------- alarm candle tutup: /tunggu SOL atas 150 4j ----------------
 TF = {"4J": ("240", 4 * 3600000, "4J"), "4H": ("240", 4 * 3600000, "4J"), "1J": ("60", 3600000, "1J"),
       "1H": ("60", 3600000, "1J"), "15M": ("15", 900000, "15M"),
       "D": ("D", 86400000, "1D"), "1D": ("D", 86400000, "1D")}
@@ -102,7 +101,6 @@ BERLAKU_HARI = 7
 
 
 def tunggu(args):
-    """/tunggu SOL atas 150 4j = kabari saat candle 4J TUTUP di atas 150. Tanpa TF = 4J."""
     if not args:
         d = [a for a in _lihat()["list"] if a.get("jenis") in ("tutup", "gzh")]
         if not d:
@@ -152,7 +150,6 @@ def tunggu(args):
 
 
 def tambah_gzh(sym, L, e, sl, tp1, tp2, tick, skor=None, wr=None, dikirim=True):
-    """Dipanggil Golden Zone Hunter saat harga menyentuh 0.618: nilai candle 4J tempat sentuhan terjadi saat tutup."""
     sekarang = int(time.time() * 1000)
 
     def f(d):
@@ -166,7 +163,6 @@ def tambah_gzh(sym, L, e, sl, tp1, tp2, tick, skor=None, wr=None, dikirim=True):
 
 
 def _tutup_candle(sym, tf, tf_ms):
-    """Candle yang sudah tutup: list (start_ms, close)."""
     try:
         r = requests.get(BYBIT_URL + "/v5/market/kline",
                          params={"category": "linear", "symbol": sym, "interval": tf, "limit": 10}, timeout=10)
@@ -183,8 +179,7 @@ def _pesan_gzh(a, cl):
     if not ((cl > a["harga"]) if L else (cl < a["harga"])):
         return (f"❌ <b>GZH BATAL  ·  {a['sym']} {'LONG' if L else 'SHORT'}</b>\n"
                 f"Jangan entry. Candle 4J tutup {'di bawah' if L else 'di atas'} 0.618 ({TG.fp(a['harga'], t)}).")
-    risk = abs(cl - a["sl"])
-    if risk <= 0 or ((a["tp1"] <= cl) if L else (a["tp1"] >= cl)):          # tp1 di sini = titik 0 fib
+    if ((a["tp1"] <= cl) if L else (a["tp1"] >= cl)):
         return (f"⚠️ <b>GZH {a['sym']}</b> candle tutup memantul di {TG.fp(cl, t)}, tapi harga sudah melewati titik 0 fib. "
                 f"Lewati.")
     import qse_saya as SY
@@ -194,8 +189,8 @@ def _pesan_gzh(a, cl):
     if bd:
         return (f"⏸️ <b>GZH {a['sym']} {arah}</b>: candle 4J tutup memantul di {TG.fp(cl, t)}, tapi ada berita besar "
                 f"{TG.e(bd['judul'])} dalam 3 jam. Lewati.")
-    # syarat uji 6 tahun: searah tren besar (EMA 200 4J candle konfirmasi) dan searah BTC 4J
     e200 = None
+    df = None
     try:
         df = ST._k4(a["sym"], 600)
         if df is not None and len(df) > 210:
@@ -213,27 +208,26 @@ def _pesan_gzh(a, cl):
     d = ST.lihat("GZH")
     if len(d["open"]) >= ST.MAKS_BUKA:
         return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi posisi GZH robot sudah {ST.MAKS_BUKA}. Lewati."
+    lv = ST.level_strategis(df, cl, arah, tp_r=2.2, sl_acuan=a["sl"])
+    if not lv:
+        return f"⏸️ <b>GZH {a['sym']} {arah}</b>: dilewati karena volatilitas candle sedang spike ekstrem."
     now = time.time()
-    it = dict(sym=a["sym"], arah=arah, entry=cl, sl=a["sl"], sl0=a["sl"], risk=risk, best=cl, bar=0, t=now,
-              last=int(a["candle"]), close=cl, tick=t)
+    sl, tp, tp1, tp2, risk = lv["sl"], lv["tp"], lv["tp1"], lv["tp2"], lv["risk"]
+    it = dict(sym=a["sym"], arah=arah, entry=cl, sl=sl, sl0=sl, tp=tp, tp1=tp1, tp2=tp2,
+              risk=risk, best=cl, bar=0, t=now, last=int(a["candle"]), close=cl, tick=t)
     ST._ubah("GZH", lambda dd: dd["open"].update({f"{a['sym']}|{int(now)}": it}))
     PO.pesan(a["sym"], arah)
     rm_p = PO.rem()
-    try:
-        a14 = ST._atr(df["high"].values.astype(float), df["low"].values.astype(float), df["close"].values.astype(float))[-1]
-        jarak = f"{TG.fp(3 * a14, t)} ({3 * a14 / cl * 100:.1f}%)"
-    except Exception:
-        jarak = "3 ATR"
+    jarak = f"{TG.fp(2.5 * lv['atr_ef'], t)} ({2.5 * lv['atr_ef'] / cl * 100:.1f}%)"
     return (f"{'🟢' if L else '🔴'} <b>GZH TERKONFIRMASI  ·  {a['sym']} {arah}</b>\n"
             f"{SY.layak('saran GZH', arah)}\n"
             + (f"🛡 Rem portofolio aktif, lot setengah: {TG.e(rm_p)}\n" if rm_p else "")
-            + SY.blok_salin(cl, a["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=a["sym"], arah=arah) + "\n"
-            f"Masuk MARKET sekarang. Pasang Trailing Stop Bybit jarak {jarak}, atau ikuti pesan GESER SL. "
+            + SY.blok_salin(cl, sl, tp1, tp2, order="MARKET", tick=t, sym=a["sym"], arah=arah) + "\n"
+            f"Masuk MARKET sekarang. Pasang SL {TG.fp(sl, t)} dan TP {TG.fp(tp, t)} (atau Trailing Stop jarak {jarak}). "
             f"10 hari belum kena, tutup manual.")
 
 
 def _cek_tutup(d0):
-    """Alarm candle tutup dan konfirmasi GZH. Return (pesan, set id selesai, dict id -> last_ts baru)."""
     out, selesai, maju = [], set(), {}
     now = time.time() * 1000
     cache = {}
@@ -257,7 +251,7 @@ def _cek_tutup(d0):
                     out.append(p)
                 selesai.add(a["id"])
             elif rows[-1][0] > a["candle"]:
-                selesai.add(a["id"])          # candle sentuhan terlewat (bot mati), jangan kirim terlambat
+                selesai.add(a["id"])
             continue
         for ts, cl in rows:
             if ts <= a["last_ts"]:
@@ -272,7 +266,6 @@ def _cek_tutup(d0):
 
 
 def cek():
-    """Dipanggil tiap menit. Return daftar pesan alarm yang kena (dan alarm itu dihapus)."""
     d0 = _lihat()
     if not d0["list"]:
         return []
@@ -304,7 +297,7 @@ def cek():
             if a.get("jenis", "sentuh") != "sentuh":
                 sisa.append(a)
                 continue
-            rows =[c for c in candle.get(a["sym"], []) if c[0] + 60000 > a["last_ts"]]
+            rows = [c for c in candle.get(a["sym"], []) if c[0] + 60000 > a["last_ts"]]
             kena = None
             for ts, hi, lo, cl in rows:
                 if (a["arah"] == "naik" and hi >= a["harga"]) or (a["arah"] == "turun" and lo <= a["harga"]):
