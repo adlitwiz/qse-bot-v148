@@ -27,7 +27,7 @@ def mulai_scan():
     folder = os.path.dirname(os.path.abspath(__file__))
     subprocess.Popen([sys.executable, "main.py", "--scan"], cwd=folder, env=os.environ.copy(),
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    return ("Scan dimulai. Robot menilai ulang koin potensial di TF 4J dengan harga terkini. "
+    return ("Scan dimulai. Robot menilai ulang koin rapor A/B di TF 4J dan TF 1J dengan harga terkini. "
             "Hasilnya terkirim dalam 1 sampai 3 menit.")
 
 

@@ -25,6 +25,7 @@ def _aksi(metode, **data):
 
 
 def pin(mid):
+    """Sematkan pesan (bot harus admin grup dengan izin pin). Gagal tidak masalah."""
     if mid:
         return _aksi("pinChatMessage", message_id=mid, disable_notification=True)
 
@@ -39,10 +40,11 @@ _RAPAT = ("↳", "━", "SL:", "TP1:", "TP2:", "TP:")
 
 GARIS_PANJANG = "━━━━━━━━━━━━━━━━━━"
 JUDUL_BAGIAN = ("💡", "🛠", "⚠️ <b>", "👍", "📏", "🧭", "⏰ <b>", "🔎", "🌐 <b>", "❓", "📐", "🙈", "📋", "🗂",
-                "📈 <b>", "🛡", "🎯 <b>", "🟢 <b>", "🔴 <b>", "🟡 <b>", "🔵 <b>", "🟠 <b>", "<b>", "🔹", "⚪", "📊 <b>", "🤖 <b>", "⛔")
+                "📈 <b>", "🛡", "🎯 <b>", "🟢 <b>", "🔴 <b>", "🟡 <b>", "🔵 <b>", "🟠 <b>", "Rapor A/B lainnya", "<b>", "🔹", "⚪", "📊 <b>", "🤖 <b>", "⛔")
 
 
 def _rapi_struktur(b):
+    """Blok yang sudah tersusun (punya garis panjang): spasi hanya sebelum judul bagian, supaya poin tetap rapat."""
     out, dalam = [], 0
     for ln in b.split("\n"):
         s = ln.strip()
@@ -55,7 +57,21 @@ def _rapi_struktur(b):
 
 
 def _rapi(b):
+    # semua pesan memakai spasi terstruktur: baris kosong hanya sebelum judul bagian dan sebelum item baru
+    # (baris berawalan ikon arah atau nomor tebal), poin dan baris lanjutan tetap rapat
     return _rapi_struktur(b)
+    """Beri baris kosong di antara kalimat supaya enak dibaca. Baris lanjutan (↳), garis, dan SL/TP tetap
+    menempel ke baris atasnya. Isi <code>/<pre> yang memanjang beberapa baris tidak diubah."""
+    out, dalam = [], 0
+    for ln in b.split("\n"):
+        s = ln.strip()
+        if (out and s and out[-1].strip() and not dalam and not s.startswith(_RAPAT)
+                and not out[-1].strip().startswith("━")):
+            out.append("")
+        out.append(ln)
+        dalam += ln.count("<code>") + ln.count("<pre>") - ln.count("</code>") - ln.count("</pre>")
+        dalam = max(dalam, 0)
+    return "\n".join(out)
 
 
 def send(blocks, token=None, chat_id=None):
@@ -68,7 +84,7 @@ def send(blocks, token=None, chat_id=None):
     pecah = []
     for b in blocks:
         b = _rapi(b)
-        while len(b) > 3800:
+        while len(b) > 3800:                      # blok kepanjangan: potong di batas baris
             k = b.rfind("\n", 0, 3800)
             k = k if k > 0 else 3800
             pecah.append(b[:k])
@@ -95,6 +111,7 @@ def send(blocks, token=None, chat_id=None):
                     continue
                 print("[WARN] Telegram", r.status_code, r.text[:200])
                 if r.status_code == 400 and "parse" in r.text.lower():
+                    # tag HTML rusak: kirim ulang sebagai teks polos supaya sinyal tidak hilang
                     import re as _re
                     polos = html.unescape(_re.sub(r"<[^>]+>", "", m))
                     r2 = requests.post(API.format(t=token), data={"chat_id": chat_id, "text": polos,
@@ -125,7 +142,7 @@ def e(s):
 def sinyal(r, s, tag, risk_usdt=0.0):
     t = r["tick"]
     head = ("GOLDEN MOMENT | " if s["golden"] else "") + f"{r['symbol']} {s['arah']}"
-    lab = f"Mutu pola {s['mutu']} | EKSEKUSI" + (" | Zona emas" if s["zona_emas"] else "")
+    lab = f"Rapor robot {r['rapor']} | Mutu pola {s['mutu']} | EKSEKUSI" + (" | Zona emas" if s["zona_emas"] else "")
     rows = [
         f"➡️ <b>{e(head)}</b>" + (f"  [{tag}]" if tag else ""),
         e(lab),
@@ -136,6 +153,7 @@ def sinyal(r, s, tag, risk_usdt=0.0):
         f"TP1: <code>{fp(s['tp1'], t)}</code> (+{s['rr1']:.2f}R, tutup separuh)",
         f"TP2: <code>{fp(s['tp2'], t)}</code> (+{s['rr2']:.2f}R, SL geser ke entry)",
         f"Pola {s['win']}TP/{s['loss']}SL | WR {s['wr']:.0f}% | PF {s['pf']:.2f} | {s['net_r']:+.1f}R | E {s['ev']:+.2f}R",
+        f"Robot {r['trd']} trade | WR {r['wr']:.0f}% | PF {r['pf']:.2f} | {r['net_r']:+.1f}R",
         f"{e(r['btc'])} naik {r['bProb']:.0f}% | {e(r['regime'])} | jarak {s['jarak_atr']:.1f} ATR | peluang isi {s['peluang']}%",
     ]
     if risk_usdt > 0:
@@ -152,16 +170,15 @@ def hasil(ev, it, tick_map):
     ikon = {"TERISI": "📥", "TP1": "💰", "TP2": "🏆", "SL": "🛑", "BE": "⚖️", "BATAL": "❌"}.get(ev, "•")
     arti = {"TERISI": "ORDER TERISI", "TP1": "KENA TP1, tutup separuh, SL geser ke entry", "TP2": "KENA TP2, selesai",
             "SL": "KENA SL", "BE": "keluar di entry setelah TP1"}
-    ord_nm = "order STOP/kondisional" if "STOP" in str(it.get("order", "")) else "order LIMIT"
-    txt = (f"saran dibatalkan: {it.get('why', '')}. Kalau {ord_nm} sudah kamu pasang, batalkan juga"
+    txt = (f"saran dibatalkan: {it.get('why', '')}. Kalau LIMIT-nya sudah kamu pasang, batalkan juga"
            if ev == "BATAL" else arti[ev])
     r = f" ({it['result_r']:+.2f}R)" if ev in ("TP2", "SL", "BE") and "result_r" in it else ""
     cad = " | CADANGAN" if it.get("cadangan") else " | SIKLUS" if it.get("siklus") else ""
     return (f"{ikon} <b>{e(it['sym'])} {it['arah']}</b> TF {tf}{cad} | {e(it['pola'])}\n"
-           f"↳ {e(txt)}{r} | entry {fp(it['entry'], t)}")
-
+            f"↳ {e(txt)}{r} | entry {fp(it['entry'], t)}")
 
 def ambil_perintah(offset, token=None, chat_id=None):
+    """Baca perintah /batal, /status, /bantuan dari grup. Return (daftar (perintah, argumen), offset baru)."""
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = str(chat_id or os.environ.get("TELEGRAM_CHAT_ID") or "")
     if not token or not chat_id:
