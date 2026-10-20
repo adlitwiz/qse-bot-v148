@@ -3088,6 +3088,8 @@ def sinyal_jalur():
             ket = "🆕 sinyal candle ini" if baru else f"harga masih dekat entry robot {fp(it['entry'], t)} ({d:+.2f}R)"
             if it.get("combo"):
                 ket += f"  ·  ⭐ COMBO {len(it['combo']) + 1}"
+            if it.get("combo_emas"):
+                ket += "  ·  🏆 COMBO EMAS"
             if it.get("pullback"):
                 ket += "  ·  🔁 pullback"
             if len(it.get("mutu_plus") or []) >= 3:

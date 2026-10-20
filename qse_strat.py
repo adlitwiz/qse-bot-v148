@@ -417,7 +417,7 @@ PF_JALUR = {"tt": 1.47, "orderblock": 1.45, "ema_short": 1.42, "rsi_vol": 1.34, 
 def prioritas(k, it):
     """Kunci urut sinyal: jumlah label terbukti dulu (COMBO, COMBO 3+, MUTU TINGGI, PULLBACK), lalu PF jalur.
     Label: combo 3+ PF 1.40, mutu tinggi PF 1.37, McGinley pullback PF 1.43, semua di atas PF jalur mana pun tanpa label."""
-    n = 0
+    n = 2 if it.get("combo_emas") else 0
     cb = len(it.get("combo") or [])
     n += (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0)
     n += 1 if len(it.get("mutu_plus") or []) >= 3 else 0
@@ -430,13 +430,14 @@ def prioritas_teks(k, m):
     import re
     g = re.search(r"COMBO (\d+)", m)
     cb = int(g.group(1)) - 1 if g else 0
-    n = (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0) + (1 if "MUTU TINGGI" in m else 0) + (1 if "PULLBACK" in m else 0)
+    n = (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0) + (1 if "MUTU TINGGI" in m else 0) + (1 if "PULLBACK" in m else 0) \
+        + (2 if "COMBO EMAS" in m else 0)
     return (n, PF_JALUR.get(k, 1.2))
 
 
 def label_nama(it):
     """Nama label terbukti pada sinyal, untuk ditampilkan di urutan prioritas."""
-    out = []
+    out = ["COMBO EMAS"] if it.get("combo_emas") else []
     cb = len(it.get("combo") or [])
     if cb:
         out.append(f"COMBO {cb + 1}")
@@ -450,7 +451,7 @@ def label_nama(it):
 def label_nama_teks(m):
     import re
     g = re.search(r"COMBO (\d+)", m)
-    return ([f"COMBO {g.group(1)}"] if g else []) + (["MUTU TINGGI"] if "MUTU TINGGI" in m else []) \
+    return (["COMBO EMAS"] if "COMBO EMAS" in m else []) + ([f"COMBO {g.group(1)}"] if g else []) + (["MUTU TINGGI"] if "MUTU TINGGI" in m else []) \
         + (["PULLBACK"] if "PULLBACK" in m else [])
 
 
@@ -463,14 +464,37 @@ def label_prioritas(p):
 
 
 def combo_teks(it):
-    """Satu baris COMBO untuk kartu semua jalur."""
+    """Baris COMBO (dan COMBO EMAS) untuk kartu semua jalur."""
     if not it.get("combo"):
         return []
-    return [f"⭐ <b>COMBO {len(it['combo']) + 1}</b>: juga {', '.join(it['combo'])} searah dalam 72 jam. "
+    emas = ([f"🏆 <b>COMBO EMAS</b>: pasangan dengan {', '.join(it['combo_emas'])} termasuk pasangan terbaik. "
+             f"Dipilih dari 2021-2023 (PF 1.45), dicek 2024-2026 PF 1.48, combo biasa 1.25"] if it.get("combo_emas") else [])
+    return emas + [f"⭐ <b>COMBO {len(it['combo']) + 1}</b>: juga {', '.join(it['combo'])} searah dalam 72 jam. "
             f"Uji 2021-2026: combo 3+ PF 1.40, 2 PF 1.25, sendiri PF 1.21"]
 
 
-def _combo(df, k, arah, bn):
+# Pasangan combo terbaik, dipilih dari data 2021-2023 (PF pasangan minimal 1.4, minimal 100 trade), dicek di 2024-2026:
+# combo emas PF 1.45 (2021-23) dan 1.48 (2024-26), combo biasa 1.17/1.25, sendiri 1.19/1.22. Sekitar 3.6 sinyal per hari.
+# Format (jalur sinyal, jalur pendukung dalam 72 jam searah).
+COMBO_EMAS = {("GZH", "smc_choch"), ("ema_short", "msb_hpz"), ("ema_short", "rsi_vol"), ("ichimoku", "ema_short"),
+              ("ichimoku", "mcginley"), ("ichimoku", "rsi_vol"), ("mcginley", "GZH"), ("mcginley", "ema_short"),
+              ("mcginley", "ichimoku"), ("mcginley", "msb_hpz"), ("msb_hpz", "ema_short"), ("msb_hpz", "ichimoku"),
+              ("rsi_vol", "ichimoku"), ("rsi_vol", "mcginley"), ("rsi_vol", "msb_hpz"), ("rsi_vol", "smc_choch"),
+              ("smc_choch", "ema_short"), ("snr_vol", "smc_choch")}
+
+
+def nama_ke_kunci(nm):
+    peta = {cfg["nama"]: kk for kk, cfg in STRAT.items()}
+    peta.update({"Ichimoku": "ichimoku", "Order Block": "orderblock"})
+    return peta.get(nm)
+
+
+def combo_emas(k, combo):
+    """Pasangan combo emas pada sinyal ini. Return list nama pendukung yang membentuk pasangan emas."""
+    return [nm for nm in (combo or []) if (k, nama_ke_kunci(nm)) in COMBO_EMAS]
+
+
+def _combo(df, k, arah, bn, sym=None):
     """Jalur terbukti lain yang memberi sinyal searah di koin ini dalam 18 candle 4J terakhir (72 jam).
     Uji 2021-2026 35 ribu trade: jendela 24 jam combo 2+ jalur 2.2 sinyal per hari PF 1.47, jendela 72 jam 3.7 per hari PF 1.40
     (2021-23 1.31, 2024-26 1.49), sendiri PF 1.21. Syarat kondisi (EMA, cloud, RSI, BTC searah) tidak menaikkan PF, tidak dipakai."""
@@ -498,6 +522,16 @@ def _combo(df, k, arah, bn):
                     nama.add("Order Block")
             except Exception:
                 pass
+    if sym:
+        # GZH dikirim terpisah (alarm fib), dicek dari catatan jalur GZH 72 jam terakhir
+        try:
+            now = time.time()
+            for v in list(lihat("GZH").get("open", {}).values()) + list(lihat("GZH").get("closed", [])):
+                if v.get("sym") == sym and v.get("arah") == arah and 0 <= now - v.get("t", 0) <= 72 * 3600 and k != "GZH":
+                    nama.add(STRAT["GZH"]["nama"])
+                    break
+        except Exception:
+            pass
     # candle sinyal inside bar (high dan low di dalam candle sebelumnya): uji 2021-2026 PF 1.39 (dev 1.33, uji 1.45)
     # vs 1.25, konsisten di 7 dari 9 jalur. Dihitung satu pendukung combo: combo 3+ jadi 4.0 per hari, PF tetap 1.42
     h, l = df["high"].values.astype(float), df["low"].values.astype(float)
@@ -636,7 +670,8 @@ def jalankan(baru_ok=True):
                 it.update(tp=px + cfg["tp_r"] * risk if L else px - cfg["tp_r"] * risk, maks_bar=cfg["maks_bar"])
             it.update(mutu=sk, mutu_plus=mp)
             try:
-                it["combo"] = _combo(df, k, arah, bn)
+                it["combo"] = _combo(df, k, arah, bn, sym)
+                it["combo_emas"] = combo_emas(k, it["combo"])
             except Exception as ex:
                 print("[WARN] combo", ex)
             if k == "mcginley":

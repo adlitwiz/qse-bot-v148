@@ -321,7 +321,8 @@ def _jalankan(baru_ok=True):
                   last=int(df.index[-1]), close=px, tick=t, sl_atr=SL_ATR, trail_atr=TRAIL_ATR)
         try:
             import qse_strat as ST
-            it["combo"] = ST._combo(df, "ichimoku", arah, ST.btc_naik())
+            it["combo"] = ST._combo(df, "ichimoku", arah, ST.btc_naik(), sym)
+            it["combo_emas"] = ST.combo_emas("ichimoku", it["combo"])
         except Exception as ex:
             print("[WARN] combo ichimoku", ex)
         baru.append(it)

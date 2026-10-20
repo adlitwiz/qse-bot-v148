@@ -288,7 +288,8 @@ def _jalankan(baru_ok=True):
                   last=sg["ts"], close=px, tick=t, vp=sg["vp"])
         try:
             import qse_strat as ST
-            it["combo"] = ST._combo(df, "orderblock", "LONG", ST.btc_naik())
+            it["combo"] = ST._combo(df, "orderblock", "LONG", ST.btc_naik(), sym)
+            it["combo_emas"] = ST.combo_emas("orderblock", it["combo"])
         except Exception as ex:
             print("[WARN] combo orderblock", ex)
         baru.append(it)

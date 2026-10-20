@@ -1951,6 +1951,8 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
         combo = it.get("combo") or []
         ket = ("🆕 sinyal candle ini" if baru else
                f"sinyal {jam} WIB, harga masih dekat entry robot {TG.fp(it['entry'], t)} ({d:+.2f}R)")
+        if it.get("combo_emas"):
+            ket += f"\n🏆 COMBO EMAS dengan {TG.e(', '.join(it['combo_emas']))} (pasangan terbaik, uji 2024-2026 PF 1.48)"
         if combo:
             ket += f"\n⭐ COMBO {len(combo) + 1}: juga {TG.e(', '.join(combo))}"
         if it.get("pullback"):
