@@ -1326,6 +1326,21 @@ def entry(args):
         pass
     if kv.get("LEV"):
         rows.insert(4, f"Leverage {kv['LEV']:g}x dicatat, /status menampilkan ROE.")
+    if jp and not kv.get("terisi"):
+        try:
+            import qse_strat as ST
+            kj = jp["jalur"].replace("saran ", "")
+            bm = ST.batas_masuk(jp, kj)
+            if bm and (not (bm[0] <= harga <= bm[1]) or time.time() > bm[2]):
+                rj = abs(jp["entry"] - jp.get("sl0", jp["sl"])) or 1e-12
+                lari = (harga - jp["entry"]) * (1 if L else -1) / rj
+                rows.append(f"⚠️ <b>ENTRY TELAT</b>: harga {fp(harga, t)} sudah {lari:+.2f}R dari entry robot {fp(jp['entry'], t)}"
+                            + (" dan lewat batas waktu" if time.time() > bm[2] else "")
+                            + f". Batas aman {fp(bm[0], t)} sampai {fp(bm[1], t)}. Uji 2020-2026: masuk lebih dari 0.5R "
+                            f"dari entry robot hasilnya turun. Kalau belum masuk di Bybit, lewati sinyal ini. Kalau sudah, "
+                            f"tetap pasang SL dan ikuti aturan jalur.")
+        except Exception as ex:
+            print("[WARN] batas masuk", ex)
     if order == "STOP" and isi_ts is None:
         rows.append(f"Order STOP: terisi saat harga {'naik menembus' if L else 'turun menembus'} {fp(harga, t)}. "
                     "Robot mengabari saat terisi.")
@@ -3058,6 +3073,8 @@ def sinyal_jalur():
             d = ((px - it["entry"]) * (1 if L else -1) / risk) if (px and risk) else None
             umur = (now - it.get("t", now)) / 14400
             sl = it["sl"]
+            if baru and d is not None:
+                baru = abs(d) <= 0.5 and ((px > sl) if L else (px < sl))       # harga sudah lari: tidak ditampilkan
             masih = (k in telat_ok and umur <= 2.1 and d is not None and abs(d) <= 0.5 and ((px > sl) if L else (px < sl))
                      and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
             if not (baru or masih):
@@ -3077,14 +3094,16 @@ def sinyal_jalur():
                 ket += "  ·  💎 mutu tinggi"
             kartu.append((ST.prioritas(k, it), f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
                          f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>"
-                         + "".join("\n" + z for z in ST.tp_cepat_teks(it))))
+                         + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it))))
     kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
     kartu.sort(key=lambda z: z[0], reverse=True)          # prioritas: label terbukti dulu, lalu PF jalur
-    kartu = [f"🏅 <b>PRIORITAS {i}</b>  ·  {ST.label_prioritas(p)}  ·  PF jalur {p[1]:.2f}\n{x}" for i, (p, x) in enumerate(kartu, 1)]
+    kartu = [f"{ST.medali(i)} <b>PRIORITAS {i}</b>  ·  {ST.label_prioritas(p)}  ·  PF jalur {p[1]:.2f}\n{x}"
+             for i, (p, x) in enumerate(kartu, 1)]
     if not kartu:
         return (kepala + "\nBelum ada sinyal jalur terbukti yang bisa diikuti di harga sekarang. Sinyal baru dikirim tiap candle 4J tutup "
                 "(03, 07, 11, 15, 19, 23 WIB lewat 5 menit).")
-    return kepala + "\nHanya sinyal yang masih bisa diikuti di harga sekarang.\n\n" + "\n\n".join(kartu)
+    return (kepala + "\nHanya sinyal yang masih valid di harga sekarang (dalam 0.5R dari entry robot dan belum lewat batas waktu), "
+            "urut dari prioritas 1.\n\n" + "\n\n".join(kartu))
 
 
 

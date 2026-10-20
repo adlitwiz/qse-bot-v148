@@ -147,8 +147,11 @@ def _tugas_berkala():
             kumpul.sort(key=lambda z: z[0], reverse=True)
             kirim = []
             for no, (pr, slot, nama, m) in enumerate(kumpul, 1):
-                ids = TG.send([f"🏅 <b>QSE v148 | PRIORITAS {no} dari {len(kumpul)}</b>  ·  {ST.label_prioritas(pr)}  ·  "
-                               f"PF jalur {pr[1]:.2f}\n{nama}  ·  {SY.baris_jadwal(telat_menit=3)}\n{m}"])
+                lb = ST.label_nama_teks(m)
+                ids = TG.send([f"📌 <b>QSE v148 | DETAIL SINYAL BARU {nama}</b>\n"
+                               f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  "
+                               f"dikirim urut prioritas, urutan lengkap ada di pesan 🎯 SINYAL 4 JAM\n"
+                               f"{SY.baris_jadwal(telat_menit=3)}\n{m}"])
                 kirim.append((slot, ids))
             terbaik = {}
             for slot, ids in kirim:

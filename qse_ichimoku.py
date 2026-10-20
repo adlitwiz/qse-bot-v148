@@ -106,7 +106,7 @@ def rem():
 def ST_tpc(it):
     try:
         import qse_strat as ST
-        return ST.tp_cepat_teks(it)
+        return ST.batas_masuk_teks(it, "ichimoku") + ST.tp_cepat_teks(it)
     except Exception:
         return []
 
@@ -350,7 +350,7 @@ def _jalankan(baru_ok=True):
             *ST_combo(it),
             SY.GARIS,
             SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=sym, arah=arah),
-            *ST_tpc(dict(entry=px, sl=sl, arah=arah, tick=t)),
+            *ST_tpc(dict(entry=px, sl=sl, arah=arah, tick=t, t=now, risk=risk)),
             *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih. Di uji 5 tahun rem ini "
                 f"menurunkan drawdown dari 28% ke 18% tanpa mengurangi profit"] if rm else []),
             "💡 <b>Kenapa</b>",

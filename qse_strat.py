@@ -364,6 +364,35 @@ def mutu_teks(it):
     return []
 
 
+TELAT_JALUR = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
+
+
+def batas_masuk(it, k):
+    """Rentang harga dan batas waktu sinyal MARKET masih boleh diikuti. Uji entry telat 2020-2026: harga dalam 0.5R
+    dari entry robot dan maks 2 candle 4J masih untung (EMA 1.22/1.24, RSI 1.21/1.39, McGinley 1.14/1.27, SnR 1.29/1.46,
+    SMC 1.19/1.12, Ichimoku 1.16/1.23). MSB, Order Block, GZH hanya sampai candle 4J berikutnya tutup.
+    Return (bawah, atas, batas_detik) atau None."""
+    try:
+        risk = it.get("risk") or abs(it["entry"] - it.get("sl0", it["sl"]))
+        if not risk:
+            return None
+        akhir = it.get("t", time.time()) + 14400 * (2.1 if k in TELAT_JALUR else 1.0)      # sama dengan aturan pesan 4J
+        return it["entry"] - 0.5 * risk, it["entry"] + 0.5 * risk, akhir
+    except Exception:
+        return None
+
+
+def batas_masuk_teks(it, k, fmt=None):
+    b = batas_masuk(it, k)
+    if not b:
+        return []
+    fmt = fmt or TG.fp
+    t = it.get("tick", 0.0001)
+    jam = time.strftime("%d/%m %H:%M", time.gmtime(b[2] + 7 * 3600))
+    return [f"🎯 Masih boleh masuk MARKET selama harga {fmt(b[0], t)} sampai {fmt(b[1], t)} dan sebelum {jam} WIB. "
+            f"Di luar itu lewati, harga sudah lari (uji: telat lebih dari 0.5R atau lewat batas waktu, hasil turun)"]
+
+
 def tp_cepat_teks(it, fmt=None):
     """Opsi TP cepat 1R. Uji 2021-2026 35 ribu sinyal: TP 1R kena 55% (TP normal sekitar 40%), PF 1.13 lawan 1.26,
     total profit 2118R lawan 4568R. Hanya opsi, TP normal tetap saran utama."""
@@ -403,6 +432,30 @@ def prioritas_teks(k, m):
     cb = int(g.group(1)) - 1 if g else 0
     n = (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0) + (1 if "MUTU TINGGI" in m else 0) + (1 if "PULLBACK" in m else 0)
     return (n, PF_JALUR.get(k, 1.2))
+
+
+def label_nama(it):
+    """Nama label terbukti pada sinyal, untuk ditampilkan di urutan prioritas."""
+    out = []
+    cb = len(it.get("combo") or [])
+    if cb:
+        out.append(f"COMBO {cb + 1}")
+    if len(it.get("mutu_plus") or []) >= 3:
+        out.append("MUTU TINGGI")
+    if it.get("pullback"):
+        out.append("PULLBACK")
+    return out
+
+
+def label_nama_teks(m):
+    import re
+    g = re.search(r"COMBO (\d+)", m)
+    return ([f"COMBO {g.group(1)}"] if g else []) + (["MUTU TINGGI"] if "MUTU TINGGI" in m else []) \
+        + (["PULLBACK"] if "PULLBACK" in m else [])
+
+
+def medali(no):
+    return {1: "🥇", 2: "🥈", 3: "🥉"}.get(no, "🏅")
 
 
 def label_prioritas(p):
@@ -642,6 +695,7 @@ def kartu(k, no, it, a):
         SY.GARIS,
         (SY.blok_salin(it["entry"], it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah=it["arah"]) if it.get("tp") else
          SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=it["sym"], arah=it["arah"])),
+        *batas_masuk_teks(it, k),
         *tp_cepat_teks(it),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot setengah sampai pulih"] if rm else []),
         "💡 <b>Kenapa</b>",

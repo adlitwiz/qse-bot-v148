@@ -1908,10 +1908,10 @@ TELAT_OK = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimok
 TELAT_CANDLE, TELAT_R = 2, 0.5
 
 
-def _tpc_main(it):
+def _tpc_main(it, k=""):
     try:
         import qse_strat as ST
-        return ST.tp_cepat_teks(it)
+        return ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it)
     except Exception:
         return []
 
@@ -1934,6 +1934,9 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
         masih = (not baru and kunci in TELAT_OK and umur <= TELAT_CANDLE + 0.1 and d is not None and abs(d) <= TELAT_R
                  and ((px > sl_now) if L else (px < sl_now))
                  and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
+        if baru and px and risk and d is not None:
+            # sinyal candle ini juga harus masih di rentang 0.5R: kalau harga sudah lari, tidak dikirim
+            baru = abs(d) <= TELAT_R and ((px > sl_now) if L else (px < sl_now))
         if it["sym"] in pegang or not (baru or masih):
             lewat += 1
             continue
@@ -1958,7 +1961,7 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
                     + f"\n<pre>{it['sym']} {'LONG' if L else 'SHORT'}\nEntry {e_txt} MARKET\n"
                     f"SL    {TG.fp(sl_now, t)}\n"
                     f"TP    {tp}</pre>" + (f"\nSL sudah digeser dari {TG.fp(sl0, t)}" if sl_now != sl0 else "")
-                    + "".join("\n" + z for z in _tpc_main(it)))
+                    + "".join("\n" + z for z in _tpc_main(it, kunci)))
         ring.append((it["sym"], "LONG" if L else "SHORT", "baru" if baru else "masih dekat entry", it, rows[-1]))
     return (("\n" + "\n".join(rows)) if rows else ""), ring, lewat
 
@@ -2134,7 +2137,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             import qse_strat as ST_
             for sym, arah, ket, it_, kartu_ in ring:
                 pr = ST_.prioritas(kunci, it_)
-                ring_rb.append((sym, arah, pendek, ik, lot, ket, pr))
+                ring_rb.append((sym, arah, pendek, ik, lot, ket, pr, ST_.label_nama(it_)))
                 kartu_rb.append((pr, f"{GARIS}\n🔹 <b>{nama}</b>  ·  {ik} {tk}  ·  lot {lot}  ·  PF jalur {pr[1]:.2f}\n" + kartu_))
         try:
             import qse_ichimoku as IC
@@ -2162,7 +2165,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         ring_rb.sort(key=lambda z: z[6], reverse=True)
         import qse_strat as ST_p
         for no_, (pr, kt) in enumerate(kartu_rb, 1):
-            robot_blok.append(f"{GARIS}\n🏅 <b>PRIORITAS {no_}</b>  ·  {ST_p.label_prioritas(pr)}{kt[len(GARIS):]}")
+            robot_blok.append(f"{GARIS}\n{ST_p.medali(no_)} <b>PRIORITAS {no_}</b>  ·  {ST_p.label_prioritas(pr)}{kt[len(GARIS):]}")
         if sepi:
             robot_blok.append(f"{GARIS}\n⚪ Belum ada sinyal yang bisa diikuti sekarang: {TG.e(', '.join(sepi))}")
     if ikut or ring_rb:
@@ -2172,10 +2175,12 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             rows.append(f"{IKON.get(x['arah'], '')} {TG.e(r['symbol'])} {x['arah']}  ·  {SY.NAMA_JALUR.get(jl, jl)}  ·  "
                         f"{x['order']}  ·  {ik} lot {lot}")
         if ring_rb:
-            rows.append("Urut dari prioritas tertinggi: label terbukti dulu (⭐ per label), lalu PF jalur")
-        for no_, (sym, arah, nama, ik, lot, ket, pr) in enumerate(ring_rb, 1):
-            rows.append(f"{no_}. {IKON.get(arah, '')} {TG.e(sym)} {arah}  ·  {TG.e(nama.title())}  ·  "
-                        f"{'⭐' * pr[0] if pr[0] else 'tanpa label'}  ·  PF {pr[1]:.2f}  ·  {ik} lot {lot}  ·  {ket}")
+            import qse_strat as ST_m
+            rows[-1] = "🏆 <b>URUTAN PRIORITAS</b> (ambil dari nomor 1, semua masih valid di harga sekarang)"
+            rows.append("Urutan: jumlah label terbukti dulu (COMBO, MUTU TINGGI, PULLBACK), lalu PF jalur")
+        for no_, (sym, arah, nama, ik, lot, ket, pr, lb) in enumerate(ring_rb, 1):
+            rows.append(f"{ST_m.medali(no_)} <b>{no_}. {TG.e(sym)} {arah}</b>  ·  {TG.e(nama)}  ·  "
+                        f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  lot {lot}")
         so.append("\n".join(rows))
     # dipisah menurut sumber: DASBOR (mesin QSE, sama dengan TradingView) dan robot Telegram
     BAGIAN = [("📊", "DARI DASBOR", [
@@ -2185,10 +2190,10 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         ("saran fib", "GOLDEN ZONE (fib 0.618-0.65)", "harga di golden pocket, skill dan candle konfirmasi searah"),
         ("saran trendline", "TEMBUS TRENDLINE SEARAH TREN", "pola Tembus Trendline di DASBOR, SHORT, harga di bawah EMA 200, rapor koin tidak dipakai"),
         ("saran cadangan 2", "POLA RAPOR A/B, DIPILIHKAN ROBOT", "pola mutu A/B yang di DASBOR masih TAHAN, entry dipilih robot")]),
-        ("🤖", "DARI ROBOT TELEGRAM", [
+        ("🤖", "KARTU SINYAL, URUT PRIORITAS", [
         ("saran siklus", "SIKLUS POLA KEMBAR", "pola harga mirip di sejarah koin")])]
     if not dasbor:
-        BAGIAN = [("📊", "DARI DASBOR", [z for z in BAGIAN[0][2] if z[0] == "saran trendline"]), ("🤖", "DARI ROBOT TELEGRAM", [])]
+        BAGIAN = [("📊", "DARI DASBOR", [z for z in BAGIAN[0][2] if z[0] == "saran trendline"]), ("🤖", "KARTU SINYAL, URUT PRIORITAS", [])]
     kosong = []
     for ikon_b, judul_b, isi_b in BAGIAN:
         blok = [f"{GARIS}\n{ikon_b} <b>{judul_b}</b>"]
@@ -2202,7 +2207,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             ok_n = sum(1 for z in item if z in ikut)
             blok.append(f"{GARIS}\n🔹 <b>{nama_j} ({len(item)})</b>  ·  bisa diikuti {ok_n}\n<i>{ket}</i>")
             blok += [f(i, r, x, st, led) for i, (j_, r, x, st, f) in enumerate(item, 1)]
-        if judul_b == "DARI ROBOT TELEGRAM":
+        if judul_b == "KARTU SINYAL, URUT PRIORITAS":
             blok += robot_blok
         if len(blok) > 1:
             so.append("\n".join(blok))
