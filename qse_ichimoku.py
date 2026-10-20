@@ -325,6 +325,10 @@ def _jalankan(baru_ok=True):
             it["combo_emas"] = ST.combo_emas("ichimoku", it["combo"])
         except Exception as ex:
             print("[WARN] combo ichimoku", ex)
+        import qse_porto as PO_s
+        if PO_s.senin_tolak(it.get("combo"), it.get("combo_emas")):
+            print(f"[ICHIMOKU] {sym} dilewati: {PO_s.senin_tolak(it.get('combo'), it.get('combo_emas'))}")
+            continue
         baru.append(it)
         PO.pesan(sym, arah)
         try:
@@ -339,6 +343,7 @@ def _jalankan(baru_ok=True):
         rm = rem() or PO.rem()
         if rm:
             lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
+        lot_b, cat_hari = PO.lot_hari(lot_b)
         try:
             import qse_modal as MD
             lot = MD.baris_lot(px, sl, SY.lot_angka(lot_b))
@@ -349,6 +354,7 @@ def _jalankan(baru_ok=True):
             f"{'🟢' if L else '🔴'} <b>{len(baru)}. {sym} {arah}</b>  ·  Ichimoku 4J",
             f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
             *ST_combo(it),
+            *([cat_hari] if cat_hari else []),
             SY.GARIS,
             SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=sym, arah=arah),
             *ST_tpc(dict(entry=px, sl=sl, arah=arah, tick=t, t=now, risk=risk)),

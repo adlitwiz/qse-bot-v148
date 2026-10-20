@@ -54,8 +54,42 @@ def hitung(arah):
     return n, syms | set(_RES)
 
 
+def hari(ts=None):
+    """Momen tetap mingguan berdasarkan waktu entry (UTC). Uji 35 ribu sinyal jalur terbukti:
+    Senin (07:00 WIB Senin s.d. 07:00 WIB Selasa) PF 1.05 di 2021-2023, 0.96 di 2024-2026, 1.13 di 2017-2020: lemah di semua
+    periode, sinyal baru tidak dibuka. Sabtu-Minggu PF 1.08/0.90 dan 0.91/0.88 di 2021-2026 (tapi bagus di 2017-2020),
+    jadi lot setengah. Selasa-Jumat PF 1.32-1.50. Hasil: rasio profit/drawdown 7.0 jadi 11.5, total profit tetap.
+    Senin tetap boleh kalau COMBO EMAS atau COMBO 3+: PF 1.24 (2021-23 1.25, 2024-26 1.24), sinyal Senin tanpa label PF 0.89.
+    Return "senin", "akhir_pekan", atau ""."""
+    d = time.gmtime(ts if ts is not None else time.time()).tm_wday
+    return "senin" if d == 0 else "akhir_pekan" if d in (5, 6) else ""
+
+
+def senin_tolak(combo, combo_emas):
+    """Hari Senin hanya sinyal COMBO EMAS atau COMBO 3+. Return alasan tolak atau ''."""
+    if hari() != "senin":
+        return ""
+    if combo_emas or len(combo or []) >= 2:
+        return ""
+    return "hari Senin, hanya COMBO EMAS atau COMBO 3+ yang dibuka (sinyal Senin lain PF 0.89)"
+
+
+def lot_hari(lot_b):
+    """Lot saran disesuaikan momen mingguan. Return (lot baru, baris catatan atau '')."""
+    if hari() == "akhir_pekan":
+        try:
+            import qse_saya as SY
+            return f"{SY.lot_angka(lot_b) / 2:g}x", ("📅 Akhir pekan: lot setengah. Uji 2021-2026 entry Sabtu-Minggu PF sekitar 0.9, "
+                                                   "Selasa-Jumat PF 1.3-1.5")
+        except Exception:
+            return lot_b, ""
+    return lot_b, ""
+
+
 def izin(sym, arah, jalur):
-    """Alasan sinyal baru ditahan oleh batas portofolio, kosong bila boleh."""
+    """Alasan sinyal baru ditahan oleh batas portofolio atau momen mingguan, kosong bila boleh."""
+    if hari() == "senin" and jalur == "GZH":
+        return "hari Senin (07:00 WIB Senin s.d. 07:00 WIB Selasa): uji 2017-2026 sinyal Senin PF 0.96-1.13, sinyal baru tidak dibuka"
     n, syms = hitung(arah)
     if sym in syms:
         return "koin ini sudah dipegang jalur robot lain (satu koin satu jalur)"

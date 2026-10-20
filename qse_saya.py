@@ -3098,14 +3098,34 @@ def sinyal_jalur():
                          f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>"
                          + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it))))
     kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
+    # order Tembus Trendline yang masih menunggu (STOP atau LIMIT, berlaku 24 jam): ikut ditampilkan supaya sama dengan cek per jam
+    tunggu = []
+    try:
+        import qse_fixprofit as FX
+        for v in FX.load()["open"].values():
+            if v.get("status") != "MENUNGGU" or not v.get("tt") or v["sym"] in pegang:
+                continue
+            t = v.get("tick") or tick_of(None, v["entry"])
+            px = harga_live(v["sym"]) or 0
+            sisa = (v.get("exp_ts", 0) / 1000 - now) / 3600
+            if sisa <= 0:
+                continue
+            jarak = f", harga sekarang {fp(px, t)} ({abs(px - v['entry']) / v['entry'] * 100:.1f}% dari entry)" if px else ""
+            tunggu.append(f"⏳ <b>{v['sym']} {v['arah']}</b>  ·  Tembus Trendline  ·  order {v.get('order', '')} menunggu{jarak}, "
+                          f"berlaku {sisa:.0f} jam lagi\n<pre>{v['sym']} {v['arah']}\nEntry {fp(v['entry'], t)} {v.get('order', '')}\n"
+                          f"SL    {fp(v['sl'], t)}\nTP1   {fp(v['tp1'], t)}\nTP2   {fp(v['tp2'], t)}</pre>")
+    except Exception as ex:
+        print("[WARN] sinyal4j trendline", ex)
+    blok_tunggu = ("\n\n⏳ <b>ORDER MENUNGGU TERISI</b> (Tembus Trendline, pasang order ini di Bybit, bukan MARKET)\n\n"
+                   + "\n\n".join(tunggu)) if tunggu else ""
     kartu.sort(key=lambda z: z[0], reverse=True)          # prioritas: label terbukti dulu, lalu PF jalur
     kartu = [f"{ST.medali(i)} <b>PRIORITAS {i}</b>  ·  {ST.label_prioritas(p)}  ·  PF jalur {p[1]:.2f}\n{x}"
              for i, (p, x) in enumerate(kartu, 1)]
     if not kartu:
-        return (kepala + "\nBelum ada sinyal jalur terbukti yang bisa diikuti di harga sekarang. Sinyal baru dikirim tiap candle 4J tutup "
-                "(03, 07, 11, 15, 19, 23 WIB lewat 5 menit).")
+        return (kepala + "\nBelum ada sinyal MARKET jalur terbukti yang bisa diikuti di harga sekarang. Sinyal baru dikirim tiap "
+                "candle 4J tutup (03, 07, 11, 15, 19, 23 WIB lewat 5 menit)." + blok_tunggu)
     return (kepala + "\nHanya sinyal yang masih valid di harga sekarang (dalam 0.5R dari entry robot dan belum lewat batas waktu), "
-            "urut dari prioritas 1.\n\n" + "\n\n".join(kartu))
+            "urut dari prioritas 1.\n\n" + "\n\n".join(kartu) + blok_tunggu)
 
 
 

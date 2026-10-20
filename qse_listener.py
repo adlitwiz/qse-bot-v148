@@ -63,8 +63,8 @@ def _tugas_berkala():
     Tiap jam menit ke-2: jalankan main.py (cadangan jadwal GitHub yang sering telat). Ganda dicegah oleh main.py."""
     now = time.time()
     st = _st()
-    if now - st.get("t15", 0) >= 900:
-        _st({"t15": now})
+    if now - st.get("tnews", 0) >= 300:          # news tiap 5 menit (dulu 15 menit) supaya tidak terlalu telat
+        _st({"tnews": now})
         try:
             import qse_news as NW
             with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
@@ -74,6 +74,8 @@ def _tugas_berkala():
                 TG.send(["📰 <b>QSE v148 | NEWS PENTING</b>\n\n" + "\n\n".join(nb)])
         except Exception as ex:
             print("[WARN] news", ex)
+    if now - st.get("t15", 0) >= 900:
+        _st({"t15": now})
         try:
             import qse_catat as CT
             hasil = CT.cek()
@@ -108,6 +110,20 @@ def _tugas_berkala():
             _btc_ema50()
         except Exception as ex:
             print("[WARN] btc ema50", ex)
+        # candle 4J baru: lepas semua pin sinyal jalur dari candle sebelumnya, supaya yang disematkan hanya yang penting
+        # sekarang (sinyal candle ini, laporan 4 jam terbaru, SL terbaru, peringatan posisi)
+        try:
+            import qse_strat as ST0
+            stp = _st()
+            lepas = {}
+            for slot in ["pin_gzh", "pin_strat", "pin_ob", "pin_ichi"] + [f"pin_{k}" for k in ST0.STRAT]:
+                if stp.get(slot) and stp.get(slot + "_t", 0) < t4:
+                    TG.unpin(stp[slot])
+                    lepas[slot] = None
+            if lepas:
+                _st(lepas)
+        except Exception as ex:
+            print("[WARN] lepas pin lama", ex)
         # semua jalur dikumpulkan dulu, lalu kartu sinyal baru dikirim urut prioritas (label terbukti dulu, lalu PF jalur):
         # yang paling bagus dikirim pertama, jadi berada paling atas di chat
         import qse_strat as ST
@@ -329,7 +345,67 @@ def _pin_dini(ids):
         _st({"pin_dini": ids[0]})
 
 
+_GERAK = []          # snapshot harga tiap menit: (waktu, {simbol: harga}), 40 menit terakhir
+
+
+def _gerak_serentak():
+    """Peringatan cepat dari HARGA, bukan berita: berita kripto biasanya terbit setelah harga bergerak.
+    Pemicu (30 menit): BTC bergerak 2% atau lebih, atau 70% dari 40 koin paling likuid bergerak 3% searah.
+    Uji data 15 menit 2022-2026: sekitar 6 sampai 9 kali per bulan. Jeda 2 jam antar peringatan. Info saja:
+    uji 2021-2026 menutup posisi lebih awal saat pasar bergejolak menurunkan profit, jadi aturan jalur tetap dipakai."""
+    import bybit_fetch as B
+    now = time.time()
+    tk = B.get_tickers()
+    top = [s for s, _ in sorted(((s, v["turnover"]) for s, v in tk.items() if s.endswith("USDT") and s != "BTCUSDT"),
+                                key=lambda z: -z[1])[:40]]
+    snap = {s: tk[s]["last"] for s in top + ["BTCUSDT"] if s in tk and tk[s]["last"] > 0}
+    _GERAK.append((now, snap))
+    while _GERAK and now - _GERAK[0][0] > 40 * 60:
+        _GERAK.pop(0)
+    lama = next((sn for t, sn in _GERAK if now - t >= 28 * 60), None)
+    if not lama or now - _st().get("gerak_t", 0) < 7200:
+        return
+    ch = {s: (snap[s] / lama[s] - 1) * 100 for s in snap if lama.get(s)}
+    btc = ch.get("BTCUSDT")
+    alt = [v for s, v in ch.items() if s != "BTCUSDT"]
+    if btc is None or len(alt) < 20:
+        return
+    naik = sum(1 for v in alt if v >= 3) / len(alt)
+    turun = sum(1 for v in alt if v <= -3) / len(alt)
+    if not (abs(btc) >= 2 or naik >= 0.7 or turun >= 0.7):
+        return
+    arah_naik = (btc > 0) if abs(btc) >= 2 else naik >= 0.7
+    _st({"gerak_t": now})
+    rows = [f"{'🚀' if arah_naik else '💥'} <b>QSE v148 | PASAR BERGERAK SERENTAK {'NAIK' if arah_naik else 'TURUN'}</b>",
+            f"30 menit terakhir: BTC {btc:+.1f}%, {round(naik * len(alt))} dari {len(alt)} koin utama naik 3%+, "
+            f"{round(turun * len(alt))} turun 3%+.",
+            "Biasanya berita baru muncul setelah ini, jadi peringatan ini dari harga langsung."]
+    pos = []
+    try:
+        for it in SY.lihat()["open"].values():
+            if it["status"] not in ("TERISI", "TP1"):
+                continue
+            px = (tk.get(it["sym"]) or {}).get("last")
+            fl = SY.floating(it, px) if px else None
+            searah = (it["arah"] == "LONG") == arah_naik
+            pos.append(f"{'🟢' if searah else '🔴'} {it['sym']} {it['arah']} "
+                       + (f"{fl['r']:+.2f}R" if fl else "") + (" (searah gerak)" if searah else " (melawan gerak)"))
+    except Exception as ex:
+        print("[WARN] gerak posisi", ex)
+    if pos:
+        rows += ["", "👤 Posisi kamu:"] + pos + [
+            "↳ Melawan gerak: SL di Bybit yang membatasi rugi, jangan geser SL menjauh dan jangan tambah posisi.",
+            "↳ Searah gerak: biarkan Trailing Stop atau TP jalur bekerja.",
+            "Uji 2021-2026: tutup lebih awal saat pasar bergejolak menurunkan profit 18 sampai 78%."]
+    rows += ["", "Jangan kejar harga di luar sinyal robot. Sinyal baru hanya dari laporan 4J dan /sinyal4j yang masih valid."]
+    TG.send(["\n".join(rows)])
+
+
 def _tugas_menit():
+    try:
+        _gerak_serentak()
+    except Exception as ex:
+        print("[WARN] gerak serentak", ex)
     try:
         pesan = SY.pantau()
         if pesan:

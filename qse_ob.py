@@ -292,6 +292,10 @@ def _jalankan(baru_ok=True):
             it["combo_emas"] = ST.combo_emas("orderblock", it["combo"])
         except Exception as ex:
             print("[WARN] combo orderblock", ex)
+        import qse_porto as PO_s
+        if PO_s.senin_tolak(it.get("combo"), it.get("combo_emas")):
+            print(f"[ORDERBLOCK] {sym} dilewati: {PO_s.senin_tolak(it.get('combo'), it.get('combo_emas'))}")
+            continue
         baru.append(it)
         PO.pesan(sym, "LONG")
         out.append(kartu(len(baru), it, sg))
@@ -327,6 +331,8 @@ def kartu(no, it, sg):
     rm = rem()
     if rm:
         lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
+    import qse_porto as PO_h
+    lot_b, cat_hari = PO_h.lot_hari(lot_b)
     try:
         import qse_modal as MD
         lot = MD.baris_lot(it["entry"], it["sl"], SY.lot_angka(lot_b))
@@ -338,6 +344,7 @@ def kartu(no, it, sg):
         f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  Order Block + Volume 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
         *_combo_teks(it),
+        *([cat_hari] if cat_hari else []),
         SY.GARIS,
         SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG"),
         *_tpc(it),

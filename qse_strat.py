@@ -674,6 +674,9 @@ def jalankan(baru_ok=True):
                 it["combo_emas"] = combo_emas(k, it["combo"])
             except Exception as ex:
                 print("[WARN] combo", ex)
+            if PO.senin_tolak(it.get("combo"), it.get("combo_emas")):
+                print(f"[STRAT {k}] {sym} {arah} dilewati: {PO.senin_tolak(it.get('combo'), it.get('combo_emas'))}")
+                continue
             if k == "mcginley":
                 # pullback: searah tren besar (EMA 200) tapi EMA 20 masih di sisi lawan EMA 50. Uji 2021-2026 McGinley
                 # pullback PF 1.43 (2021-23 1.42, 2024-26 1.44), McGinley searah semua tren PF 1.18 (1.10/1.23)
@@ -713,6 +716,7 @@ def kartu(k, no, it, a):
     rm = rem(k) or PO.rem()
     if rm:
         lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
+    lot_b, cat_hari = PO.lot_hari(lot_b)
     try:
         import qse_modal as MD
         lot = MD.baris_lot(it["entry"], it["sl"], SY.lot_angka(lot_b))
@@ -724,6 +728,7 @@ def kartu(k, no, it, a):
         f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {it['arah']}</b>  ·  {cfg['nama']} 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
         *combo_teks(it),
+        *([cat_hari] if cat_hari else []),
         *mutu_teks(it),
         *(["🔁 <b>PULLBACK DALAM TREN BESAR</b>: searah EMA 200, tren pendek baru berbalik. "
            "Uji 2021-2026 McGinley pullback PF 1.43, McGinley biasa PF 1.18"] if it.get("pullback") else []),

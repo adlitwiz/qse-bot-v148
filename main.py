@@ -409,14 +409,14 @@ def _pin_rapikan(led=None):
 
 
 def _naikkan_pin_ichi():
-    """Pin sinyal Ichimoku punya prioritas: setelah pin lain dipasang, pin Ichimoku dilepas lalu dipasang lagi
-    supaya kembali tampil paling atas di grup. Berlaku 24 jam sejak sinyal Ichimoku terakhir."""
+    """Pin sinyal jalur candle 4J ini dinaikkan lagi setelah laporan 4 jam disematkan, supaya tetap paling atas."""
     st = _st_load()
     import qse_strat as ST
     slots = ["pin_sl", "pin_gzh"] + [f"pin_{k}" for k in ST.STRAT] + ["pin_strat", "pin_ob", "pin_ichi"]
-    for slot in slots:              # Ichimoku dipasang terakhir supaya paling atas
+    t4 = int(time.time() // 14400) * 14400
+    for slot in slots:              # hanya pin sinyal candle 4J ini yang dinaikkan lagi, pin candle lama sudah dilepas
         mid = st.get(slot)
-        if mid and time.time() - st.get(slot + "_t", 0) < 86400:
+        if mid and st.get(slot + "_t", 0) >= t4 - 60:
             TG.unpin(mid)
             TG.pin(mid)
 
@@ -442,7 +442,7 @@ def _pin(ids, jenis="saran4", isi=None, led=None):
         return
     led = (led or FX.load()) if jenis == "lap4" else None
     for m, lama in list(meta.items()):
-        if (jenis == "saran4" or (jenis == "lap4" and (lama == "lap" or not _pin_berlaku(lama, led)))):
+        if jenis in ("saran4", "lap4"):          # laporan 4 jam baru: semua pin laporan dan saran candle lama dilepas
             TG.unpin(int(m))
             meta.pop(m)
     meta[str(ids[0])] = "lap" if jenis == "lap4" else [list(p) for p in (isi or [])]
@@ -1264,7 +1264,7 @@ def _kartu_jam(results, b1, led):
         rows.append("👤 Posisi: " + " | ".join(bag))
         rows.append("↳ Diam, biarkan SL dan TP jalur bekerja. Gerak BTC 1 jam bukan alasan keluar.")
     aktif = [v for v in led["open"].values() if v["status"] == "MENUNGGU"]
-    rows.append(f"📡 Saran LIMIT aktif: {len(aktif)}" + (" (ketik /sinyal4j)" if aktif else ""))
+    rows.append(f"⏳ Order Tembus Trendline menunggu terisi: {len(aktif)}" + (" (detail di /sinyal4j)" if aktif else ""))
     peta_px = {r["symbol"]: (r.get("live") or r["close"], r["tick"]) for r in results}
     for v in sorted(aktif, key=lambda v: abs((peta_px.get(v["sym"], (v["entry"], 0))[0] - v["entry"]) / v["entry"]))[:5]:
         px, t = peta_px.get(v["sym"], (None, 0.0001))
@@ -2016,6 +2016,16 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             pasar.append(f"Arah diizinkan: {alt.get('izin', '-')}")
         else:
             try:
+                import qse_porto as PO_h
+                hh = PO_h.hari()
+                if hh == "senin":
+                    pasar.append("📅 Senin: hanya sinyal COMBO EMAS atau COMBO 3+ yang dikirim sampai Selasa 07:00 WIB "
+                                 "(uji: sinyal Senin lain PF 0.89, yang ber-combo PF 1.24)")
+                elif hh == "akhir_pekan":
+                    pasar.append("📅 Akhir pekan: sinyal tetap dikirim dengan lot setengah (uji 2021-2026 PF sekitar 0.9)")
+            except Exception as ex:
+                print("[WARN] momen hari", ex)
+            try:
                 import qse_saya as SY_
                 bk = SY_.btc_teknik()
                 if bk:
@@ -2132,6 +2142,13 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         def _jalur_robot(kunci, nama, ik, tk, lot, n, maks, cek, items, pendek):
             if rem_p:
                 lot = f"{SY.lot_angka(lot) / 2:g}x (rem)"
+            try:
+                import qse_porto as PO_h
+                lot2, _ = PO_h.lot_hari(lot.split(" ")[0])
+                if lot2 != lot.split(" ")[0]:
+                    lot = f"{lot2} (akhir pekan)"
+            except Exception:
+                pass
             teks, ring, lewat = _baru_candle(items, tutup, kunci, harga, pegang)
             if not teks:
                 sepi.append(pendek)
