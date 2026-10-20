@@ -104,10 +104,13 @@ def rem():
 
 
 def baris():
-    """Satu baris status untuk laporan 4 jam."""
+    """Baris status portofolio untuk laporan 4 jam, hanya saat batas penuh atau rem aktif."""
     pos = _posisi()
     nl = sum(1 for _, a, _ in pos if a == "LONG")
     ns = sum(1 for _, a, _ in pos if a == "SHORT")
     rm = rem()
-    return (f"Portofolio robot: LONG {nl}/{MAKS_SEARAH}, SHORT {ns}/{MAKS_SEARAH}"
-            + (f"  ·  🛡 rem aktif, lot setengah: {rm}" if rm else ""))
+    out = [f"⛔ Sinyal {a} baru ditahan: robot sudah pegang {n} posisi {a}, batas {MAKS_SEARAH}"
+           for a, n in (("LONG", nl), ("SHORT", ns)) if n >= MAKS_SEARAH]
+    if rm:
+        out.append(f"🛡 Rem aktif, pakai lot setengah: {rm}")
+    return "\n".join(out)          # kosong saat normal, baris hanya muncul kalau mengubah tindakan kamu

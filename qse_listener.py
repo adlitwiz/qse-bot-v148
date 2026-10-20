@@ -108,51 +108,55 @@ def _tugas_berkala():
             _btc_ema50()
         except Exception as ex:
             print("[WARN] btc ema50", ex)
+        # semua jalur dikumpulkan dulu, lalu kartu sinyal baru dikirim urut prioritas (label terbukti dulu, lalu PF jalur):
+        # yang paling bagus dikirim pertama, jadi berada paling atas di chat
+        import qse_strat as ST
+        kumpul = []          # (prioritas, slot pin, judul, kartu)
         try:
             import qse_ichimoku as IC
             pesan = IC.jalankan(baru_ok=True)          # telat (VPS sempat mati) tetap boleh asal harga belum lari, dicek di IC
-            if pesan:
-                baru = [m for m in pesan if "BISA DIIKUTI" in m]
-                lain = [m for m in pesan if "BISA DIIKUTI" not in m]
-                if lain:
-                    TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(lain)])
-                if baru:
-                    ids = TG.send([f"📌 <b>QSE v148 | SINYAL ICHIMOKU ({len(baru)})</b>\n{SY.baris_jadwal(telat_menit=3)}\nJalur terbukti, disematkan paling atas.\n\n"
-                                   + "\n\n".join(baru)])
-                    _pin_ichi(ids)
+            lain = [m for m in pesan or [] if "BISA DIIKUTI" not in m]
+            if lain:
+                TG.send(["📈 <b>QSE v148 | ICHIMOKU TREN 4J</b>\n\n" + "\n\n".join(lain)])
+            kumpul += [(ST.prioritas_teks("ichimoku", m), "pin_ichi", "ICHIMOKU", m) for m in pesan or [] if "BISA DIIKUTI" in m]
         except Exception as ex:
             print("[WARN] ichimoku", ex)
         try:
             import qse_ob as OB
             pesan = OB.jalankan(baru_ok=True)          # jalur Order Block + Volume, aturan sama dengan backtest 6 tahun
-            if pesan:
-                baru = [m for m in pesan if "BISA DIIKUTI" in m]
-                lain = [m for m in pesan if "BISA DIIKUTI" not in m]
-                if lain:
-                    TG.send(["⭐ <b>QSE v148 | ORDER BLOCK 4J</b>\n\n" + "\n\n".join(lain)])
-                if baru:
-                    ids = TG.send([f"📌 <b>QSE v148 | SINYAL ORDER BLOCK + VOLUME ({len(baru)})</b>\n{SY.baris_jadwal(telat_menit=3)}\nJalur terbukti, hanya LONG, "
-                                   f"disematkan paling atas.\n\n" + "\n\n".join(baru)])
-                    _pin_ichi(ids, "pin_ob")
+            lain = [m for m in pesan or [] if "BISA DIIKUTI" not in m]
+            if lain:
+                TG.send(["⭐ <b>QSE v148 | ORDER BLOCK 4J</b>\n\n" + "\n\n".join(lain)])
+            kumpul += [(ST.prioritas_teks("orderblock", m), "pin_ob", "ORDER BLOCK + VOLUME (LONG)", m)
+                       for m in pesan or [] if "BISA DIIKUTI" in m]
             sl_v = OB.proses_sl()                      # analisa volume SL setelah candle 4J tempat SL kena sudah tutup
             if sl_v:
                 TG.send(["📊 <b>QSE v148 | ANALISA VOLUME SL</b>\n\n" + "\n\n".join(sl_v)])
         except Exception as ex:
             print("[WARN] orderblock", ex)
         try:
-            import qse_strat as ST
-            for k, pesan in ST.jalankan(baru_ok=True).items():          # EMA Cross SHORT dan RSI 50 + Volume
-                baru = [m for m in pesan if "BISA DIIKUTI" in m]
-                lain = [m for m in pesan if "BISA DIIKUTI" not in m]
+            for k, pesan in ST.jalankan(baru_ok=True).items():
                 nama = ST.STRAT[k]["nama"].upper()
+                lain = [m for m in pesan if "BISA DIIKUTI" not in m]
                 if lain:
                     TG.send([f"📈 <b>QSE v148 | {nama}</b>\n\n" + "\n\n".join(lain)])
-                if baru:
-                    ids = TG.send([f"📌 <b>QSE v148 | SINYAL {nama} ({len(baru)})</b>\n{SY.baris_jadwal(telat_menit=3)}\n"
-                                   f"Jalur terbukti, disematkan.\n\n" + "\n\n".join(baru)])
-                    _pin_ichi(ids, f"pin_{k}")          # slot per jalur, sinyal jalur lain tidak terlepas
+                kumpul += [(ST.prioritas_teks(k, m), f"pin_{k}", nama, m) for m in pesan if "BISA DIIKUTI" in m]
         except Exception as ex:
             print("[WARN] strategi", ex)
+        try:
+            kumpul.sort(key=lambda z: z[0], reverse=True)
+            kirim = []
+            for no, (pr, slot, nama, m) in enumerate(kumpul, 1):
+                ids = TG.send([f"🏅 <b>QSE v148 | PRIORITAS {no} dari {len(kumpul)}</b>  ·  {ST.label_prioritas(pr)}  ·  "
+                               f"PF jalur {pr[1]:.2f}\n{nama}  ·  {SY.baris_jadwal(telat_menit=3)}\n{m}"])
+                kirim.append((slot, ids))
+            terbaik = {}
+            for slot, ids in kirim:
+                terbaik.setdefault(slot, ids)          # tiap slot menyematkan sinyal terbaik jalur itu
+            for slot, ids in reversed(list(terbaik.items())):
+                _pin_ichi(ids, slot)                   # disematkan terbalik: prioritas 1 jadi pin paling atas
+        except Exception as ex:
+            print("[WARN] kirim prioritas", ex)
         try:
             teks, tanda = SY.kartu_sl()
             if teks and [list(x) for x in tanda] != _st().get("sl_tanda"):
@@ -281,20 +285,22 @@ BATAS_KERJA = 1500        # tugas berkala macet lebih dari 25 menit -> restart p
 
 
 def _btc_ema50():
-    """Info saja: kabari saat close BTC 4J pindah sisi EMA 50 (rata-rata sekitar 3 kali seminggu). Bukan ramalan,
+    """Info saja: kabari saat arah resmi BTC 4J pindah sisi EMA 50 (batas 0.3% dan 2 candle, sekitar 1.5 kali seminggu). Bukan ramalan,
     uji 2021-2026 arah ini tepat sekitar 49% untuk 4 sampai 72 jam ke depan. Tidak menyaring sinyal."""
     import qse_strat as ST
     df = ST._k4("BTCUSDT", 400)
     if df is None or len(df) < 100:
         return
     c = df["close"].values.astype(float)
-    naik = bool(c[-1] > ST._ema(c, 50)[-1])
+    naik = ST.btc_arah_resmi(c, ST._ema(c, 50))
     lama = _st().get("btc50")
     _st({"btc50": naik})
     if lama is None or lama == naik:
         return
     TG.send([f"{'🟢' if naik else '🔴'} <b>QSE v148 | ARAH BTC BERUBAH</b>\n{ST.btc_ema50_teks()}\n"
-             f"Candle BTC 4J baru tutup {'di atas' if naik else 'di bawah'} EMA 50. Info saja, sinyal jalur tetap jalan seperti biasa."])
+             f"BTC 4J sudah 2 candle tutup lebih dari {ST.BTC_BAND:g}% {'di atas' if naik else 'di bawah'} EMA 50. "
+             f"Batas ini membuang flip palsu: tanpa batas 47% flip balik lagi dalam 12 jam, dengan batas 8%. "
+             f"Info saja, sinyal jalur tetap jalan seperti biasa."])
 
 
 def _pin_ichi(ids, slot="pin_ichi"):
@@ -327,6 +333,12 @@ def _tugas_menit():
             TG.send(["👤 <b>QSE v148 | TRADE KAMU</b>\n\n" + "\n".join(pesan)])
     except Exception as ex:
         print("[WARN] pantau", ex)
+    try:
+        sb = SY.siaga_berita()
+        if sb:
+            TG.send(["📅 <b>QSE v148 | SIAGA BERITA BESAR</b>\n\n" + "\n\n".join(sb)])
+    except Exception as ex:
+        print("[WARN] siaga berita", ex)
     try:
         pesan = SY.peringatan_dini()
         if pesan:

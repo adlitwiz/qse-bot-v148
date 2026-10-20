@@ -437,7 +437,7 @@ def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp=""
     risk = abs(entry - sl) or 1e-12
     pc = lambda x: abs(x - entry) / entry * 100
     rows = ([f"{sym} {arah}".strip()] if sym else []) + [f"Entry {fp(entry, t)}" + (f" {order}" if order else ""), f"SL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%"]
-    for nm, v in (("TP1", tp1), ("TP2", tp2)):
+    for nm, v in ((("TP", tp1),) if tp1 and tp1 == tp2 else (("TP1", tp1), ("TP2", tp2))):
         if v:
             rows.append(f"{nm:<5} {fp(v, t)}  +{abs(v - entry) / risk:.2f}R  +{pc(v):.1f}%")
     if catatan_tp:
@@ -459,7 +459,7 @@ def baris_kelas(arah, konteks=True, **kw):
 # Saran 4J: mesin dijalankan ulang tiap candle 4J + saringan fix profit + gerbang robot, 108 koin perp, Jul 2021 - Okt 2026.
 BUKTI = {
     "saran ichimoku": ("TERBUKTI", "✅", "1x", "backtest 5 tahun 111 koin perp, 20 koin paling likuid: 3084 trade, PF 1.29, "
-                       "untung tiap tahun, positif 18 dari 22 kuartal"),
+                       "untung tiap tahun, positif 18 dari 22 kuartal. Sejak 19 Okt 2026 SL 1.5 ATR, trailing 4 ATR: rasio untung/drawdown 5.0 ke 5.9"),
     "saran utama": ("BELUM TERBUKTI", "⚠️", "0.25x", "backtest 5 tahun 108 koin dengan semua syarat robot: 83 trade, PF 0.70; "
                     "2 tahun terakhir 30 koin termasuk sinyal longgar: 30 trade, PF 1.88, 29 di antaranya SHORT"),
     "saran GZH": ("TERBUKTI", "✅", "0.5x", "uji 6 tahun 111 koin, maks 8 posisi: 1825 trade, WR 40%, PF 1.24, aturan dipilih "
@@ -1075,6 +1075,10 @@ def parse_entry(args):
             arah = arah or "SHORT"
         elif a in ("LIMIT", "MARKET", "MKT"):
             order = "MARKET" if a != "LIMIT" else "LIMIT"
+        elif a == "STOP" and i > 0 and args[i - 1] in ("TRAILING", "TRAIL"):
+            pass                     # "Trailing Stop" dari blok kartu, bukan jenis order
+        elif a in ("JARAK", "TRAILING", "TRAIL") and nxt is not None:
+            i += 1                   # angka jarak trailing bukan harga
         elif a in ("STOP", "CONDITIONAL", "TRIGGER", "KONDISIONAL"):
             order = "STOP"           # conditional stop: terisi saat harga MENEMBUS entry, bukan saat retest
         elif a in ("TERISI", "FILLED", "SUDAH", "ISI"):
@@ -1213,11 +1217,22 @@ def entry(args):
     dari_sinyal = None
     sl, tp1, tp2 = kv.get("SL"), kv.get("TP1"), kv.get("TP2")
     jp = jalur_posisi(sym, arah)
+    # blok salin kartu jalur ikut ditempel: TP yang sama dengan TP jalur tetap dianggap ikut aturan jalur
+    _tpj = (jp or {}).get("tp")
+    _sama = lambda v: v is None or bool(_tpj and abs(v - _tpj) <= abs(_tpj) * 0.003)
+    ikut_ok = bool(jp and _sama(kv.get("TP1")) and _sama(kv.get("TP2")))
+    if ikut_ok:
+        kv.pop("TP1", None); kv.pop("TP2", None)
+    tp_user = None          # TP cepat atau TP sendiri pada posisi jalur: SL tetap ikut jalur, tutup penuh di TP ini
+    if jp and not ikut_ok and kv.get("TP1") is not None and (
+            kv.get("TP2") is None or abs(kv["TP2"] - kv["TP1"]) <= abs(kv["TP1"]) * 0.003):
+        tp_user = kv.pop("TP1")
+        kv.pop("TP2", None)
     if jp and kv.get("TP1") is None and kv.get("TP2") is None:
         sl = sl if sl is not None else jp["sl"]
         far = harga * (100 if L else 0.01)            # TP1/TP2 tidak dipakai: keluar dari SL berjalan atau TP jalur
-        tp1 = tp2 = jp.get("tp") or far
-        sumber = f"jalur {jp['nama']} (aturan jalur terbukti)"
+        tp1 = tp2 = tp_user or jp.get("tp") or far
+        sumber = f"jalur {jp['nama']} (aturan jalur terbukti)" + (", TP pilihan kamu" if tp_user else "")
     a_ref = (r or {}).get("atr") or 0.0
     cocok = [s for s in (r["saran"] if r else []) if s["arah"] == arah
              and a_ref > 0 and abs(s["entry"] - harga) <= 0.5 * a_ref
@@ -1270,7 +1285,8 @@ def entry(args):
                               status="TERISI" if isi_ts is not None else "MENUNGGU",
                               fill_ts=isi_ts or 0, alert=[], lev=kv.get("LEV"), risk0=abs(harga - sl),
                               sisa=1.0, real=0.0, jalur=jalur, pola=pola_asal, skor=asal["skor"],
-                              **(dict(ikut=jp["jalur"], tp_jalur=jp.get("tp")) if jp and kv.get("TP1") is None else {}))
+                              **(dict(ikut=jp["jalur"], tp_jalur=tp_user or jp.get("tp"), tp_cepat=bool(tp_user))
+                                 if jp and kv.get("TP1") is None else {}))
         lama_tp1 = any(v["sym"] == sym and v["arah"] == arah and v["status"] == "TP1" for v in d["open"].values())
         ada_jalan = any(v["sym"] == sym and v["arah"] == arah and v["status"] == "TERISI" and v.get("id") != tid
                         for v in d["open"].values())
@@ -1282,7 +1298,7 @@ def entry(args):
     kd = sym.replace("USDT", "")
     sk_txt = f" | skor setup {asal['skor']}/100" if asal["skor"] is not None else ""
     ikut = bool(jp and kv.get("TP1") is None)
-    tp_j = jp.get("tp") if ikut else None
+    tp_j = (tp_user or jp.get("tp")) if ikut else None
     rows = [f"<b>TRADE KAMU TERCATAT</b> (posisi terbuka {n_open})",
             f"{sym} {arah} {order}" + (f" (sudah terisi, sejak {_jam_wib(isi_ts)})" if isi_ts is not None
                                        else " (menunggu terisi)"),
@@ -1973,7 +1989,8 @@ def baris_pasar():
         b50 = ST.btc_ema50_teks()
     except Exception:
         b50 = ""
-    return (f"🌐 Pasar: {b50 or 'BTC 4J -'} | BTC 1 jam {b1} | berita besar 3 jam ke depan: {br}"
+    bt = btc_teknik()
+    return (f"🌐 Pasar: {b50 or 'BTC 4J -'} | " + (f"{bt} | " if bt else "") + f"BTC 1 jam {b1} | berita besar 3 jam ke depan: {br}"
             " | Arah BTC hanya info: uji 2021-2026, ikut arah BTC tidak menaikkan hasil jalur terbukti")
 
 
@@ -2047,6 +2064,10 @@ def blok_posisi(no, it, px, r=None, pasar=None):
         rows.append(f"{ik} {nama} {fp(harga_lv, t)}  ·  dari entry {dari_e:+.2f}%{sisa_txt}\n"
                     f"     kena: {R:+.2f}R{_usdt(R)}" + (f"  ·  perkiraan {w}" if w else ""))
     if jalan:
+        if it.get("ikut") or str(it.get("jalur", "")) in JALUR_TERBUKTI():
+            rows.append("🛠 <b>Aturan</b>: tahan sampai SL atau TP jalur. Jangan keluar lebih awal. Uji 2021-2026: keluar di -0.4R "
+                        "profit turun 37%, tutup setengah turun 18%, keluar saat analisa berbalik turun 22%.")
+            return "\n".join(rows)
         try:
             an = analisa_lengkap(it, r, px or None)
             ik = {"MASIH SESUAI ANALISA": "✅", "MELEMAH": "⚠️", "BERBALIK": "🛑"}.get(an["vonis"], "🧭")
@@ -2976,7 +2997,7 @@ def kartu_sl(tidur=False):
         tanda.append((it["sym"], it["arah"], round(sl, 10)))
         ik = "🟢" if L else "🔴"
         if jp and not jp.get("tp"):
-            jarak = 1.5 * (jp.get("risk") or abs(jp["entry"] - jp.get("sl0", jp["sl"])))
+            jarak = (jp.get("trail_atr", 3.0) / jp.get("sl_atr", 2.0)) * (jp.get("risk") or abs(jp["entry"] - jp.get("sl0", jp["sl"])))
             rows.append(f"{ik} <b>{it['sym']} {it['arah']}</b>  ·  {TG_e(jp['nama'])}\n"
                         f"<pre>{it['sym']} {it['arah']}\nSL       {fp(sl, t)}\nTrailing {fp(jarak, t)} ({jarak / it['entry'] * 100:.1f}%)</pre>\n"
                         f"Pasang Trailing Stop Bybit jarak {fp(jarak, t)}. Bybit menggeser SL sendiri, aman ditinggal tidur.")
@@ -3041,14 +3062,90 @@ def sinyal_jalur():
                      and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
             if not (baru or masih):
                 continue
-            tp = fp(it["tp"], t) if it.get("tp") else "tanpa, pakai SL berjalan"
+            if it.get("tp"):
+                tp = fp(it["tp"], t)
+            else:
+                jr = it.get("trail_atr", 3.0) / it.get("sl_atr", 2.0) * risk if risk else 0
+                tp = (f"tanpa, Trailing Stop Bybit jarak {fp(jr, t)} ({jr / it['entry'] * 100:.1f}%)" if jr
+                      else "tanpa, pakai SL berjalan")
             ket = "🆕 sinyal candle ini" if baru else f"harga masih dekat entry robot {fp(it['entry'], t)} ({d:+.2f}R)"
             if it.get("combo"):
-                ket += f"  ·  ⭐ COMBO {len(it['combo']) + 1} jalur"
-            kartu.append(f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
-                         f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>")
+                ket += f"  ·  ⭐ COMBO {len(it['combo']) + 1}"
+            if it.get("pullback"):
+                ket += "  ·  🔁 pullback"
+            if len(it.get("mutu_plus") or []) >= 3:
+                ket += "  ·  💎 mutu tinggi"
+            kartu.append((ST.prioritas(k, it), f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
+                         f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>"
+                         + "".join("\n" + z for z in ST.tp_cepat_teks(it))))
     kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
+    kartu.sort(key=lambda z: z[0], reverse=True)          # prioritas: label terbukti dulu, lalu PF jalur
+    kartu = [f"🏅 <b>PRIORITAS {i}</b>  ·  {ST.label_prioritas(p)}  ·  PF jalur {p[1]:.2f}\n{x}" for i, (p, x) in enumerate(kartu, 1)]
     if not kartu:
         return (kepala + "\nBelum ada sinyal jalur terbukti yang bisa diikuti di harga sekarang. Sinyal baru dikirim tiap candle 4J tutup "
                 "(03, 07, 11, 15, 19, 23 WIB lewat 5 menit).")
     return kepala + "\nHanya sinyal yang masih bisa diikuti di harga sekarang.\n\n" + "\n\n".join(kartu)
+
+
+
+def siaga_berita():
+    """60-75 menit sebelum CPI atau FOMC: posisi yang sedang untung ditutup, yang rugi ditahan.
+    Uji 2022-2026, 4366 posisi jalur terbukti yang melewati CPI/FOMC (data 1 jam):
+    tahan semua +2439R, tutup semua 1 jam sebelum +2602R, tutup yang untung saja +2712R.
+    Posisi rugi yang ditutup justru lebih jelek (-388R lawan -278R ditahan). Berita lain belum bisa diuji."""
+    try:
+        import qse_berita as BR
+        kal = BR.kalender()
+    except Exception:
+        return []
+    now = int(time.time() * 1000)
+    ev = [e for e in kal if 60 * 60000 <= e["ts"] - now <= 75 * 60000
+          and any(k in e["judul"].upper() for k in ("CPI", "FOMC", "FEDERAL FUNDS", "INTEREST RATE", "FED "))]
+    if not ev:
+        return []
+    e = ev[0]
+    kunci = f"siaga{e['ts']}"
+    d = _load()
+    if kunci in d.get("siaga", []):
+        return []
+    ubah(lambda dd: dd.update(siaga=(dd.get("siaga", []) + [kunci])[-50:]))
+    jalan = [it for it in d["open"].values() if it["status"] in ("TERISI", "TP1")]
+    if not jalan:
+        return [f"📅 <b>{e['judul']}</b> sekitar 1 jam lagi. Tidak ada posisi jalan. Sinyal baru ditahan sampai 1 jam sesudah rilis."]
+    rows = [f"📅 <b>{e['judul']}</b> sekitar 1 jam lagi.\nAturan teruji: posisi UNTUNG ditutup sekarang, posisi RUGI ditahan dengan SL tetap. "
+            "Uji 2022-2026 (4366 posisi): tahan semua +2439R, tutup yang untung saja +2712R."]
+    for it in jalan:
+        px = harga_live(it["sym"])
+        fl = floating(it, px) if px else None
+        kd = it["sym"].replace("USDT", "")
+        if fl and fl["r"] > 0:
+            rows.append(f"✅ <b>{it['sym']} {it['arah']}</b> untung {fl['r']:+.2f}R. TUTUP sekarang dengan MARKET, lalu /tutup {kd} HARGA")
+        else:
+            rows.append(f"⏸️ <b>{it['sym']} {it['arah']}</b> " + (f"rugi {fl['r']:+.2f}R" if fl else "") + ". Tahan, biarkan SL bekerja.")
+    return rows
+
+
+def btc_teknik():
+    """Kondisi BTC 4J menurut tiap teknik. Info saja. Uji 2021-2026: 6/6 naik diikuti BTC naik 24 jam kemudian 51.3%,
+    sama dengan rata-rata semua candle (51.3%). 0/6 diikuti BTC turun 46.4%. Tidak meramal arah."""
+    try:
+        import numpy as np
+        import qse_strat as ST
+        import qse_ichimoku as IC
+        df = ST._k4("BTCUSDT", 600)
+        h, l, c = (df[k].values.astype(float) for k in ("high", "low", "close"))
+        md = ST._mcginley(c[-600:])
+        tk = (IC._hh(h, 9) + IC._ll(l, 9)) / 2
+        kj = (IC._hh(h, 26) + IC._ll(l, 26)) / 2
+        sa = ((tk + kj) / 2)[-27]
+        sb = ((IC._hh(h, 52) + IC._ll(l, 52)) / 2)[-27]
+        st = [("EMA50", c[-1] > ST._ema(c, 50)[-1]), ("EMA200", c[-1] > ST._ema(c, 200)[-1]),
+              ("EMA20/50", ST._ema(c, 20)[-1] > ST._ema(c, 50)[-1]), ("McGinley", c[-1] > md[-1]),
+              ("Ichimoku", c[-1] > np.nanmax([sa, sb])), ("RSI", ST._rsi(c)[-1] > 50)]
+        n = sum(1 for _, v in st if v)
+        return ("BTC 4J per teknik: " + ", ".join(f"{k} {'naik' if v else 'turun'}" for k, v in st)
+                + f" = {n}/6 naik. Info kondisi saja: uji 2021-2026, 6/6 naik diikuti BTC naik 24 jam kemudian 51%, "
+                  "sama dengan rata-rata, jadi tidak dipakai menyaring sinyal")
+    except Exception as ex:
+        print("[WARN] btc teknik", ex)
+        return ""

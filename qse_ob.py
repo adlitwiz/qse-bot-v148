@@ -274,9 +274,23 @@ def _jalankan(baru_ok=True):
         risk = px - sg["sl"]
         if risk <= 0 or not (0.004 <= risk / px <= 0.10):  # SL lebih dari 10% dilewati: uji 2021-2026 SL 10-15% PF 1.05, di atas 15% PF 0.75
             continue
+        try:
+            import qse_strat as ST
+            sk, mp, mm = ST.mutu(df, "LONG")
+        except Exception as ex:
+            print("[WARN] mutu orderblock", ex)
+            sk, mp, mm = 0, [], []
+        if mp is not None and len(mp) - len(mm) <= -2:
+            print(f"[ORDERBLOCK] {sym} dilewati: mutu rendah ({', '.join(mm)})")
+            continue
         t = tick.get(sym, 0.0001)
-        it = dict(sym=sym, arah="LONG", entry=px, sl=sg["sl"], tp=px + TP_R * risk, risk=risk, bar=0, t=now,
+        it = dict(sym=sym, arah="LONG", entry=px, sl=sg["sl"], tp=px + TP_R * risk, risk=risk, bar=0, t=now, mutu=sk, mutu_plus=mp,
                   last=sg["ts"], close=px, tick=t, vp=sg["vp"])
+        try:
+            import qse_strat as ST
+            it["combo"] = ST._combo(df, "orderblock", "LONG", ST.btc_naik())
+        except Exception as ex:
+            print("[WARN] combo orderblock", ex)
         baru.append(it)
         PO.pesan(sym, "LONG")
         out.append(kartu(len(baru), it, sg))
@@ -287,6 +301,22 @@ def _jalankan(baru_ok=True):
     if baru:
         _ubah(simpan_baru)
     return out
+
+
+def _tpc(it):
+    try:
+        import qse_strat as ST
+        return ST.tp_cepat_teks(dict(it, arah="LONG"))
+    except Exception:
+        return []
+
+
+def _combo_teks(it):
+    try:
+        import qse_strat as ST
+        return ST.combo_teks(it) + ST.mutu_teks(it)
+    except Exception:
+        return []
 
 
 def kartu(no, it, sg):
@@ -306,9 +336,10 @@ def kartu(no, it, sg):
         SY.GARIS,
         f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  Order Block + Volume 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
+        *_combo_teks(it),
         SY.GARIS,
-        SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG",
-                      catatan_tp="TP1 sama dengan TP2, tutup penuh di 4R"),
+        SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG"),
+        *_tpc(it),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih"] if rm else []),
         "💡 <b>Kenapa</b>",
         f"• Order block bullish: candle merah lalu 5 candle hijau beruntun, naik {sg['gerak']:.1f}%",
@@ -473,9 +504,11 @@ def proses_sl():
     return out
 
 
-def baris_unggulan(harga=None, jam=24):
+def baris_unggulan(harga=None, jam=5):
     """Sinyal order block berjalan yang masih terjangkau: dikirim dalam `jam` terakhir, harga belum lari lebih dari
-    0.3R dari entry dan belum menyentuh SL. Untuk daftar KOIN UNGGULAN. harga: dict sym -> harga terakhir."""
+    0.3R dari entry dan belum menyentuh SL. Untuk daftar KOIN UNGGULAN. harga: dict sym -> harga terakhir.
+    Uji entry telat 2020-2026 (1150 sinyal): telat 1 candle PF 1.49/1.21 (dev/uji), 2 candle 1.45/1.04,
+    4 candle atau lebih di bawah 1 di 2024-2026. Jadi hanya sinyal 1 candle sebelumnya (dulu 24 jam)."""
     import qse_saya as SY
     ok, tk, ik, lot = SY.boleh_ikut("saran orderblock", "LONG")
     if not ok:

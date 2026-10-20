@@ -5,7 +5,7 @@ Gabungan 112 koin: PF 1.21, SHORT PF 1.30, LONG PF 1.10. Filter BTC 1J, ramalan 
 kekuatan relatif, dan volume sudah diuji: tidak ada yang menaikkan PF di 82 koin baru, jadi tidak dipakai.
 Aturan (sama dengan backtest dan Pine "QSE Ichimoku TK Awan Trail"):
   LONG : close di atas awan dan Tenkan memotong Kijun ke atas. SHORT kebalikannya.
-  SL awal 2 ATR dari entry. Tiap candle 4J tutup: cek SL kena dulu, lalu SL digeser ke puncak - 3 ATR (tidak pernah mundur).
+  SL awal 1.5 ATR dari entry (sejak 19 Okt 2026, sebelumnya 2). Tiap candle 4J tutup: cek SL kena dulu, lalu SL digeser ke puncak - 4 ATR (tidak pernah mundur, sebelumnya 3).
   Tutup paksa setelah 60 candle 4J (10 hari). Satu posisi per koin."""
 import fcntl
 import json
@@ -20,7 +20,9 @@ from config import STATE_DIR
 
 FILE = os.path.join(STATE_DIR, "ichimoku.json")
 H4 = 4 * 3600 * 1000
-SL_ATR, TRAIL_ATR, MAKS_BAR = 2.0, 3.0, 60
+# 19 Okt 2026: SL 1.5 ATR dan trailing 4 ATR (dipilih di 2020-2023). Rata R per trade 2024-2026 +0.109 -> +0.147R,
+# 2017-2020 +0.265 -> +0.365R, total 2021-2026 1874R -> 3007R, rasio profit/drawdown 5.0 -> 5.9. Win rate turun 38% -> 30%.
+SL_ATR, TRAIL_ATR, MAKS_BAR = 1.5, 4.0, 60
 TOP_KOIN = 150          # koin paling likuid yang dipantau (backtest memakai koin likuid)
 TOP_LIKUID = 20         # sinyal hanya dari 20 koin dengan nilai transaksi 30 hari terbesar
 MAKS_BARU = 5           # sinyal baru paling banyak per candle 4J
@@ -101,6 +103,22 @@ def rem():
     return ""
 
 
+def ST_tpc(it):
+    try:
+        import qse_strat as ST
+        return ST.tp_cepat_teks(it)
+    except Exception:
+        return []
+
+
+def ST_combo(it):
+    try:
+        import qse_strat as ST
+        return ST.combo_teks(it) + ST.mutu_teks(it)
+    except Exception:
+        return []
+
+
 def _sinyal(df):
     """Sinyal di candle tutup terakhir. Return (arah atau None, atr)."""
     h, l, c = df["high"].values, df["low"].values, df["close"].values
@@ -149,11 +167,11 @@ def _kelola(it, df):
         if L:
             it["best"] = max(it["best"], h)
             if not np.isnan(a[k]):
-                it["sl"] = max(it["sl"], it["best"] - TRAIL_ATR * a[k])
+                it["sl"] = max(it["sl"], it["best"] - it.get("trail_atr", 3.0) * a[k])
         else:
             it["best"] = min(it["best"], l)
             if not np.isnan(a[k]):
-                it["sl"] = min(it["sl"], it["best"] + TRAIL_ATR * a[k])
+                it["sl"] = min(it["sl"], it["best"] + it.get("trail_atr", 3.0) * a[k])
         it["last"] = int(ts)
         it["close"] = c
         if it["bar"] >= MAKS_BAR:
@@ -288,10 +306,24 @@ def _jalankan(baru_ok=True):
         if risk / px > 0.10:  # SL lebih dari 10% dilewati: uji 2021-2026 SL 10-15% PF 1.05, di atas 15% PF 0.75
             print(f"[ICHIMOKU] {sym} dilewati: SL {risk / px * 100:.1f}% lebih dari 10%")
             continue
+        try:
+            import qse_strat as ST
+            sk, mp, mm = ST.mutu(df, arah)
+        except Exception as ex:
+            print("[WARN] mutu ichimoku", ex)
+            sk, mp, mm = 0, [], []
+        if mp is not None and len(mp) - len(mm) <= -2:
+            print(f"[ICHIMOKU] {sym} dilewati: mutu rendah ({', '.join(mm)})")
+            continue
         sl = px - risk if L else px + risk
         t = tick.get(sym, 0.0001)
-        it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now,
-                  last=int(df.index[-1]), close=px, tick=t)
+        it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now, mutu=sk, mutu_plus=mp,
+                  last=int(df.index[-1]), close=px, tick=t, sl_atr=SL_ATR, trail_atr=TRAIL_ATR)
+        try:
+            import qse_strat as ST
+            it["combo"] = ST._combo(df, "ichimoku", arah, ST.btc_naik())
+        except Exception as ex:
+            print("[WARN] combo ichimoku", ex)
         baru.append(it)
         PO.pesan(sym, arah)
         try:
@@ -315,8 +347,10 @@ def _jalankan(baru_ok=True):
             SY.GARIS,
             f"{'🟢' if L else '🔴'} <b>{len(baru)}. {sym} {arah}</b>  ·  Ichimoku 4J",
             f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
+            *ST_combo(it),
             SY.GARIS,
             SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=sym, arah=arah),
+            *ST_tpc(dict(entry=px, sl=sl, arah=arah, tick=t)),
             *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih. Di uji 5 tahun rem ini "
                 f"menurunkan drawdown dari 28% ke 18% tanpa mengurangi profit"] if rm else []),
             "💡 <b>Kenapa</b>",
