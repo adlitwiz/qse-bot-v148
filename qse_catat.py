@@ -155,41 +155,104 @@ def statistik(jalur):
     return dict(n=n, wr=sum(r > 0 for r in rs) / n * 100, pf=pos / neg if neg > 0 else 9.99, avg=sum(rs) / n, net=sum(rs))
 
 
+TERBUKTI = {"ichimoku", "orderblock", "ema_short", "rsi_vol", "mcginley", "GZH", "gzh", "snr_vol", "msb_hpz", "smc_choch"}
+
+
 def mati(jalur):
+    """Matikan otomatis hanya untuk jalur percobaan. Jalur terbukti tidak dimatikan dari hasil live pendek:
+    uji 2021-2026, jendela 40 trade berturut-turut jalur terbukti PF di bawah 1 terjadi 31-55% waktu, bahkan 300 trade
+    10-32%. Pengaman jalur terbukti adalah rem portofolio (lot setengah), yang sudah diuji."""
+    if jalur in TERBUKTI:
+        return False
     s = statistik(jalur)
     return s["n"] >= MIN_N_JALUR.get(jalur, MIN_N) and s["pf"] < MIN_PF
 
 
+def _tutup_terbukti():
+    """Semua posisi robot jalur terbukti yang sudah selesai. Return list (kunci, nama, item)."""
+    out = []
+    try:
+        import qse_ichimoku as IC
+        out += [("ichimoku", "Ichimoku", c) for c in IC.lihat().get("closed", [])]
+    except Exception:
+        pass
+    try:
+        import qse_ob as OB
+        out += [("orderblock", "Order Block + Volume", c) for c in OB.lihat().get("closed", [])]
+    except Exception:
+        pass
+    try:
+        import qse_strat as ST
+        for k, cfg in ST.STRAT.items():
+            out += [(k, cfg["nama"], c) for c in ST.lihat(k).get("closed", [])]
+    except Exception:
+        pass
+    return [z for z in out if z[2].get("R") is not None]
+
+
+# rata-rata hasil per trade di uji 2021-2026 (R, sudah biaya), pembanding hasil live
+EXP_UJI = {"orderblock": 0.18, "snr_vol": 0.18, "mcginley": 0.17, "rsi_vol": 0.16, "ichimoku": 0.13, "ema_short": 0.11,
+           "smc_choch": 0.10, "msb_hpz": 0.09, "GZH": 0.07}
+
+
+def _baris(nama, rs, exp=None):
+    s_ = dict(n=len(rs))
+    if not rs:
+        return f"⚪ {nama}: belum ada trade selesai"
+    pos = sum(r for r in rs if r > 0)
+    neg = -sum(r for r in rs if r < 0)
+    pf = pos / neg if neg > 0 else 9.99
+    avg = sum(rs) / len(rs)
+    if len(rs) < 100:
+        nilai = "sampel kecil, belum bisa dinilai"
+        ik = "⚪"
+    elif exp is not None and avg < exp - 0.10:
+        nilai = f"di bawah uji ({exp:+.2f}R)"
+        ik = "🟠"
+    else:
+        nilai = "sesuai uji" + (f" ({exp:+.2f}R)" if exp is not None else "")
+        ik = "🟢"
+    return (f"{ik} {nama}: {s_['n']} trade, WR {sum(r > 0 for r in rs) / len(rs) * 100:.0f}%, PF {pf:.2f}, "
+            f"rata {avg:+.2f}R, total {sum(rs):+.1f}R  ·  {nilai}")
+
+
 def teks():
-    d = _baca()
-    rows = ["Hasil live jalur tambahan (dihitung otomatis dari candle 15 menit, sudah dipotong biaya 0.08R):"]
-    for j, nama in NAMA.items():
-        s = statistik(j)
-        buka = sum(1 for it in d["open"] if it["jalur"] == j)
-        if j == "ichimoku":
-            try:
-                import qse_ichimoku as IC
-                buka = len(IC.lihat()["open"])
-            except Exception:
-                pass
-        if j in ("ema_short", "rsi_vol", "mcginley", "GZH", "snr_vol", "msb_hpz", "smc_choch"):
+    """/jalur: hasil live semua jalur terbukti dan semua label, dibanding hasil uji, plus 30 hari terakhir."""
+    data = _tutup_terbukti()
+    now = time.time()
+    rows = ["Hasil live robot (posisi yang dicatat robot sendiri, sudah biaya). Pembanding: rata-rata per trade di uji 2021-2026.",
+            "Penilaian baru berarti setelah 100 trade: di uji, 40 trade berturut-turut PF di bawah 1 terjadi 31-55% waktu walau jalurnya untung.",
+            "", "📊 <b>PER TEKNIK</b> (semua waktu)"]
+    urut = sorted({(k, n) for k, n, _ in data} | {(k, None) for k in EXP_UJI}, key=lambda z: -EXP_UJI.get(z[0], 0))
+    sudah = set()
+    for k, _ in urut:
+        if k in sudah:
+            continue
+        sudah.add(k)
+        nama = next((n for kk, n, _ in data if kk == k), None)
+        if nama is None:
             try:
                 import qse_strat as ST
-                buka = len(ST.lihat(j)["open"])
+                nama = ST.STRAT.get(k, {}).get("nama") or {"ichimoku": "Ichimoku", "orderblock": "Order Block + Volume"}.get(k, k)
             except Exception:
-                pass
-        if j == "orderblock":
-            try:
-                import qse_ob as OB
-                buka = len(OB.lihat()["open"])
-            except Exception:
-                pass
-        batal = sum(1 for it in d["closed"] if it["jalur"] == j and it.get("status") == "BATAL")
-        if s["n"]:
-            rows.append(f"{'⛔' if mati(j) else '✅'} {nama}: {s['n']} trade | WR {s['wr']:.0f}% | PF {s['pf']:.2f} | "
-                        f"rata {s['avg']:+.2f}R | total {s['net']:+.1f}R | berjalan {buka} | tidak terisi {batal}")
-        else:
-            rows.append(f"⚪ {nama}: belum ada trade selesai | berjalan {buka} | tidak terisi {batal}")
-    rows.append(f"Jalur dengan minimal {MIN_N} trade (Ichimoku {MIN_N_JALUR['ichimoku']} trade) dan PF di bawah {MIN_PF:g} "
-                "otomatis berhenti mengirim saran.")
+                nama = k
+        rows.append(_baris(nama, [c["R"] for kk, _, c in data if kk == k], EXP_UJI.get(k)))
+    lab = [("💎 COMBO FIX PROFIT", lambda c: c.get("combo_fix"), 0.33),
+           ("🏆 COMBO EMAS", lambda c: c.get("combo_emas") and not c.get("combo_fix"), 0.21),
+           ("⭐ COMBO lain", lambda c: c.get("combo") and not c.get("combo_emas") and not c.get("combo_fix"), 0.12),
+           ("💎 MUTU TINGGI", lambda c: len(c.get("mutu_plus") or []) >= 3, 0.18),
+           ("🔁 PULLBACK McGinley", lambda c: c.get("pullback"), 0.24),
+           ("Tanpa label", lambda c: not (c.get("combo") or len(c.get("mutu_plus") or []) >= 3 or c.get("pullback")), 0.11)]
+    rows += ["", "🏷 <b>PER LABEL</b> (label dicatat sejak 20 Okt 2026)"]
+    for nm, fn, ex in lab:
+        rows.append(_baris(nm, [c["R"] for _, _, c in data if fn(c)], ex))
+    b30 = [c["R"] for _, _, c in data if now - c.get("selesai", 0) <= 30 * 86400]
+    rows += ["", "🗓 <b>30 HARI TERAKHIR</b>", _baris("Semua jalur", b30, 0.13)]
+    try:
+        import qse_porto as PO
+        rm = PO.rem()
+        rows.append("🛡 Rem portofolio: " + (f"AKTIF, lot setengah ({rm})" if rm else "tidak aktif, lot normal"))
+    except Exception:
+        pass
+    rows.append("Jalur terbukti tidak dimatikan otomatis dari hasil live pendek. Pengaman yang dipakai: rem lot setengah.")
     return "\n".join(rows)

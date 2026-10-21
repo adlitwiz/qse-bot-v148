@@ -193,14 +193,16 @@ def _batal_sinyal(sym, dari_main):
 def balas(cmd, args, dari_main=False):
     if cmd == "/entry":
         return SY.entry(args)
-    if cmd == "/cek":
+    if cmd in ("/cek", "/cekdetail"):
         if not args:
-            return "Format: /cek AUSDT atau /cek AUSDT long 1.022"
+            return "Format: /cek SOL atau /cek SOL long 185.4"
         sym = _sym(args[0])
         arah = next((("LONG" if a in ("LONG", "BUY") else "SHORT") for a in args[1:]
                      if a in ("LONG", "SHORT", "BUY", "SELL")), None)
         harga = next((SY._angka(a) for a in args[1:] if SY._angka(a) is not None), None)
-        return SY.konsultasi(sym, arah, harga)
+        if cmd == "/cekdetail":
+            return SY.konsultasi(sym, arah, harga)
+        return SY.cek_jalur(sym, arah, harga)
     if cmd == "/tutup":
         return SY.tutup(args)
     if cmd == "/tp":
@@ -330,7 +332,7 @@ def proses(cmds, dari_main=False):
         except Exception as ex:
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
         if isi:
-            ikon = {"/entry": "📝", "/cek": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
+            ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
                     "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/help": "❓", "/start": "❓"}

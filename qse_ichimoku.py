@@ -323,6 +323,7 @@ def _jalankan(baru_ok=True):
             import qse_strat as ST
             it["combo"] = ST._combo(df, "ichimoku", arah, ST.btc_naik(), sym)
             it["combo_emas"] = ST.combo_emas("ichimoku", it["combo"])
+            it["combo_fix"] = ST.combo_fix("ichimoku", it["combo"])
         except Exception as ex:
             print("[WARN] combo ichimoku", ex)
         import qse_porto as PO_s

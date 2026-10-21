@@ -1263,6 +1263,14 @@ def _kartu_jam(results, b1, led):
             bag.append(f"{it['sym']} {it['arah']} " + (f"{fl['pct']:+.1f}% ({fl['r']:+.2f}R)" if fl else "-"))
         rows.append("👤 Posisi: " + " | ".join(bag))
         rows.append("↳ Diam, biarkan SL dan TP jalur bekerja. Gerak BTC 1 jam bukan alasan keluar.")
+    try:
+        sv = SY.sinyal_jalur(jam=True)
+        if sv:
+            rows.append("📡 <b>SINYAL MASIH VALID DI HARGA SEKARANG</b> (urut prioritas, tekan lama blok untuk salin ke /entry)\n\n" + sv)
+        else:
+            rows.append("📡 Belum ada sinyal jalur terbukti yang valid di harga sekarang")
+    except Exception as ex:
+        print("[WARN] sinyal per jam", ex)
     aktif = [v for v in led["open"].values() if v["status"] == "MENUNGGU"]
     rows.append(f"⏳ Order Tembus Trendline menunggu terisi: {len(aktif)}" + (" (detail di /sinyal4j)" if aktif else ""))
     peta_px = {r["symbol"]: (r.get("live") or r["close"], r["tick"]) for r in results}
@@ -1272,14 +1280,8 @@ def _kartu_jam(results, b1, led):
                     + (f", harga {TG.fp(px, t)}, jarak {abs(px - v['entry']) / v['entry'] * 100:.2f}%" if px else ""))
     sisa = (H4 - int(time.time() * 1000) % H4) / 60000
     rows.append(f"⏳ Laporan 4 jam berikutnya {int(sisa // 60)} jam {int(sisa % 60)} menit lagi")
-    gerak = []
-    for r in results:
-        o = ((r.get("pasar") or {}).get("k_now") or (0,))[0]
-        if o and r.get("live"):
-            gerak.append(((r["live"] / o - 1) * 100, r["symbol"]))
-    if gerak:
-        gerak.sort(key=lambda z: -abs(z[0]))
-        rows.append("🚀 Paling bergerak sejak candle 4J dibuka: " + ", ".join(f"{sy} {g:+.1f}%" for g, sy in gerak[:3]))
+    # baris "paling bergerak" dihapus: uji 2021-2026 entry di 3 koin paling bergerak tiap candle 4J PF 0.97 (ikut arah)
+    # dan 0.97 (lawan arah), jadi bukan petunjuk entry
     return "\n".join(rows)
 
 
@@ -1356,11 +1358,13 @@ def cek_cepat(now, paksa=False):
     info = []
     for e in BR.pengingat():
         info.append(f"⚠️ BERITA BESAR {TG.e(e['judul'])} {BR.jam_wib(e['ts'])}. Sinyal baru ditahan mulai 2 jam "
-                    f"sebelum sampai 1 jam sesudah rilis. Posisi jalan: kunci profit atau geser SL ke entry sebelum rilis.")
+                    f"sebelum sampai 1 jam sesudah rilis. Posisi jalan: untuk CPI/FOMC robot mengirim SIAGA (tutup yang untung, tahan yang rugi), "
+                    f"berita lain tahan sesuai aturan jalur.")
     if ctx["kirim_guncang"]:
         g = ctx["kirim_guncang"]
         info.append(f"⚠️ PASAR BERGEJOLAK: BTC {'NAIK' if g['pct'] > 0 else 'TURUN'} tajam, {g['x']:.1f} kali gerak normal, 3 jam terakhir {g['pct']:+.1f}%. "
-                    f"Sinyal baru ditahan 3 jam. Posisi jalan: kunci profit atau geser SL ke entry.")
+                    f"Sinyal baru ditahan 3 jam. Posisi jalan: tahan sesuai aturan jalur, SL di Bybit yang melindungi "
+                    f"(uji 2021-2026: geser SL ke entry menurunkan profit 18%).")
     # alarm zona emas untuk trading manual, sekali per koin per candle 4J
     st = _st_load()
     sudah = st.get("alarm_zona", {})
@@ -1577,7 +1581,8 @@ def scan(now, run4, tfs):
     if ctx["kirim_guncang"]:
         g = ctx["kirim_guncang"]
         waspada.append(f"⚠️ PASAR BERGEJOLAK: BTC {'NAIK' if g['pct'] > 0 else 'TURUN'} tajam, {g['x']:.1f} kali gerak normal, 3 jam terakhir {g['pct']:+.1f}%. "
-                       f"Sinyal baru ditahan 3 jam. Posisi jalan: kunci profit atau geser SL ke entry.")
+                       f"Sinyal baru ditahan 3 jam. Posisi jalan: tahan sesuai aturan jalur, SL di Bybit yang melindungi "
+                    f"(uji 2021-2026: geser SL ke entry menurunkan profit 18%).")
     if waspada:
         TG.send(["⚠️ <b>QSE v148 | PERINGATAN POSISI</b>\n\n" + "\n\n".join(waspada)])
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, tfs)]
@@ -1951,6 +1956,8 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
         combo = it.get("combo") or []
         ket = ("🆕 sinyal candle ini" if baru else
                f"sinyal {jam} WIB, harga masih dekat entry robot {TG.fp(it['entry'], t)} ({d:+.2f}R)")
+        if it.get("combo_fix"):
+            ket += f"\n💎 COMBO FIX PROFIT dengan {TG.e(' dan '.join(it['combo_fix']))} (3 teknik terbaik, uji 2024-2026 PF 1.75)"
         if it.get("combo_emas"):
             ket += f"\n🏆 COMBO EMAS dengan {TG.e(', '.join(it['combo_emas']))} (pasangan terbaik, uji 2024-2026 PF 1.48)"
         if combo:
@@ -2196,7 +2203,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         if ring_rb:
             import qse_strat as ST_m
             rows[-1] = "🏆 <b>URUTAN PRIORITAS</b> (ambil dari nomor 1, semua masih valid di harga sekarang)"
-            rows.append("Urutan: jumlah label terbukti dulu (COMBO, MUTU TINGGI, PULLBACK), lalu PF jalur")
+            rows.append("Urutan: COMBO FIX PROFIT, COMBO EMAS, lalu label lain (COMBO, MUTU TINGGI, PULLBACK), lalu PF jalur")
         for no_, (sym, arah, nama, ik, lot, ket, pr, lb) in enumerate(ring_rb, 1):
             rows.append(f"{ST_m.medali(no_)} <b>{no_}. {TG.e(sym)} {arah}</b>  ·  {TG.e(nama)}  ·  "
                         f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  lot {lot}")

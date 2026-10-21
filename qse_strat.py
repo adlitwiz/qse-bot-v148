@@ -49,7 +49,7 @@ STRAT = {
                     kenapa=["Pivot support/resistance 20 candle baru terkonfirmasi, harga memantul darinya",
                             "Searah tren besar (EMA 200) dan searah BTC 4J",
                             "Volume candle masuk 20% tertinggi dari 100 candle"]),
-    "msb_hpz": dict(nama="MSB LuxAlgo HPZ", likuid=30, trail_atr=4.0,
+    "msb_hpz": dict(nama="MSB LuxAlgo HPZ", likuid=30, trail_atr=4.0, trail_pct_2r=0.05,
                     bt="uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 2783 trade, WR 37%, PF 1.27, 2020-2023 PF 1.32, uji ulang 2024-2026 PF 1.21",
                     kenapa=["Market structure break: close menembus pivot 7 candle dengan momentum kuat",
                             "Skor zona di atas 80 (HPZ): momentum dan volume besar",
@@ -205,6 +205,11 @@ def _kelola(it, df):
         else:
             it["best"] = min(it["best"], lo)
             it["sl"] = min(it["sl"], it["best"] + it.get("trail_atr", TRAIL_ATR) * a[k])
+        tp2 = it.get("trail_pct_2r")
+        if tp2 and abs(it["best"] - e) >= 2 * risk:
+            # MSB: setelah untung berjalan 2R, trailing pindah ke 5% harga. Uji 2021-2026 data 1 jam: rata hasil MSB
+            # 0.13 -> 0.24R (2021-23) dan 0.10 -> 0.14R (2024-26). Jalur lain tidak konsisten, pemicu +5% harga lebih buruk
+            it["sl"] = max(it["sl"], it["best"] - tp2 * e) if L else min(it["sl"], it["best"] + tp2 * e)
         it["bar"] += 1
         it["last"] = int(ts)
         it["close"] = cl
@@ -417,7 +422,7 @@ PF_JALUR = {"tt": 1.47, "orderblock": 1.45, "ema_short": 1.42, "rsi_vol": 1.34, 
 def prioritas(k, it):
     """Kunci urut sinyal: jumlah label terbukti dulu (COMBO, COMBO 3+, MUTU TINGGI, PULLBACK), lalu PF jalur.
     Label: combo 3+ PF 1.40, mutu tinggi PF 1.37, McGinley pullback PF 1.43, semua di atas PF jalur mana pun tanpa label."""
-    n = 2 if it.get("combo_emas") else 0
+    n = (3 if it.get("combo_fix") else 0) + (2 if it.get("combo_emas") else 0)
     cb = len(it.get("combo") or [])
     n += (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0)
     n += 1 if len(it.get("mutu_plus") or []) >= 3 else 0
@@ -431,13 +436,13 @@ def prioritas_teks(k, m):
     g = re.search(r"COMBO (\d+)", m)
     cb = int(g.group(1)) - 1 if g else 0
     n = (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0) + (1 if "MUTU TINGGI" in m else 0) + (1 if "PULLBACK" in m else 0) \
-        + (2 if "COMBO EMAS" in m else 0)
+        + (2 if "COMBO EMAS" in m else 0) + (3 if "COMBO FIX PROFIT" in m else 0)
     return (n, PF_JALUR.get(k, 1.2))
 
 
 def label_nama(it):
     """Nama label terbukti pada sinyal, untuk ditampilkan di urutan prioritas."""
-    out = ["COMBO EMAS"] if it.get("combo_emas") else []
+    out = (["COMBO FIX PROFIT"] if it.get("combo_fix") else []) + (["COMBO EMAS"] if it.get("combo_emas") else [])
     cb = len(it.get("combo") or [])
     if cb:
         out.append(f"COMBO {cb + 1}")
@@ -451,7 +456,7 @@ def label_nama(it):
 def label_nama_teks(m):
     import re
     g = re.search(r"COMBO (\d+)", m)
-    return (["COMBO EMAS"] if "COMBO EMAS" in m else []) + ([f"COMBO {g.group(1)}"] if g else []) + (["MUTU TINGGI"] if "MUTU TINGGI" in m else []) \
+    return (["COMBO FIX PROFIT"] if "COMBO FIX PROFIT" in m else []) + (["COMBO EMAS"] if "COMBO EMAS" in m else []) + ([f"COMBO {g.group(1)}"] if g else []) + (["MUTU TINGGI"] if "MUTU TINGGI" in m else []) \
         + (["PULLBACK"] if "PULLBACK" in m else [])
 
 
@@ -460,7 +465,7 @@ def medali(no):
 
 
 def label_prioritas(p):
-    return ("⭐" * p[0]) if p[0] else "tanpa label"
+    return f"skor label {p[0]}" if p[0] else "tanpa label"
 
 
 def combo_teks(it):
@@ -469,7 +474,9 @@ def combo_teks(it):
         return []
     emas = ([f"🏆 <b>COMBO EMAS</b>: pasangan dengan {', '.join(it['combo_emas'])} termasuk pasangan terbaik. "
              f"Dipilih dari 2021-2023 (PF 1.45), dicek 2024-2026 PF 1.48, combo biasa 1.25"] if it.get("combo_emas") else [])
-    return emas + [f"⭐ <b>COMBO {len(it['combo']) + 1}</b>: juga {', '.join(it['combo'])} searah dalam 72 jam. "
+    fix = ([f"💎 <b>COMBO FIX PROFIT</b>: searah dengan {' dan '.join(it['combo_fix'])}. Kombinasi 3 teknik terbaik, "
+            f"dipilih dari 2021-2023, dicek 2024-2026 PF 1.75, rata-rata 0.33R per trade"] if it.get("combo_fix") else [])
+    return fix + emas + [f"⭐ <b>COMBO {len(it['combo']) + 1}</b>: juga {', '.join(it['combo'])} searah dalam 72 jam. "
             f"Uji 2021-2026: combo 3+ PF 1.40, 2 PF 1.25, sendiri PF 1.21"]
 
 
@@ -480,13 +487,33 @@ COMBO_EMAS = {("GZH", "smc_choch"), ("ema_short", "msb_hpz"), ("ema_short", "rsi
               ("ichimoku", "mcginley"), ("ichimoku", "rsi_vol"), ("mcginley", "GZH"), ("mcginley", "ema_short"),
               ("mcginley", "ichimoku"), ("mcginley", "msb_hpz"), ("msb_hpz", "ema_short"), ("msb_hpz", "ichimoku"),
               ("rsi_vol", "ichimoku"), ("rsi_vol", "mcginley"), ("rsi_vol", "msb_hpz"), ("rsi_vol", "smc_choch"),
-              ("smc_choch", "ema_short"), ("snr_vol", "smc_choch")}
+              ("smc_choch", "ema_short"), ("snr_vol", "smc_choch"),
+              # tambahan 20 Okt 2026 (dipilih 2021-2023 PF >= 1.35 dan 80 trade, lolos 2024-2026 PF 1.38-1.58)
+              ("ema_short", "mcginley"), ("mcginley", "smc_choch"), ("orderblock", "smc_choch"), ("smc_choch", "ichimoku")}
+
+# COMBO FIX PROFIT: jalur sinyal + 2 jalur pendukung tertentu searah dalam 72 jam. Dipilih dari 2021-2023 (PF minimal 1.6,
+# minimal 60 trade), 10 dari 11 lolos di 2024-2026 (PF 1.46-2.20). Gabungan uji 2024-2026 PF 1.75, expectancy 0.33R per trade,
+# hampir 3 kali sinyal tanpa combo (0.11R). Sekitar 1 sinyal per hari.
+COMBO_FIX = {("msb_hpz", frozenset({"ema_short", "smc_choch"})), ("ema_short", frozenset({"mcginley", "msb_hpz"})),
+             ("rsi_vol", frozenset({"mcginley", "smc_choch"})), ("smc_choch", frozenset({"ichimoku", "mcginley"})),
+             ("ichimoku", frozenset({"mcginley", "smc_choch"})), ("rsi_vol", frozenset({"mcginley", "msb_hpz"})),
+             ("ichimoku", frozenset({"mcginley", "rsi_vol"})), ("rsi_vol", frozenset({"msb_hpz", "smc_choch"})),
+             ("rsi_vol", frozenset({"ichimoku", "mcginley"})), ("ichimoku", frozenset({"rsi_vol", "smc_choch"}))}
 
 
 def nama_ke_kunci(nm):
     peta = {cfg["nama"]: kk for kk, cfg in STRAT.items()}
     peta.update({"Ichimoku": "ichimoku", "Order Block": "orderblock"})
     return peta.get(nm)
+
+
+def combo_fix(k, combo):
+    """Pasangan 2 pendukung yang membentuk COMBO FIX PROFIT. Return list nama pendukung atau []."""
+    kk = {nama_ke_kunci(nm): nm for nm in (combo or []) if nama_ke_kunci(nm)}
+    for jalur, pas in COMBO_FIX:
+        if jalur == k and pas <= set(kk):
+            return sorted(kk[x] for x in pas)
+    return []
 
 
 def combo_emas(k, combo):
@@ -522,6 +549,27 @@ def _combo(df, k, arah, bn, sym=None):
                     nama.add("Order Block")
             except Exception:
                 pass
+    # EMA 9/21 cross searah EMA 200 dengan volume 20% tertinggi: diuji 20 Okt 2026 sebagai teknik baru. Sendiri impas
+    # (PF 0.98 saat tidak bareng jalur lain), jadi bukan jalur sinyal, tapi sebagai pendukung combo: sinyal jalur yang
+    # sendirian PF 1.19, dengan pendukung ini PF 1.33 (2021-23 1.25, 2024-26 1.38). Stochastic, Williams %R, RSI 30/70 rugi,
+    # SMA/WMA/triple cross, CCI, Parabolic SAR, kekuatan koin vs BTC lebih lemah dari EMA 9/21, tidak dipakai.
+    try:
+        cc, vv = df["close"].values.astype(float), df["volume"].values.astype(float)
+        e9, e21, e2 = _ema(cc, 9), _ema(cc, 21), _ema(cc, 200)
+        n_ = len(cc)
+        for j in range(18):
+            i = n_ - 1 - j
+            if i < 210:
+                break
+            vp_ = (vv[i - 100:i] <= vv[i]).mean() * 100
+            if vp_ < 80:
+                continue
+            if arah == "LONG" and e9[i] > e21[i] and e9[i - 1] <= e21[i - 1] and cc[i] > e2[i]:
+                nama.add("EMA 9/21 + Volume")
+            if arah == "SHORT" and e9[i] < e21[i] and e9[i - 1] >= e21[i - 1] and cc[i] < e2[i]:
+                nama.add("EMA 9/21 + Volume")
+    except Exception:
+        pass
     if sym:
         # GZH dikirim terpisah (alarm fib), dicek dari catatan jalur GZH 72 jam terakhir
         try:
@@ -665,13 +713,14 @@ def jalankan(baru_ok=True):
             t = tick.get(sym, 0.0001)
             it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now,
                       last=int(df.index[-1]), close=px, tick=t, sl_atr=cfg.get("sl_atr", SL_ATR),
-                      trail_atr=cfg.get("trail_atr", TRAIL_ATR))
+                      trail_atr=cfg.get("trail_atr", TRAIL_ATR), trail_pct_2r=cfg.get("trail_pct_2r"))
             if cfg.get("tp_r"):
                 it.update(tp=px + cfg["tp_r"] * risk if L else px - cfg["tp_r"] * risk, maks_bar=cfg["maks_bar"])
             it.update(mutu=sk, mutu_plus=mp)
             try:
                 it["combo"] = _combo(df, k, arah, bn, sym)
                 it["combo_emas"] = combo_emas(k, it["combo"])
+                it["combo_fix"] = combo_fix(k, it["combo"])
             except Exception as ex:
                 print("[WARN] combo", ex)
             if PO.senin_tolak(it.get("combo"), it.get("combo_emas")):
@@ -748,6 +797,8 @@ def kartu(k, no, it, a):
             "4. Catat dengan /entry supaya ada pengingat dan analisa volume kalau kena SL"] if it.get("tp") else
           [f"1. Masuk MARKET sekarang. SL di {TG.fp(it['sl'], t)} ({it['risk'] / it['entry'] * 100:.1f}%). Jangan pasang TP",
            f"2. Pasang Trailing Stop Bybit dengan jarak {TG.fp(jarak, t)} ({jarak / it['entry'] * 100:.1f}%), atau ikuti pesan GESER SL",
+           *([f"   Setelah untung 2R ({TG.fp(it['entry'] + 2 * it['risk'] if L else it['entry'] - 2 * it['risk'], t)}), ganti jarak "
+              f"Trailing Stop jadi 5% harga. Robot mengingatkan lewat SL TERBARU"] if it.get("trail_pct_2r") else []),
            "3. Kalau 10 hari belum kena SL, tutup manual",
            "4. Catat dengan /entry supaya pesan GESER SL dan analisa volume SL dikirim"]),
         *([lot] if lot else []),

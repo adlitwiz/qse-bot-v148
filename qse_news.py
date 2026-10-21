@@ -389,19 +389,7 @@ def _cek_pasar(sym, arah):
     apakah arah berita searah BTC 1 jam, dan posisi kamu yang searah atau berlawanan dengan berita ini.
     Berita BTC atau ETH dianggap menyentuh semua altcoin, berita koin lain hanya menyentuh koin itu."""
     import qse_saya as SY
-    rows = []
-    try:
-        rows.append(SY.baris_konteks())
-    except Exception:
-        pass
-    try:
-        lawan = SY.btc_melawan(arah)
-        naik, _ = SY.btc_1j()
-        if naik is not None:
-            rows.append(f"🧭 Berita {arah} {sym} " + (f"BERLAWANAN dengan {lawan[0]}" if lawan
-                                                      else f"searah BTC 1 jam ({'naik' if naik else 'turun'})"))
-    except Exception:
-        pass
+    rows = []          # baris konteks BTC 1 jam dan altcoin dihapus: tidak terbukti membantu keputusan
     try:
         luas = sym in ("BTCUSDT", "ETHUSDT")
         pos = [v for v in SY.lihat()["open"].values()
@@ -455,7 +443,26 @@ def sejarah_singkat(k):
     return (f"📚 Sejarah {d['n']} kejadian: BTC 24 jam {d['b24']:+.1f}%, naik di {d['naik']}% kejadian.{alt}")
 
 
+def terbukti(kat):
+    """Jenis berita yang dampaknya terbukti dari sejarah 2022-2026 (data jam Binance): arah konsisten (naik di 65%
+    kejadian atau lebih, atau 35% atau kurang) dan gerak BTC 24 jam besar (minimal 1.5% bila 5-7 kejadian, minimal 1%
+    bila 8 kejadian atau lebih). Contoh lolos: CPI sesuai perkiraan, bursa kolaps, regulasi negatif, perang dagang.
+    Contoh tidak lolos: hack, CPI panas atau dingin, FOMC tahan, perang (arah campur atau gerak kecil)."""
+    d = DAMPAK.get(kat)
+    if not d or arah_sejarah(kat) == 0 or not (d["naik"] >= 65 or d["naik"] <= 35):
+        return False
+    return (d["n"] >= 5 and abs(d["b24"]) >= 1.5) or (d["n"] >= 8 and abs(d["b24"]) >= 1.0)
+
+
 def _lolos(kat, kuat, arah, koin, pub, now):
+    """Hanya berita yang jenisnya terbukti berdampak (20 Okt 2026). Jalur lama 'berita baru yang harga sudah bergerak'
+    dihapus: beritanya datang setelah harga bergerak, jadi telat, dan gerak harga sudah dikabari PASAR BERGERAK SERENTAK."""
+    if pub and now - pub > UMUR_MAKS:
+        return None
+    return "sejarah" if kat and terbukti(kat) else None
+
+
+def _lolos_lama(kat, kuat, arah, koin, pub, now):
     """Saring berita. Return alasan lolos (teks) atau None.
     Lolos kalau (1) jenis berita ada di sejarah dan dampaknya besar, atau
     (2) berita baru tanpa sejarah, kata kuncinya kuat, dan harga sudah bergerak jelas searah berita."""
@@ -512,6 +519,14 @@ def cek(simbol, maks=2):
             alasan = _lolos(kat, kuat, arah, koin, b.get("pub"), now)
             if not alasan:
                 continue
+            # berita berlawanan atau searah dalam 3 jam terakhir untuk koin yang sama tidak dikirim terpisah:
+            # berlawanan dianggap saling batal, searah cukup sekali
+            riw = [x for x in c.get("terakhir", []) if now - x["t"] < 3 * 3600 and x.get("koin") and x["koin"][0] == koin[0]]
+            if any(x["arah"] != ("LONG" if arah > 0 else "SHORT") for x in riw):
+                c.setdefault("batal", []).append(dict(t=now, koin=koin[0], judul=b["judul"][:120]))
+                continue
+            if riw:
+                continue
             topik[tk] = now
             arah_t = "LONG" if arah > 0 else "SHORT"
             c.setdefault("terakhir", []).append(dict(t=now, arah=arah_t, koin=koin[:2], kat=kat))
@@ -526,8 +541,9 @@ def cek(simbol, maks=2):
                     + ("" if alasan == "sejarah" else f" | {alasan}")]
             if alasan == "sejarah":
                 rows.append(sejarah_singkat(kat))
+            rows.append("🛠 Aksi: info saja, jangan entry dari berita. Sinyal teknik tetap acuan, posisi jalan tetap ikuti "
+                        "SL dan TP (uji: keluar lebih awal menurunkan profit). Khusus CPI dan FOMC ikuti pesan SIAGA.")
             for base in koin[:1]:
-                rows.append(_saran(base + "USDT", arah_t, now, kat, b.get("pub")))
                 ck = _cek_pasar(base + "USDT", arah_t)
                 if ck:
                     rows.append(ck)

@@ -184,6 +184,22 @@ def _tugas_berkala():
         except Exception as ex:
             print("[WARN] kartu SL", ex)
     hari = int(now // 86400) * 86400
+    # pengingat DCA spot BTC: Senin 08:00 WIB (Senin 01:00 UTC), Rp100.000 per minggu. Uji 2018-2026: beli rutin
+    # mingguan +416%, mengalahkan semua aturan menunggu waktu beli. Hari dan jam beli tidak berpengaruh (beda < 1%),
+    # Senin dipilih karena sinyal futures robot paling sepi di hari Senin.
+    if (time.gmtime(now).tm_wday == 0 and now - hari >= 3600 and st.get("dca_hari", 0) < hari
+            and now - hari <= 6 * 3600):
+        _st({"dca_hari": hari, "dca_n": st.get("dca_n", 0) + 1})
+        try:
+            import bybit_fetch as B
+            px = (B.get_tickers().get("BTCUSDT") or {}).get("last") or 0
+            n = st.get("dca_n", 0) + 1
+            TG.send([f"🪙 <b>QSE v148 | JADWAL DCA BTC</b>\nHari ini jadwal beli BTC spot Rp100.000 (minggu ke-{n}).\n"
+                     + (f"Harga BTC sekarang {px:,.0f} USDT.\n" if px else "")
+                     + "Beli sekarang dengan jumlah yang sama, jangan menunggu turun dan jangan lewati minggu ini walau harga naik. "
+                     "Uji 2018-2026: beli rutin tiap minggu +416%, lebih baik dari semua cara menunggu waktu beli."])
+        except Exception as ex:
+            print("[WARN] dca", ex)
     if now - hari >= 15 * 3600 and st.get("tidur_hari", 0) < hari and now - hari <= 16 * 3600:
         # 22:00 WIB: kartu siap tidur kalau ada posisi jalan
         _st({"tidur_hari": hari})

@@ -212,12 +212,20 @@ def _pesan_gzh(a, cl):
     why_p = PO.izin(a["sym"], arah, "GZH")
     if why_p:
         return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi ditahan batas portofolio, {why_p}. Lewati."
+    mp = []
+    try:
+        if df is not None and len(df) > 120:
+            _, mp, mm = ST.mutu(df, arah)
+            if ST.mutu_buang(mp, mm):
+                return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi mutu rendah ({TG.e(ST.mutu_buang(mp, mm))}). Lewati."
+    except Exception as ex:
+        print("[WARN] gzh mutu", ex)
     d = ST.lihat("GZH")
     if len(d["open"]) >= ST.MAKS_BUKA:
         return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi posisi GZH robot sudah {ST.MAKS_BUKA}. Lewati."
     now = time.time()
     it = dict(sym=a["sym"], arah=arah, entry=cl, sl=a["sl"], sl0=a["sl"], risk=risk, best=cl, bar=0, t=now,
-              last=int(a["candle"]), close=cl, tick=t)
+              last=int(a["candle"]), close=cl, tick=t, mutu_plus=mp)
     ST._ubah("GZH", lambda dd: dd["open"].update({f"{a['sym']}|{int(now)}": it}))
     PO.pesan(a["sym"], arah)
     rm_p = PO.rem()

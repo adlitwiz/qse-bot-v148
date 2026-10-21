@@ -400,5 +400,5 @@ def peringatan(led, res_map):
             if k not in it["alert"]:
                 it["alert"].append(k)
                 pesan.append(f"⚠️ <b>{it['sym']} {arah}</b> sinyal robot {it['pola']}\n↳ {txt}. "
-                             f"Pertimbangkan kunci profit atau geser SL ke entry. Jangan buka arah sebaliknya di koin ini.")
+                             f"Tahan sesuai SL dan TP, jangan buka arah sebaliknya di koin ini.")
     return pesan

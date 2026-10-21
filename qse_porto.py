@@ -65,7 +65,7 @@ def hari(ts=None):
     return "senin" if d == 0 else "akhir_pekan" if d in (5, 6) else ""
 
 
-def senin_tolak(combo, combo_emas):
+def senin_tolak(combo, combo_emas, combo_fix=None):
     """Hari Senin hanya sinyal COMBO EMAS atau COMBO 3+. Return alasan tolak atau ''."""
     if hari() != "senin":
         return ""
