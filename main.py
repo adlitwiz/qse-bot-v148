@@ -1147,6 +1147,18 @@ def uji_mingguan(paksa=False):
 
 def _blok_posisi_analisa(it, r):
     px = (r or {}).get("live") or 0
+    if it.get("ikut"):
+        # posisi dari jalur terbukti: vonis MELEMAH/BERBALIK tidak ditampilkan. Uji 2021-2026 sinyal jalur yang dinilai
+        # berisiko tetap untung (PF 1.1-1.5), dan keluar lebih awal menurunkan profit 18-78%
+        px = px or SY.harga_live(it["sym"]) or 0
+        fl = SY.floating(it, px) if px else None
+        t = it.get("tick") or 1e-8
+        tpj = it.get("tp_jalur")
+        return (f"{IKON.get(it['arah'], '')} <b>{TG.e(it['sym'])} {it['arah']}</b>  ·  "
+                + (f"{fl['pct']:+.2f}%  ·  {fl['r']:+.2f}R" if fl else "posisi jalan") + "\n"
+                f"✅ Ikut aturan jalur: SL {TG.fp(it['sl'], t)}, "
+                + (f"TP {TG.fp(tpj, t)} penuh" if tpj else "Trailing Stop jalur") + ". Tahan sampai salah satu kena, "
+                "robot mengabari kalau jalur keluar (TUTUP SEKARANG).")
     an = SY.analisa_lengkap(it, r, px or None)
     fl = SY.floating(it, px) if px else None
     ik = {"MASIH SESUAI ANALISA": "✅", "MELEMAH": "⚠️", "BERBALIK": "🛑"}.get(an["vonis"], "•")
@@ -1177,8 +1189,8 @@ def _cek_posisi_berubah(res_map):
     out = []
     ganti = {}
     for k, it in SY.lihat()["open"].items():
-        if it["status"] not in ("TERISI", "TP1"):
-            continue
+        if it["status"] not in ("TERISI", "TP1") or it.get("ikut"):
+            continue          # posisi jalur terbukti tidak dikabari perubahan vonis
         r = res_map.get(it["sym"]) or SY.hasil_robot(it["sym"])
         if not r:
             continue

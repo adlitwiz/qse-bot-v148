@@ -180,42 +180,53 @@ def _ringkas_tf(sym):
 
 
 def harian():
-    """Laporan otomatis tiap pagi: tren 7 TF BTC dan ETH, posisi kamu, pola kembar BTC, berita besar hari ini."""
+    """Laporan otomatis tiap pagi (21 Okt 2026): hanya yang teruji dan bisa dipakai. Rencana hari ini, sinyal valid,
+    posisi kamu, berita besar, BTC (info), spot DCA. Arah 7 TF, pola kembar, tanggal sama, dan siklus dihapus:
+    uji arah BTC 24 jam dari indikator 48-52% (sama dengan acak), pola kembar 52%."""
+    import time as _t
     import qse_saya as SY
+    import qse_strat as ST
+    import qse_porto as PO
     blok = []
-    for s in ("BTCUSDT", "ETHUSDT"):
-        try:
-            blok.append(_ringkas_tf(s))
-        except Exception as ex:
-            blok.append(f"{s}: gagal dibaca ({str(ex)[:40]})")
+    hari_ = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"][_t.gmtime(_t.time() + 7 * 3600).tm_wday]
+    hh = PO.hari()
+    rencana = {"senin": "hanya sinyal COMBO EMAS, COMBO FIX, atau COMBO 3+ yang dikirim (sinyal Senin lain PF 0.89). "
+                        "Jadwal DCA BTC spot Rp100.000 hari ini.",
+               "akhir_pekan": "sinyal tetap dikirim dengan lot setengah (uji 2021-2026 akhir pekan PF sekitar 0.9)."}.get(
+        hh, "hari terbaik, sinyal normal dengan lot penuh (uji Selasa-Jumat PF 1.32-1.50).")
+    blok.append(f"📅 <b>{hari_.upper()}</b>: {rencana}")
     try:
-        blok.append("BTC " + _kembar("BTCUSDT"))
-    except Exception:
-        pass
+        sv = SY.sinyal_jalur(jam=True)
+        blok.append("🎯 <b>SINYAL VALID SEKARANG</b> (urut prioritas)\n" + (sv if sv else
+                    "Belum ada. Sinyal baru dikirim tiap candle 4J tutup: 03, 07, 11, 15, 19, 23 WIB."))
+    except Exception as ex:
+        print("[WARN] harian sinyal", ex)
     try:
-        hs, nxt = _hari_sama("BTCUSDT")
-        if len(nxt) >= 2:
-            blok.append(f"BTC di tanggal yang sama tahun-tahun sebelumnya: {sum(1 for x in nxt if x > 0)} dari {len(nxt)} "
-                        f"tahun naik dalam 7 hari sesudahnya (info saja, sampel kecil).")
-    except Exception:
-        pass
-    pos = sorted({v["sym"] for v in SY.lihat()["open"].values()})
-    if pos:
-        rows = ["<b>Posisi kamu</b>"]
-        for s in pos[:6]:
-            try:
-                rows.append(_ringkas_tf(s))
-            except Exception:
-                rows.append(f"{s}: gagal dibaca")
-        blok.append("\n".join(rows))
+        pos = [v for v in SY.lihat()["open"].values() if v["status"] in ("TERISI", "TP1", "MENUNGGU")]
+        if pos:
+            rows = ["👤 <b>POSISI KAMU</b>"]
+            for v in pos[:8]:
+                px = SY.harga_live(v["sym"]) or 0
+                fl = SY.floating(v, px) if px else None
+                rows.append(f"{'🟢' if v['arah'] == 'LONG' else '🔴'} {v['sym']} {v['arah']} "
+                            + (f"{fl['r']:+.2f}R" if fl else SY.NM_ST.get(v["status"], v["status"]))
+                            + (", ikut aturan jalur, tahan sampai SL atau TP" if v.get("ikut") else ""))
+            blok.append("\n".join(rows))
+    except Exception as ex:
+        print("[WARN] harian posisi", ex)
     try:
         import qse_berita as BR
         ev = BR.hari_ini()
-        blok.append("Berita besar USD hari ini: " + (", ".join(f"{e['judul']} jam {BR.jam_wib(e['ts'])[6:]}" for e in ev[:5])
-                                                     if ev else "tidak ada"))
+        blok.append("📰 <b>BERITA BESAR USD HARI INI</b>\n" + ("\n".join(
+            f"• {e['judul']} jam {BR.jam_wib(e['ts'])[6:]}: sinyal baru ditahan 2 jam sebelum sampai 1 jam sesudah"
+            + (". CPI/FOMC: robot kirim SIAGA sekitar 1 jam sebelum (tutup yang untung, tahan yang rugi)"
+               if any(x in e["judul"].upper() for x in ("CPI", "FOMC", "FED", "INTEREST RATE")) else "")
+            for e in ev[:5]) if ev else "Tidak ada."))
     except Exception:
         pass
-    blok.append(SY.baris_pasar())
-    blok.append(SY.siklus_btc() + ". Info saja, patokannya hanya 3 siklus sebelumnya.")
-    blok.append("Robot otomatis menahan sinyal yang melawan BTC 1 jam dan 3 jam sebelum berita besar. Detail koin: /arah KOIN")
+    try:
+        blok.append("₿ <b>BTC</b> (info, tidak dipakai menyaring sinyal)\n" + ST.btc_ema50_teks())
+    except Exception:
+        pass
+    blok.append("Detail satu koin: /cek KOIN  ·  sinyal valid kapan saja: /sinyal4j  ·  hasil live: /jalur")
     return "\n\n".join(blok)
