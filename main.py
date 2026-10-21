@@ -1968,6 +1968,8 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
         combo = it.get("combo") or []
         ket = ("🆕 sinyal candle ini" if baru else
                f"sinyal {jam} WIB, harga masih dekat entry robot {TG.fp(it['entry'], t)} ({d:+.2f}R)")
+        if it.get("combo_raja"):
+            ket += "\n👑 COMBO RAJA: 6 jalur atau lebih searah (uji PF 3.35, WR 57%, sekitar 2 kali sebulan)"
         if it.get("combo_fix"):
             ket += f"\n💎 COMBO FIX PROFIT dengan {TG.e(' dan '.join(it['combo_fix']))} (3 teknik terbaik, uji 2024-2026 PF 1.75)"
         if it.get("combo_emas"):
@@ -2215,7 +2217,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         if ring_rb:
             import qse_strat as ST_m
             rows[-1] = "🏆 <b>URUTAN PRIORITAS</b> (ambil dari nomor 1, semua masih valid di harga sekarang)"
-            rows.append("Urutan: COMBO FIX PROFIT, COMBO EMAS, lalu label lain (COMBO, MUTU TINGGI, PULLBACK), lalu PF jalur")
+            rows.append("Urutan: COMBO RAJA, COMBO FIX PROFIT, COMBO EMAS, lalu label lain (COMBO, MUTU TINGGI, PULLBACK), lalu PF jalur")
         for no_, (sym, arah, nama, ik, lot, ket, pr, lb) in enumerate(ring_rb, 1):
             rows.append(f"{ST_m.medali(no_)} <b>{no_}. {TG.e(sym)} {arah}</b>  ·  {TG.e(nama)}  ·  "
                         f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  lot {lot}")

@@ -291,6 +291,7 @@ def _jalankan(baru_ok=True):
             it["combo"] = ST._combo(df, "orderblock", "LONG", ST.btc_naik(), sym)
             it["combo_emas"] = ST.combo_emas("orderblock", it["combo"])
             it["combo_fix"] = ST.combo_fix("orderblock", it["combo"])
+            it["combo_raja"] = ST.combo_raja(it["combo"])
         except Exception as ex:
             print("[WARN] combo orderblock", ex)
         import qse_porto as PO_s

@@ -237,7 +237,8 @@ def teks():
             except Exception:
                 nama = k
         rows.append(_baris(nama, [c["R"] for kk, _, c in data if kk == k], EXP_UJI.get(k)))
-    lab = [("💎 COMBO FIX PROFIT", lambda c: c.get("combo_fix"), 0.33),
+    lab = [("👑 COMBO RAJA", lambda c: c.get("combo_raja"), 0.73),
+           ("💎 COMBO FIX PROFIT", lambda c: c.get("combo_fix") and not c.get("combo_raja"), 0.33),
            ("🏆 COMBO EMAS", lambda c: c.get("combo_emas") and not c.get("combo_fix"), 0.21),
            ("⭐ COMBO lain", lambda c: c.get("combo") and not c.get("combo_emas") and not c.get("combo_fix"), 0.12),
            ("💎 MUTU TINGGI", lambda c: len(c.get("mutu_plus") or []) >= 3, 0.18),

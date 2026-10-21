@@ -422,7 +422,7 @@ PF_JALUR = {"tt": 1.47, "orderblock": 1.45, "ema_short": 1.42, "rsi_vol": 1.34, 
 def prioritas(k, it):
     """Kunci urut sinyal: jumlah label terbukti dulu (COMBO, COMBO 3+, MUTU TINGGI, PULLBACK), lalu PF jalur.
     Label: combo 3+ PF 1.40, mutu tinggi PF 1.37, McGinley pullback PF 1.43, semua di atas PF jalur mana pun tanpa label."""
-    n = (3 if it.get("combo_fix") else 0) + (2 if it.get("combo_emas") else 0)
+    n = (5 if it.get("combo_raja") else 0) + (3 if it.get("combo_fix") else 0) + (2 if it.get("combo_emas") else 0)
     cb = len(it.get("combo") or [])
     n += (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0)
     n += 1 if len(it.get("mutu_plus") or []) >= 3 else 0
@@ -436,13 +436,13 @@ def prioritas_teks(k, m):
     g = re.search(r"COMBO (\d+)", m)
     cb = int(g.group(1)) - 1 if g else 0
     n = (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0) + (1 if "MUTU TINGGI" in m else 0) + (1 if "PULLBACK" in m else 0) \
-        + (2 if "COMBO EMAS" in m else 0) + (3 if "COMBO FIX PROFIT" in m else 0)
+        + (2 if "COMBO EMAS" in m else 0) + (3 if "COMBO FIX PROFIT" in m else 0) + (5 if "COMBO RAJA" in m else 0)
     return (n, PF_JALUR.get(k, 1.2))
 
 
 def label_nama(it):
     """Nama label terbukti pada sinyal, untuk ditampilkan di urutan prioritas."""
-    out = (["COMBO FIX PROFIT"] if it.get("combo_fix") else []) + (["COMBO EMAS"] if it.get("combo_emas") else [])
+    out = (["COMBO RAJA"] if it.get("combo_raja") else []) + (["COMBO FIX PROFIT"] if it.get("combo_fix") else []) + (["COMBO EMAS"] if it.get("combo_emas") else [])
     cb = len(it.get("combo") or [])
     if cb:
         out.append(f"COMBO {cb + 1}")
@@ -456,7 +456,7 @@ def label_nama(it):
 def label_nama_teks(m):
     import re
     g = re.search(r"COMBO (\d+)", m)
-    return (["COMBO FIX PROFIT"] if "COMBO FIX PROFIT" in m else []) + (["COMBO EMAS"] if "COMBO EMAS" in m else []) + ([f"COMBO {g.group(1)}"] if g else []) + (["MUTU TINGGI"] if "MUTU TINGGI" in m else []) \
+    return (["COMBO RAJA"] if "COMBO RAJA" in m else []) + (["COMBO FIX PROFIT"] if "COMBO FIX PROFIT" in m else []) + (["COMBO EMAS"] if "COMBO EMAS" in m else []) + ([f"COMBO {g.group(1)}"] if g else []) + (["MUTU TINGGI"] if "MUTU TINGGI" in m else []) \
         + (["PULLBACK"] if "PULLBACK" in m else [])
 
 
@@ -476,7 +476,9 @@ def combo_teks(it):
              f"Dipilih dari 2021-2023 (PF 1.45), dicek 2024-2026 PF 1.48, combo biasa 1.25"] if it.get("combo_emas") else [])
     fix = ([f"💎 <b>COMBO FIX PROFIT</b>: searah dengan {' dan '.join(it['combo_fix'])}. Kombinasi 3 teknik terbaik, "
             f"dipilih dari 2021-2023, dicek 2024-2026 PF 1.75, rata-rata 0.33R per trade"] if it.get("combo_fix") else [])
-    return fix + emas + [f"⭐ <b>COMBO {len(it['combo']) + 1}</b>: juga {', '.join(it['combo'])} searah dalam 72 jam. "
+    raja = (["👑 <b>COMBO RAJA</b>: 6 jalur terbukti atau lebih searah. Sinyal paling langka dan paling kuat di uji 2021-2026: "
+             "sekitar 2 kali sebulan, WR 57%, PF 3.35, rata +0.73R per trade, untung tiap tahun"] if it.get("combo_raja") else [])
+    return raja + fix + emas + [f"⭐ <b>COMBO {len(it['combo']) + 1}</b>: juga {', '.join(it['combo'])} searah dalam 72 jam. "
             f"Uji 2021-2026: combo 3+ PF 1.40, 2 PF 1.25, sendiri PF 1.21"]
 
 
@@ -505,6 +507,14 @@ def nama_ke_kunci(nm):
     peta = {cfg["nama"]: kk for kk, cfg in STRAT.items()}
     peta.update({"Ichimoku": "ichimoku", "Order Block": "orderblock"})
     return peta.get(nm)
+
+
+def combo_raja(combo):
+    """COMBO RAJA: minimal 5 jalur terbukti LAIN searah dalam 72 jam (candle inside bar dan EMA 9/21 tidak dihitung).
+    Uji 2021-2026: 156 sinyal (sekitar 2 kali sebulan), WR 57%, PF 3.35 (2021-23 3.49, 2024-26 3.20), rata +0.73R per
+    trade, untung tiap tahun dan di semua jalur. Makin banyak jalur searah makin bagus: 3 jalur 0.22R, 4 jalur 0.27R,
+    5 jalur 0.62R, 6 jalur 1.38R."""
+    return sum(1 for nm in (combo or []) if nama_ke_kunci(nm)) >= 5
 
 
 def combo_fix(k, combo):
@@ -721,6 +731,7 @@ def jalankan(baru_ok=True):
                 it["combo"] = _combo(df, k, arah, bn, sym)
                 it["combo_emas"] = combo_emas(k, it["combo"])
                 it["combo_fix"] = combo_fix(k, it["combo"])
+                it["combo_raja"] = combo_raja(it["combo"])
             except Exception as ex:
                 print("[WARN] combo", ex)
             if PO.senin_tolak(it.get("combo"), it.get("combo_emas")):

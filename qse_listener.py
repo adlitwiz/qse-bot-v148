@@ -200,6 +200,31 @@ def _tugas_berkala():
                      "Uji 2018-2026: beli rutin tiap minggu +416%, lebih baik dari semua cara menunggu waktu beli."])
         except Exception as ex:
             print("[WARN] dca", ex)
+    # pengingat beli kedua (opsional) maksimal sekali seminggu, Selasa sampai Minggu jam 08:00 WIB: hari pertama BTC
+    # tutup harian 5% atau lebih di bawah puncak 7 hari. Kalau tidak ada koreksi sampai Minggu, dikirim hari Minggu.
+    # Uji 2018-2026 (beli di open hari berikutnya): hasil sama dengan beli tambahan di hari tetap (2018-21 +392.6% lawan
+    # +396.6%, 2022-26 +104.6% lawan +104.7%). Jadi ini untuk kenyamanan, bukan keunggulan.
+    wd = time.gmtime(now).tm_wday
+    minggu = int((now + 3 * 86400) // (7 * 86400))          # nomor minggu yang mulai Senin
+    if (wd != 0 and now - hari >= 3600 and now - hari <= 6 * 3600 and st.get("dca2_hari", 0) < hari
+            and st.get("dca2_minggu") != minggu):
+        _st({"dca2_hari": hari})
+        try:
+            import bybit_fetch as B
+            Dd = B._raw("BTCUSDT", "D", 10)
+            Dd = Dd[Dd.index + 86400000 <= now * 1000]
+            c7 = Dd["close"].values.astype(float)[-7:]
+            turun = (c7[-1] / c7.max() - 1) * 100 if len(c7) else 0
+            if turun <= -5 or wd == 6:
+                _st({"dca2_minggu": minggu})
+                TG.send([f"🪙 <b>QSE v148 | BELI KEDUA MINGGU INI (OPSIONAL)</b>\n"
+                         + (f"BTC sedang koreksi {turun:.1f}% dari puncak 7 hari (tutup {c7[-1]:,.0f}). "
+                            if turun <= -5 else "Minggu ini tidak ada koreksi 5%, jadi pengingat dikirim hari Minggu. ")
+                         + "Kalau ada dana tambahan, ini waktu beli kedua minggu ini. Jadwal utama tetap Senin.\n"
+                         "Jujur dari data: uji 2018-2026, beli tambahan saat koreksi hasilnya sama dengan beli di hari tetap "
+                         "(beda kurang dari 1%). Tidak ada waktu yang terbukti lebih murah."])
+        except Exception as ex:
+            print("[WARN] dca2", ex)
     if now - hari >= 15 * 3600 and st.get("tidur_hari", 0) < hari and now - hari <= 16 * 3600:
         # 22:00 WIB: kartu siap tidur kalau ada posisi jalan
         _st({"tidur_hari": hari})
@@ -443,6 +468,12 @@ def _tugas_menit():
             _st({"pin_dini": None})
     except Exception as ex:
         print("[WARN] dini", ex)
+    try:
+        kp = SY.kabar_profit()
+        if kp:
+            TG.send(["💰 <b>QSE v148 | PROGRES PROFIT TRADE KAMU</b>\n\n" + "\n\n".join(kp)])
+    except Exception as ex:
+        print("[WARN] kabar profit", ex)
     try:
         fb = SY.sentuh_fib()
         if fb:

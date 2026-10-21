@@ -69,7 +69,7 @@ def senin_tolak(combo, combo_emas, combo_fix=None):
     """Hari Senin hanya sinyal COMBO EMAS atau COMBO 3+. Return alasan tolak atau ''."""
     if hari() != "senin":
         return ""
-    if combo_emas or len(combo or []) >= 2:
+    if combo_emas or combo_fix or len(combo or []) >= 2:
         return ""
     return "hari Senin, hanya COMBO EMAS atau COMBO 3+ yang dibuka (sinyal Senin lain PF 0.89)"
 

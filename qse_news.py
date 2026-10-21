@@ -680,3 +680,46 @@ def viral(jam=24, maks=6):
     out.append(SY.GARIS + "\nBerita yang benar-benar menggerakkan harga tetap dikirim otomatis lewat NEWS PENTING. "
                "Kalender berita besar USD: /kabar")
     return "\n".join(out)
+
+
+_CACHE_KOIN = {}
+
+
+def berita_koin(sym, maks=3, jam=72):
+    """Berita terbaru tentang satu koin untuk /cek (Google News per koin plus RSS media kripto, disimpan 10 menit).
+    Tiap judul diberi arah kata kunci dan, kalau jenisnya ada di sejarah, dampak historisnya. Info saja."""
+    import urllib.parse
+    base = sym.replace("USDT", "")
+    now = time.time()
+    c = _CACHE_KOIN.get(sym)
+    if c and now - c[0] < 600:
+        return c[1]
+    kata = NAMA.get(base, (base.lower(),))[0]
+    q = urllib.parse.quote(f"{kata} {'crypto' if base not in ('BTC', 'ETH') else ''} when:3d".strip())
+    items = _ambil("Google News", f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en")
+    for nama, url in SUMBER[:4]:
+        items += [b for b in _ambil(nama, url) if _koin(b["judul"] + " " + b["isi"][:200], {sym}) == [base]]
+    lihat, out = set(), []
+    for b in sorted(items, key=lambda z: -(z.get("pub") or 0)):
+        if b.get("pub") and now - b["pub"] > jam * 3600:
+            continue
+        k = re.sub(r"\W+", "", b["judul"].lower())[:60]
+        if not k or k in lihat:
+            continue
+        lihat.add(k)
+        teks = b["judul"] + " " + b["isi"][:200]
+        kat = kategori(teks)
+        arah, _ = _nilai(teks)
+        if kat:
+            arah = arah_sejarah(kat) or arah
+        umur = f"{(now - b['pub']) / 3600:.0f} jam lalu" if b.get("pub") else ""
+        ik = "🟢" if arah > 0 else "🔴" if arah < 0 else "⚪"
+        baris = f"{ik} {TG.e(terjemah(b['judul'])[:150])} ({TG.e(b['sumber'])}{', ' + umur if umur else ''})"
+        if kat and terbukti(kat):
+            d = DAMPAK[kat]
+            baris += f"\n   ↳ jenis {LABEL.get(kat, kat)}: sejarah BTC 24 jam {d['b24']:+.1f}%, naik di {d['naik']}% kejadian"
+        out.append(baris)
+        if len(out) >= maks:
+            break
+    _CACHE_KOIN[sym] = (now, out)
+    return out
