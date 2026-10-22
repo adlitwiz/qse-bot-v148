@@ -106,7 +106,7 @@ def rem():
 def ST_tpc(it):
     try:
         import qse_strat as ST
-        return ST.batas_masuk_teks(it, "ichimoku") + ST.tp_cepat_teks(it)
+        return ST.batas_masuk_teks(it, "ichimoku") + ST.tp_cepat_teks(it, k="ichimoku")
     except Exception:
         return []
 

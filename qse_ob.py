@@ -313,7 +313,7 @@ def _jalankan(baru_ok=True):
 def _tpc(it):
     try:
         import qse_strat as ST
-        return ST.batas_masuk_teks(dict(it, arah="LONG"), "orderblock") + ST.tp_cepat_teks(dict(it, arah="LONG"))
+        return ST.batas_masuk_teks(dict(it, arah="LONG"), "orderblock") + ST.tp_cepat_teks(dict(it, arah="LONG"), k="orderblock")
     except Exception:
         return []
 

@@ -43,6 +43,25 @@ def ubah(fn):
         return hasil
 
 
+def hapus_manual_sekali():
+    """Sekali jalan: hapus riwayat trade manual lama (sebelum user selalu ikut saran). Ditandai agar tidak terulang."""
+    def f(d):
+        if d.get("manual_dihapus"):
+            return 0
+        lama = len(d["closed"])
+        d["closed"] = [c for c in d["closed"] if c.get("jalur", "manual") != "manual"]
+        d["manual_dihapus"] = int(time.time())
+        return lama - len(d["closed"])
+    try:
+        n = ubah(f)
+        if n:
+            print(f"[INFO] riwayat manual dihapus {n} trade", flush=True)
+        return n
+    except Exception as ex:
+        print("[WARN] hapus manual", ex)
+        return 0
+
+
 def lihat():
     return _load()
 
@@ -1334,11 +1353,10 @@ def entry(args):
             if bm and (not (bm[0] <= harga <= bm[1]) or time.time() > bm[2]):
                 rj = abs(jp["entry"] - jp.get("sl0", jp["sl"])) or 1e-12
                 lari = (harga - jp["entry"]) * (1 if L else -1) / rj
-                rows.append(f"⚠️ <b>ENTRY TELAT</b>: harga {fp(harga, t)} sudah {lari:+.2f}R dari entry robot {fp(jp['entry'], t)}"
-                            + (" dan lewat batas waktu" if time.time() > bm[2] else "")
-                            + f". Batas aman {fp(bm[0], t)} sampai {fp(bm[1], t)}. Uji 2020-2026: masuk lebih dari 0.5R "
-                            f"dari entry robot hasilnya turun. Kalau belum masuk di Bybit, lewati sinyal ini. Kalau sudah, "
-                            f"tetap pasang SL dan ikuti aturan jalur.")
+                rows.append(f"⚠️ <b>ENTRY TELAT</b>: {fp(harga, t)} sudah {lari:+.2f}R dari entry robot"
+                            + (", lewat batas waktu" if time.time() > bm[2] else "")
+                            + f". Valid {fp(bm[0], t)} sampai {fp(bm[1], t)}.\n"
+                            f"Belum masuk, lewati. Sudah masuk, pasang SL dan ikuti jalur.")
         except Exception as ex:
             print("[WARN] batas masuk", ex)
     if order == "STOP" and isi_ts is None:
@@ -2040,48 +2058,64 @@ def blok_posisi(no, it, px, r=None, pasar=None):
     rows = [GARIS, f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {arah}</b>  ·  {it.get('order', '')}"
             + (f"  ·  gabungan {n_gab + 1} entry" if n_gab else ""), GARIS]
     jalur, pola = it.get("jalur", "manual"), it.get("pola", "manual")
-    rows.append("📍 Asal: " + ("manual, bukan dari saran robot" if jalur == "manual" else f"{jalur} ({pola})"))
     sisa = _sisa(it)
     nm = NM_POS.get(it["status"], it["status"])
     if it["status"] == "TP1" and it.get("sl_manual"):
         nm = f"sudah TP1, SL manual {fp(it['sl'], t)}"
-    rows.append(f"📍 Status: {nm}" + (f"  ·  ukuran {sisa:.2f}x lot awal" if abs(sisa - 1) > 0.005 else ""))
-    rows.append(f"📍 Entry {fp(it['entry'], t)}  ·  harga sekarang {fp(px, t) if px else '-'}")
-    fl = floating(it, px)
-    if fl:
-        teks = f"{'🟩 Floating UNTUNG' if fl['r'] >= 0 else '🟥 Floating RUGI'} {fl['pct']:+.2f}%  ·  total {fl['r']:+.2f}R{_usdt(fl['r'])}"
-        if fl["roe"] is not None:
-            teks += f"  ·  ROE {fl['roe']:+.1f}% di {fl['lev']:g}x"
-        rows.append(teks)
-        if abs(fl["real"]) > 0.005:
-            rows.append(f"💰 Sudah direalisasi {fl['real']:+.2f}R")
-    elif it["status"] == "MENUNGGU" and px:
-        rows.append(f"⏳ Jarak harga ke entry {abs(px - it['entry']) / it['entry'] * 100:.2f}%")
     jalan = it["status"] in ("TERISI", "TP1")
+    fl = floating(it, px)
+    asal = "manual" if jalur == "manual" else pola
+    st_row = f"📍 {asal}  ·  {nm}" + (f"  ·  {sisa:.2f}x lot" if abs(sisa - 1) > 0.005 else "")
+    rows.append(st_row)
+    if fl:
+        rows.append(f"{'🟩 UNTUNG' if fl['r'] >= 0 else '🟥 RUGI'} <b>{fl['r']:+.2f}R</b>{_usdt(fl['r'])}  ·  {fl['pct']:+.2f}%"
+                    + (f"  ·  ROE {fl['roe']:+.1f}% di {fl['lev']:g}x" if fl["roe"] is not None else "")
+                    + (f"  ·  sudah realisasi {fl['real']:+.2f}R" if abs(fl["real"]) > 0.005 else ""))
+    elif it["status"] == "MENUNGGU" and px:
+        rows.append(f"⏳ Harga {abs(px - it['entry']) / it['entry'] * 100:.2f}% lagi ke entry")
     acuan = px if (jalan and px) else it["entry"]
     a = (r or {}).get("atr") or it.get("atr") or 0
     sl_now = it["entry"] if it["status"] == "TP1" and not it.get("sl_manual") else it["sl"]
-    lv = [("🛑", "SL" + (" (di entry)" if sl_now == it["entry"] and it["status"] == "TP1" else ""), sl_now, "SL")]
+    lv = [("SL", sl_now, "SL")]
     if it.get("ikut"):
-        lv[0] = ("🛑", "SL berjalan jalur", sl_now, "SL")
         if it.get("tp_jalur"):
-            lv.append(("🏁", "TP jalur (tutup penuh)", it["tp_jalur"], "TPJ"))
+            lv.append(("TP", it["tp_jalur"], "TPJ"))
     else:
         if it["status"] != "TP1":
-            lv.append(("🎯", "TP1", it["tp1"], "TP1"))
-        lv.append(("🏁", "TP2", it["tp2"], "TP2"))
-    rows.append("📏 <b>Level</b>")
-    for ik, nama, harga_lv, jenis in lv:
+            lv.append(("TP1", it["tp1"], "TP1"))
+        lv.append(("TP2", it["tp2"], "TP2"))
+    pc = lambda x: (x - it["entry"]) / it["entry"] * 100
+    w_p = max(len(fp(v, t)) for _, v, _ in lv + [("", it["entry"], ""), ("", px or it["entry"], "")])
+    pre = [f"{it['sym']} {arah}", f"{'Entry':<6}{fp(it['entry'], t):>{w_p}}"]
+    if px:
+        pre.append(f"{'Harga':<6}{fp(px, t):>{w_p}}  {pc(px):+6.2f}%")
+    waktu = []
+    for nama, harga_lv, jenis in lv:
         R = _hasil_di(it, harga_lv, jenis)
-        w = teks_waktu(estimasi_jam(harga_lv - acuan, a, 4)) if (jalan and a) else ""
-        dari_e = (harga_lv - it["entry"]) / it["entry"] * 100
-        sisa_txt = f"  ·  sisa {(harga_lv - acuan) / acuan * 100:+.2f}%" if (jalan and px) else ""
-        rows.append(f"{ik} {nama} {fp(harga_lv, t)}  ·  dari entry {dari_e:+.2f}%{sisa_txt}\n"
-                    f"     kena: {R:+.2f}R{_usdt(R)}" + (f"  ·  perkiraan {w}" if w else ""))
+        pre.append(f"{nama:<6}{fp(harga_lv, t):>{w_p}}  {pc(harga_lv):+6.2f}%  {R:+.2f}R")
+        if jalan and px:
+            w = teks_waktu(estimasi_jam(harga_lv - acuan, a, 4)) if a else ""
+            waktu.append(f"{nama} {abs(harga_lv - px) / px * 100:.2f}% lagi" + (f", {w}" if w and w != "-" else ""))
+    if it.get("ikut") and not it.get("tp_jalur"):
+        pre.append(f"{'TP':<6}{'trailing':>{w_p}}")
+    tps = [v for nm_, v, _ in lv if nm_ != "SL"]
+    if tps:
+        pre.append(f"{'Range':<6}{abs(max(tps, key=lambda v: abs(v - sl_now)) - sl_now) / it['entry'] * 100:>{w_p}.2f}%  SL ke TP")
+    rows.append("<pre>" + "\n".join(pre) + "</pre>")
+    if waktu:
+        rows.append("⏱ " + "  ·  ".join(waktu))
+    if it.get("ikut") or jalur != "manual":
+        try:
+            import qse_strat as ST
+            jp = jalur_posisi(it["sym"], arah) or {}
+            r0 = it.get("risk0") or abs(it["entry"] - it["sl"])
+            sl0 = it["entry"] - r0 if L else it["entry"] + r0
+            rows += ST.tp_cepat_teks(dict(entry=it["entry"], sl=sl0, arah=arah, tick=t, combo_fix=jp.get("combo_fix")),
+                                     fmt=fp, k=jp.get("jalur") or jalur)
+        except Exception as ex:
+            print("[WARN] tp bertahap status", ex)
     if jalan:
         if it.get("ikut") or str(it.get("jalur", "")) in JALUR_TERBUKTI():
-            rows.append("🛠 <b>Aturan</b>: tahan sampai SL atau TP jalur. Jangan keluar lebih awal. Uji 2021-2026: keluar di -0.4R "
-                        "profit turun 37%, tutup setengah turun 18%, keluar saat analisa berbalik turun 22%.")
             return "\n".join(rows)
         try:
             an = analisa_lengkap(it, r, px or None)
@@ -2124,8 +2158,7 @@ def status_saya(harga=None):
     else:
         pasar = dict(btc1=btc_1j(), berita=berita_depan(3))
         ket = ["🌐 <b>PASAR</b>\n" + "\n".join("• " + z.strip() for z in baris_pasar().replace("🌐 Pasar: ", "").split(" | ")),
-               "ℹ️ Dari entry = jarak level dari harga entry. Sisa = jarak dari harga sekarang. "
-               "Kena = hasil seluruh trade kalau harga sampai level itu (TP1 menutup separuh)."]
+               "ℹ️ Persen = jarak dari entry. R = hasil kalau kena. ⏱ = jarak dari harga sekarang dan perkiraan waktu."]
         try:
             import qse_modal as MD
             if MD.lot_normal() > 0:
@@ -3103,7 +3136,7 @@ def sinyal_jalur(jam=False):
                 ket += "  ·  💎 mutu tinggi"
             kartu.append((ST.prioritas(k, it), f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
                          f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>"
-                         + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it))))
+                         + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it, k=k))))
     kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
     # order Tembus Trendline yang masih menunggu (STOP atau LIMIT, berlaku 24 jam): ikut ditampilkan supaya sama dengan cek per jam
     tunggu = []
@@ -3459,8 +3492,9 @@ def spot_btc():
 def kabar_profit():
     """Dipanggil listener tiap menit. Kabar saat posisi kamu jalan ke arah untung, tiap tahap sekali:
     posisi ber-TP tetap: 25%, 50%, dan 90% jarak ke TP (100% = pesan KENA TP yang sudah ada).
-    posisi trailing (tanpa TP): untung berjalan +1R, +2R, +3R, dengan SL jalur terbaru dan profit yang sudah terkunci.
-    Info saja: uji 2021-2026 menutup lebih awal (TP cepat 1R) menurunkan total profit sekitar separuh."""
+    posisi trailing (tanpa TP): untung berjalan +3R, dengan SL jalur terbaru dan profit yang sudah terkunci.
+    Semua posisi: +1R tutup 25%, +2R tutup 50% (TP bertahap, uji 2021-2026 PF 1.26 stabil dev dan uji)."""
+    import qse_strat as ST
     d = _load()
     pesan, tandai = [], {}
     for k, it in d["open"].items():
@@ -3476,19 +3510,36 @@ def kabar_profit():
         sudah = list(it.get("tp_tahap") or [])
         tp = it.get("tp_jalur") if it.get("ikut") else (it.get("tp2") if it.get("tp2") else None)
         jauh = (tp - it["entry"]) * (1 if L else -1) if tp else 0
+        r_b = untung / risk
+        jp0 = jalur_posisi(it["sym"], it["arah"]) if it.get("ikut") else None
+        kk = ST.kunci_jalur(jp0["jalur"]) if jp0 else ""
+        for lv, nm, pr in ((2, "B2", "50%"), (1, "B1", "25%")):
+            if r_b >= lv and nm not in sudah:
+                sudah += [x for x in ("B1", "B2") if int(x[1]) <= lv and x not in sudah]
+                if jp0 and jp0.get("combo_fix"):
+                    pesan.append(f"⛔ <b>{it['sym']} {it['arah']}  ·  +{lv}R</b>\n"
+                                 f"↳ {fp(px, t)}. Tahan sampai TP, jangan TP manual (COMBO FIX).")
+                    break
+                if kk in ST.TAHAN_TP:
+                    pesan.append(f"⛔ <b>{it['sym']} {it['arah']}  ·  +{lv}R</b>\n"
+                                 f"↳ {fp(px, t)}. Tahan sampai TP, jangan TP manual.")
+                    break
+                pesan.append(f"💰 <b>{it['sym']} {it['arah']}  ·  +{lv}R, TUTUP {pr}</b>\n"
+                             f"↳ {fp(px, t)}. Tutup {pr} posisi awal" + (", sisa 25% ikut jalur." if lv == 2 else ", sisanya biarkan."))
+                break
         if tp and jauh > 0 and jauh < risk * 50:
             prog = untung / jauh
             for lv, nm in ((0.9, "90"), (0.5, "50"), (0.25, "25")):
                 if prog >= lv and nm not in sudah:
                     sudah += [x for x in ("25", "50", "90") if float(x) / 100 <= lv and x not in sudah]
+                    if nm != "90":
+                        break   # 25% dan 50% sudah diwakili kabar TP bertahap +1R dan +2R
                     pesan.append(f"{'🎯' if nm == '90' else '📈'} <b>{it['sym']} {it['arah']}  ·  {nm}% MENUJU TP</b>\n"
-                                 f"↳ Harga {fp(px, t)}, TP {fp(tp, t)} ({untung / risk:+.2f}R berjalan). "
-                                 + ("Hampir sampai, biarkan order TP di Bybit yang menutup. " if nm == "90" else "Biarkan jalan. ")
-                                 + "Jangan tutup manual: uji 2021-2026 keluar lebih awal menurunkan total profit sekitar separuh.")
+                                 f"↳ {fp(px, t)}, TP {fp(tp, t)}. Biarkan order TP Bybit yang menutup.")
                     break
         elif not tp:
             r_now = untung / risk
-            for lv in (3, 2, 1):
+            for lv in (3,):
                 nm = f"{lv}R"
                 if r_now >= lv and nm not in sudah:
                     sudah += [f"{x}R" for x in range(1, lv + 1) if f"{x}R" not in sudah]

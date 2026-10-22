@@ -394,22 +394,37 @@ def batas_masuk_teks(it, k, fmt=None):
     fmt = fmt or TG.fp
     t = it.get("tick", 0.0001)
     jam = time.strftime("%d/%m %H:%M", time.gmtime(b[2] + 7 * 3600))
-    return [f"🎯 Masih boleh masuk MARKET selama harga {fmt(b[0], t)} sampai {fmt(b[1], t)} dan sebelum {jam} WIB. "
-            f"Di luar itu lewati, harga sudah lari (uji: telat lebih dari 0.5R atau lewat batas waktu, hasil turun)"]
+    return [f"🎯 Entry valid {fmt(b[0], t)} sampai {fmt(b[1], t)}, batas {jam} WIB. Lewat itu, lewati"]
 
 
-def tp_cepat_teks(it, fmt=None):
-    """Opsi TP cepat 1R. Uji 2021-2026 35 ribu sinyal: TP 1R kena 55% (TP normal sekitar 40%), PF 1.13 lawan 1.26,
-    total profit 2118R lawan 4568R. Hanya opsi, TP normal tetap saran utama."""
+# Uji 2021-2026 (dev 2021-23 / uji 2024-26): dari trade yang sudah +2R, berapa persen selesai di +2R atau lebih.
+# Tinggi di kedua periode = jangan TP manual, tahan sampai TP jalur.
+TAHAN_TP = {"snr_vol": "70%", "smc_choch": "68%", "orderblock": "59%", "mcginley": "58%"}
+
+
+def kunci_jalur(j):
+    """'saran snr_vol' atau 'snr_vol' -> 'snr_vol'."""
+    return (j or "").replace("saran ", "").strip()
+
+
+def tp_cepat_teks(it, fmt=None, k=None):
+    """Jalur TAHAN_TP: peringatan jangan TP manual. Jalur lain: TP bertahap 25% di +1R, 50% di +2R, sisa ikut jalur.
+    Uji 2021-2026 39 ribu trade TP bertahap: WR 43% lawan 38%, PF 1.26 lawan 1.31 (dev 1.25, uji 1.27)."""
     try:
         fmt = fmt or TG.fp
         risk = abs(it["entry"] - it.get("sl0", it["sl"]))
         if not risk:
             return []
         L = it.get("arah", "LONG") == "LONG"
-        tpc = it["entry"] + risk if L else it["entry"] - risk
-        return [f"⚡ Opsi TP cepat {fmt(tpc, it.get('tick', 0.0001))} (+1R): lebih sering kena (55% lawan 40%), "
-                f"tapi total profit uji sekitar separuh TP normal. Mau pakai, tulis TP ini di /entry, SL tetap ikut jalur"]
+        t = it.get("tick", 0.0001)
+        kk = kunci_jalur(k)
+        if it.get("combo_fix"):
+            return ["⛔ <b>Tahan sampai TP</b>, jangan TP manual (COMBO FIX)"]
+        if kk in TAHAN_TP:
+            return ["⛔ <b>Tahan sampai TP</b>, jangan TP manual"]
+        r1 = it["entry"] + risk if L else it["entry"] - risk
+        r2 = it["entry"] + 2 * risk if L else it["entry"] - 2 * risk
+        return [f"💰 TP bertahap: 25% di {fmt(r1, t)}, 50% di {fmt(r2, t)}, sisa ikut jalur"]
     except Exception:
         return []
 
@@ -796,7 +811,7 @@ def kartu(k, no, it, a):
         (SY.blok_salin(it["entry"], it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah=it["arah"]) if it.get("tp") else
          SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=it["sym"], arah=it["arah"])),
         *batas_masuk_teks(it, k),
-        *tp_cepat_teks(it),
+        *tp_cepat_teks(it, k=k),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot setengah sampai pulih"] if rm else []),
         "💡 <b>Kenapa</b>",
         *[f"• {z}" for z in cfg["kenapa"]],

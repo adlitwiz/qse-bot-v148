@@ -527,6 +527,11 @@ def main():
         raise SystemExit(f"Isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di {ENV}")
     os.makedirs(STATE_DIR, exist_ok=True)
     print("QSE listener aktif", flush=True)
+    try:
+        import qse_saya as _SY
+        _SY.hapus_manual_sekali()
+    except Exception as ex:
+        print("[WARN] hapus manual", ex, flush=True)
     threading.Thread(target=_pekerja, daemon=True).start()
     threading.Thread(target=_penjaga, daemon=True).start()
     while True:

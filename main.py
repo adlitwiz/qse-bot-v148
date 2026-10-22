@@ -1928,7 +1928,7 @@ TELAT_CANDLE, TELAT_R = 2, 0.5
 def _tpc_main(it, k=""):
     try:
         import qse_strat as ST
-        return ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it)
+        return ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it, k=k)
     except Exception:
         return []
 
