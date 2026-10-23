@@ -211,6 +211,18 @@ def balas(cmd, args, dari_main=False):
         return SY.tutup_semua("cut loss")
     if cmd == "/tutup":
         return SY.tutup(args)
+    if cmd == "/mode":
+        import qse_strat as ST
+        if args:
+            m = ST.set_mode(args[0])
+            if not m:
+                return "Pilihan: /mode semua, /mode profit, atau /mode raja"
+        m = ST.mode_sinyal()
+        return (f"Mode sinyal sekarang: <b>{m.upper()}</b> (skor label minimal {ST.MODE_MIN[m]})\n\n"
+                "• /mode semua: semua sinyal jalur terbukti. Uji 2021-2026 PF 1.24 dan 1.28, sekitar 15 sinyal per hari sebelum batas posisi\n"
+                "• /mode profit: skor label 5 ke atas. PF 1.65 dan 1.77, WR 44-45%, sekitar 2 sinyal per hari, drawdown 4 kali lebih kecil\n"
+                "• /mode raja: skor label 8 ke atas. PF 2.25 dan 2.22, WR 48%, sekitar 1 sinyal per 2-3 hari\n\n"
+                "Tidak ada mode yang pasti untung. Mode profit tetap kena SL sekitar 55% trade, untungnya dari trade menang yang lebih besar.")
     if cmd == "/pindah":
         return SY.pindah(args)
     if cmd == "/tp":
@@ -355,7 +367,7 @@ def proses(cmds, dari_main=False):
             ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
                     "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
-                    "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
+                    "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/mode": "🎚️", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"
             TG.send(isi.split("\n\n"))
             n += 1

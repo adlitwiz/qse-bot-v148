@@ -2231,6 +2231,11 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         kartu_rb.sort(key=lambda z: z[0], reverse=True)
         ring_rb.sort(key=lambda z: z[6], reverse=True)
         import qse_strat as ST_p
+        n_sembunyi = len([1 for z in kartu_rb if not ST_p.lolos_mode(z[0])])
+        kartu_rb = [z for z in kartu_rb if ST_p.lolos_mode(z[0])]
+        ring_rb = [z for z in ring_rb if ST_p.lolos_mode(z[6])]
+        if n_sembunyi:
+            sepi.append(f"{n_sembunyi} sinyal nilai di bawah 8 disembunyikan otomatis")
         for no_, (pr, kt) in enumerate(kartu_rb, 1):
             robot_blok.append(f"{GARIS}\n{ST_p.medali(no_)} <b>PRIORITAS {no_}</b>  ·  {ST_p.label_prioritas(pr)}{kt[len(GARIS):]}")
         if sepi:
@@ -2244,9 +2249,11 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         if ring_rb:
             import qse_strat as ST_m
             rows[-1] = "🏆 <b>URUTAN PRIORITAS</b> (ambil dari nomor 1, semua masih valid di harga sekarang)"
-            rows.append("Urutan: COMBO RAJA, COMBO FIX PROFIT, COMBO EMAS, lalu label lain (COMBO, MUTU TINGGI, PULLBACK), lalu PF jalur")
+            rows.append("Urutan: COMBO RAJA, COMBO FIX PROFIT, COMBO EMAS, lalu label lain, lalu PF jalur. "
+                        "Tanda: 👑 NILAI 10 (PF uji 2.2), 🔥 NILAI 9 (PF 1.7), ✅ NILAI 8 (PF 1.3)")
         for no_, (sym, arah, nama, ik, lot, ket, pr, lb) in enumerate(ring_rb, 1):
-            rows.append(f"{ST_m.medali(no_)} <b>{no_}. {TG.e(sym)} {arah}</b>  ·  {TG.e(nama)}  ·  "
+            rows.append(f"{ST_m.medali(no_)} <b>{no_}. {TG.e(sym)} {arah}</b>  ·  "
+                        + (f"<b>{ST_m.kelas(pr[0]).split(' (')[0]}</b>  ·  " if ST_m.kelas(pr[0]) else "") + f"{TG.e(nama)}  ·  "
                         f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  lot {lot}")
         so.append("\n".join(rows))
     # dipisah menurut sumber: DASBOR (mesin QSE, sama dengan TradingView) dan robot Telegram

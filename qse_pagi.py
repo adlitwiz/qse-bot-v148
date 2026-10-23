@@ -127,7 +127,12 @@ def baris_arah():
             "Ikuti sinyal robot apa adanya, LONG maupun SHORT."]
 
 
-def ramal():
+SESI = {"pagi": ("🌅", "INFO PASAR PAGI", 18), "siang": ("☀️", "INFO PASAR SIANG", 12), "malam": ("🌙", "INFO PASAR MALAM", 12)}
+
+
+def ramal(sesi="pagi", gerak_t=0):
+    """Info pasar 06:00, 12:00, 18:00 WIB. Peluang serentak dan arah hari ini sama untuk satu hari (06:00-06:00 WIB),
+    siang dan malam ditambah apa yang sudah terjadi sejak 06:00."""
     import bybit_fetch as B
     now = time.time()
     awal = int((now + 7 * 3600 - 6 * 3600) // 86400) * 86400 - 7 * 3600 + 6 * 3600     # 06:00 WIB hari ini (UTC detik)
@@ -158,9 +163,21 @@ def ramal():
         kemarin = _serentak(cl)
     except Exception as ex:
         print("[WARN] pagi serentak kemarin", ex)
-    rows = [f"🌅 <b>QSE v148 | INFO PASAR PAGI</b>  ·  {HARI[wd]}", ""]
+    ik_s, judul, jam_berita = SESI.get(sesi, SESI["pagi"])
+    rows = [f"{ik_s} <b>QSE v148 | {judul}</b>  ·  {HARI[wd]}", ""]
     if tingkat is None:
         return None
+    if sesi != "pagi":
+        try:
+            x = h[h.index >= awal * 1000]
+            if len(x):
+                b0 = float(x["open"].iloc[0]) if "open" in x else float(x["close"].iloc[0])
+                px = float((tk.get("BTCUSDT") or {}).get("last") or x["close"].iloc[-1])
+                rows += ["📍 <b>Sejak 06:00 WIB</b>",
+                         f"• BTC {(px / b0 - 1) * 100:+.1f}% (rentang {(x['high'].max() / x['low'].min() - 1) * 100:.1f}%)",
+                         "• Gerak serentak hari ini: " + ("sudah terjadi" if gerak_t >= awal else "belum terjadi"), ""]
+        except Exception as ex:
+            print("[WARN] info sesi", ex)
     kk = kemarin if kemarin is not None else False
     p = TABEL[(akhir_pekan, tingkat, kk)]
     rata = (p[0] + p[1]) / 2
@@ -180,10 +197,44 @@ def ramal():
     rows += ["Altcoin ikut arah harian BTC di 81% hari (74% saat serentak), jadi arah BTC jadi patokan altcoin juga."]
     try:
         from qse_saya import berita_depan
-        bd = berita_depan(18)
+        bd = berita_depan(jam_berita)
         if bd:
-            rows += ["", f"📅 Berita besar hari ini: {bd['judul']}. Jam rilis biasanya memicu gerak cepat."]
+            rows += ["", f"📅 Berita besar {jam_berita} jam ke depan: {bd['judul']}. Jam rilis biasanya memicu gerak cepat."]
     except Exception:
         pass
     rows += ["", "Pastikan semua SL terpasang di Bybit. Robot mengirim peringatan GERAK SERENTAK kalau terjadi."]
     return "\n".join(rows)
+
+
+_BTC_BARIS = [0.0, ""]
+
+
+def baris_btc_sinyal():
+    """Satu blok info BTC yang ikut di setiap pemberitahuan sinyal. Fakta posisi harga lawan EMA, plus kesimpulan uji:
+    uji 2021-2026 35 ribu sinyal, arah BTC (9 teknik di 1W, 1D, 4J, searah atau lawan sinyal) tidak konsisten mengubah
+    hasil sinyal (contoh 3 timeframe lawan PF 0.76 lalu 1.98). Yang konsisten hanya arah hari ini (condong naik)
+    dan volume pasar tinggi, keduanya sudah dipakai robot."""
+    if time.time() - _BTC_BARIS[0] < 600 and _BTC_BARIS[1]:
+        return _BTC_BARIS[1]
+    try:
+        import bybit_fetch as B
+        rows = []
+        px = None
+        for iv, nm in (("240", "4J"), ("D", "1D")):
+            df = B._raw("BTCUSDT", iv, 260)
+            c = df["close"].astype(float)
+            c = c.iloc[:-1]                              # candle terakhir masih berjalan
+            px = px or float(df["close"].iloc[-1])
+            e50 = float(c.ewm(span=50, adjust=False).mean().iloc[-1])
+            e200 = float(c.ewm(span=200, adjust=False).mean().iloc[-1])
+            pos = lambda e: f"{'di atas' if px > e else 'di bawah'} EMA{'50' if e == e50 else '200'} ({(px / e - 1) * 100:+.1f}%)"
+            rows.append(f"{nm}: {pos(e50)}, {pos(e200)}")
+        d = arah_hari()
+        arah = ("CONDONG NAIK (SHORT baru ditahan)" if d and d["naik"] else "tidak bisa ditebak, 50/50") if d else "belum terbaca"
+        teks = (f"₿ <b>BTC {px:,.0f}</b>  ·  " + "  ·  ".join(rows) + f"\n🧭 Arah hari ini: {arah}. "
+                "Posisi BTC lawan EMA di atas hanya info, di uji tidak mengubah hasil sinyal.")
+        _BTC_BARIS[:] = [time.time(), teks]
+        return teks
+    except Exception as ex:
+        print("[WARN] baris btc sinyal", ex)
+        return ""

@@ -243,10 +243,19 @@ def teks():
            ("⭐ COMBO lain", lambda c: c.get("combo") and not c.get("combo_emas") and not c.get("combo_fix"), 0.12),
            ("💎 MUTU TINGGI", lambda c: len(c.get("mutu_plus") or []) >= 3, 0.18),
            ("🔁 PULLBACK McGinley", lambda c: c.get("pullback"), 0.24),
+           ("🔊 VOLUME PASAR TINGGI", lambda c: c.get("vol_tinggi"), 0.30),
            ("Tanpa label", lambda c: not (c.get("combo") or len(c.get("mutu_plus") or []) >= 3 or c.get("pullback")), 0.11)]
     rows += ["", "🏷 <b>PER LABEL</b> (label dicatat sejak 20 Okt 2026)"]
     for nm, fn, ex in lab:
         rows.append(_baris(nm, [c["R"] for _, _, c in data if fn(c)], ex))
+    try:
+        import qse_strat as ST
+        sk = lambda k, c: ST.prioritas(k, c)[0]
+        rows += ["", "🎖 <b>PER NILAI</b> (dicatat sejak 23 Okt 2026)"]
+        for nm, lo, hi, ex in (("👑 NILAI 10", 8, 99, 0.50), ("🔥 NILAI 9", 5, 7, 0.29), ("✅ NILAI 8", 3, 4, 0.14)):
+            rows.append(_baris(nm, [c["R"] for k, _, c in data if lo <= sk(k, c) <= hi], ex))
+    except Exception as ex_:
+        print("[WARN] jalur per nilai", ex_)
     b30 = [c["R"] for _, _, c in data if now - c.get("selesai", 0) <= 30 * 86400]
     rows += ["", "🗓 <b>30 HARI TERAKHIR</b>", _baris("Semua jalur", b30, 0.13)]
     try:

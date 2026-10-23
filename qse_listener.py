@@ -161,13 +161,21 @@ def _tugas_berkala():
             print("[WARN] strategi", ex)
         try:
             kumpul.sort(key=lambda z: z[0], reverse=True)
+            kumpul = [z for z in kumpul if ST.lolos_mode(z[0])]          # mode profit: skor label rendah tidak dikirim
             kirim = []
+            try:
+                import qse_pagi as PG
+                btc_b = PG.baris_btc_sinyal()
+            except Exception:
+                btc_b = ""
             for no, (pr, slot, nama, m) in enumerate(kumpul, 1):
                 lb = ST.label_nama_teks(m)
                 ids = TG.send([f"📌 <b>QSE v148 | DETAIL SINYAL BARU {nama}</b>\n"
+                               + (f"<b>{ST.kelas(pr[0])}</b>\n" if ST.kelas(pr[0]) else "")
+                               +
                                f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  "
                                f"dikirim urut prioritas, urutan lengkap ada di pesan 🎯 SINYAL 4 JAM\n"
-                               f"{SY.baris_jadwal(telat_menit=3)}\n{m}"])
+                               f"{SY.baris_jadwal(telat_menit=3)}\n" + (btc_b + "\n" if btc_b else "") + m])
                 kirim.append((slot, ids))
             terbaik = {}
             for slot, ids in kirim:
@@ -183,17 +191,30 @@ def _tugas_berkala():
                 _pin_ichi(TG.send([teks]), "pin_sl")
         except Exception as ex:
             print("[WARN] kartu SL", ex)
-    # info pasar pagi 06:00 WIB (23:00 UTC): peluang gerak serentak hari ini. Sekali per hari.
+    # info pasar 06:00, 12:00, 18:00 WIB (23, 05, 11 UTC): peluang gerak serentak dan arah hari ini. Sekali per sesi.
     hp = int((now + 3600) // 86400)
-    if time.gmtime(now).tm_hour == 23 and st.get("pagi_hari", 0) < hp:
-        _st({"pagi_hari": hp})
+    sesi = {23: "pagi", 5: "siang", 11: "malam"}.get(time.gmtime(now).tm_hour)
+    if sesi and st.get("info_" + sesi, 0) < hp:
+        _st({"info_" + sesi: hp})
         try:
             import qse_pagi as PG
-            m = PG.ramal()
+            m = PG.ramal(sesi, st.get("gerak_t", 0))
             if m:
                 TG.send([m])
         except Exception as ex:
-            print("[WARN] info pagi", ex)
+            print("[WARN] info pasar", sesi, ex)
+    # laporan bulanan tanggal 1 jam 08:00 WIB (01:00 UTC): hasil live tiap teknik, label, dan nilai dibanding uji.
+    # Info saja, jalur tidak dimatikan otomatis (uji: 40 trade PF<1 terjadi 31-55% waktu walau jalurnya untung).
+    g = time.gmtime(now)
+    bln = g.tm_year * 12 + g.tm_mon
+    if g.tm_mday == 1 and g.tm_hour >= 1 and st.get("bulanan", 0) < bln:
+        _st({"bulanan": bln})
+        try:
+            import qse_catat as CT
+            TG.send(["🗓 <b>QSE v148 | LAPORAN BULANAN</b>\nCek rutin: hasil live robot dibanding uji 2021-2026. "
+                     "Kalau ada yang jauh di bawah uji setelah 100 trade, saya uji ulang dengan data terbaru.\n\n" + CT.teks()])
+        except Exception as ex:
+            print("[WARN] laporan bulanan", ex)
     hari = int(now // 86400) * 86400
     # pengingat DCA spot BTC: Senin 08:00 WIB (Senin 01:00 UTC), Rp100.000 per minggu. Uji 2018-2026: beli rutin
     # mingguan +416%, mengalahkan semua aturan menunggu waktu beli. Hari dan jam beli tidak berpengaruh (beda < 1%),

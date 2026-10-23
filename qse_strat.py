@@ -477,6 +477,39 @@ def vol_tinggi():
     return round(x, 1) if x and x > 2.5 else None
 
 
+# MODE PROFIT (/mode profit): hanya kirim sinyal dengan skor label 5 ke atas. Uji 2021-2026 semua sinyal jalur:
+# skor >=5 PF 1.65 (2021-23) dan 1.77 (2024-26), WR 44/45%, 2.1-2.5 sinyal per hari, drawdown 98/118R
+# lawan semua sinyal PF 1.24/1.28, 15-18 per hari, drawdown 383/651R. Skor >=8 PF 2.25/2.22 tapi 0.3-0.5 per hari.
+MODE_MIN = {"semua": 0, "seimbang": 3, "profit": 5, "raja": 8}
+
+
+def mode_sinyal():
+    """Otomatis mode seimbang (skor label 3 ke atas). Uji 2021-2026: PF 1.43 dan 1.55, rasio profit/drawdown 6.7 dan 6.3,
+    hari tanpa sinyal 17%, total R hampir 2x skor 5+ (PF 1.65/1.77, rasio 6.5/7.1, tapi 50% hari kosong, terpanjang 14 hari).
+    Semua sinyal: PF 1.24/1.28, rasio 5.1/4.0. File mode_sinyal.json hanya dipakai kalau sengaja diubah."""
+    try:
+        with open(os.path.join(STATE_DIR, "mode_sinyal.json")) as f:
+            m = json.load(f).get("mode", "seimbang")
+        return m if m in MODE_MIN else "seimbang"
+    except Exception:
+        return "seimbang"
+
+
+def set_mode(m):
+    m = (m or "").lower()
+    if m not in MODE_MIN:
+        return None
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(os.path.join(STATE_DIR, "mode_sinyal.json"), "w") as f:
+        json.dump({"mode": m}, f)
+    return m
+
+
+def lolos_mode(pr):
+    """pr = hasil prioritas(). True kalau skor label cukup untuk mode sekarang."""
+    return pr[0] >= MODE_MIN[mode_sinyal()]
+
+
 def prioritas(k, it):
     """Kunci urut sinyal: jumlah label terbukti dulu (COMBO, COMBO 3+, MUTU TINGGI, PULLBACK), lalu PF jalur.
     Label: combo 3+ PF 1.40, mutu tinggi PF 1.37, McGinley pullback PF 1.43, semua di atas PF jalur mana pun tanpa label."""
@@ -526,8 +559,20 @@ def medali(no):
     return {1: "🥇", 2: "🥈", 3: "🥉"}.get(no, "🏅")
 
 
+def kelas(n):
+    """Tanda nilai dari skor label (permintaan user: skor 3 = NILAI 8, 5 = NILAI 9, 8 = NILAI 10).
+    Uji 2021-2026 (PF 2021-23 / 2024-26): skor 3-4 PF 1.27/1.33, skor 5-7 PF 1.58/1.74, skor 8+ PF 2.25/2.22."""
+    if n >= 8:
+        return "👑 NILAI 10 (PF uji 2.2)"
+    if n >= 5:
+        return "🔥 NILAI 9 (PF uji 1.7)"
+    if n >= 3:
+        return "✅ NILAI 8 (PF uji 1.3)"
+    return ""
+
+
 def label_prioritas(p):
-    return f"skor label {p[0]}" if p[0] else "tanpa label"
+    return kelas(p[0]) or "tanpa label"
 
 
 def combo_teks(it):
@@ -866,8 +911,9 @@ def kartu(k, no, it, a):
         *(["🔁 <b>PULLBACK DALAM TREN BESAR</b>: searah EMA 200, tren pendek baru berbalik. "
            "Uji 2021-2026 McGinley pullback PF 1.43, McGinley biasa PF 1.18"] if it.get("pullback") else []),
         SY.GARIS,
-        (SY.blok_salin(it["entry"], it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah=it["arah"]) if it.get("tp") else
-         SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=it["sym"], arah=it["arah"])),
+        (SY.blok_salin(it["entry"], it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah=it["arah"], rentang=batas_masuk(it, k)) if it.get("tp") else
+         SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=it["sym"], arah=it["arah"],
+                       rentang=batas_masuk(it, k))),
         *batas_masuk_teks(it, k),
         *tp_cepat_teks(it, k=k),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot setengah sampai pulih"] if rm else []),

@@ -684,12 +684,20 @@ def baris_konteks():
     return v
 
 
-def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp="", sym=None, arah=None):
+def baris_range(rentang, t):
+    """Baris rentang entry valid di blok salin (uji: dalam 0.5R dari entry robot semua bagian rentang untung)."""
+    return f"Range {fp(min(rentang[:2]), t)} sampai {fp(max(rentang[:2]), t)}" if rentang else ""
+
+
+def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp="", sym=None, arah=None, rentang=None):
     """Blok level yang sama untuk semua sinyal. Tekan lama untuk salin, lalu tempel setelah /entry untuk dicatat."""
     t = tick or tick_of(None, entry)
     risk = abs(entry - sl) or 1e-12
     pc = lambda x: abs(x - entry) / entry * 100
-    rows = ([f"{sym} {arah}".strip()] if sym else []) + [f"Entry {fp(entry, t)}" + (f" {order}" if order else ""), f"SL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%"]
+    if rentang is None and order == "MARKET":
+        rentang = (entry - 0.5 * risk, entry + 0.5 * risk)
+    rows = ([f"{sym} {arah}".strip()] if sym else []) + [f"Entry {fp(entry, t)}" + (f" {order}" if order else "")] \
+        + ([baris_range(rentang, t)] if rentang else []) + [f"SL    {fp(sl, t)}  -1.00R  -{pc(sl):.1f}%"]
     for nm, v in ((("TP", tp1),) if tp1 and tp1 == tp2 else (("TP1", tp1), ("TP2", tp2))):
         if v:
             rows.append(f"{nm:<5} {fp(v, t)}  +{abs(v - entry) / risk:.2f}R  +{pc(v):.1f}%")
@@ -1366,6 +1374,9 @@ def parse_entry(args):
             i += 1
         elif re.fullmatch(r"\d+(\.\d+)?X", a):
             kv["LEV"] = _angka(a[:-1])
+        elif a in ("RANGE", "RENTANG"):
+            while i + 1 < len(args) and (_angka(args[i + 1]) is not None or args[i + 1] in ("SAMPAI", "-", "S/D")):
+                i += 1                   # baris Range dari blok salin, bukan harga entry
         elif a in ("SL", "TP", "TP1", "TP2") and nxt is not None:
             kv["TP1" if a == "TP" else a] = nxt
             i += 1
@@ -3470,7 +3481,9 @@ def sinyal_jalur(jam=False):
             if it.get("vol_tinggi"):
                 ket += "  ·  🔊 volume pasar tinggi"
             kartu.append((ST.prioritas(k, it), f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
-                         f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>"
+                         f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\n"
+                         + ((baris_range(ST.batas_masuk(it, k), t) + "\n") if ST.batas_masuk(it, k) else "")
+                         + f"SL    {fp(sl, t)}\nTP    {tp}</pre>"
                          + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it, k=k))))
     kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
     # order Tembus Trendline yang masih menunggu (STOP atau LIMIT, berlaku 24 jam): ikut ditampilkan supaya sama dengan cek per jam
@@ -3494,15 +3507,25 @@ def sinyal_jalur(jam=False):
     blok_tunggu = ("\n\n⏳ <b>ORDER MENUNGGU TERISI</b> (Tembus Trendline, pasang order ini di Bybit, bukan MARKET)\n\n"
                    + "\n\n".join(tunggu)) if tunggu else ""
     kartu.sort(key=lambda z: z[0], reverse=True)          # prioritas: label terbukti dulu, lalu PF jalur
+    n_sem = len([1 for z in kartu if not ST.lolos_mode(z[0])])
+    kartu = [z for z in kartu if ST.lolos_mode(z[0])]
+    if n_sem and not jam:
+        blok_tunggu += (f"\n\nℹ️ {n_sem} sinyal dengan nilai di bawah "
+                        "8 (skor label di bawah 3) disembunyikan otomatis, karena hasil ujinya jauh lebih rendah.")
     kartu = [f"{ST.medali(i)} <b>PRIORITAS {i}</b>  ·  {ST.label_prioritas(p)}  ·  PF jalur {p[1]:.2f}\n{x}"
              for i, (p, x) in enumerate(kartu, 1)]
+    try:
+        import qse_pagi as PG
+        _bb = PG.baris_btc_sinyal() if kartu else ""
+    except Exception:
+        _bb = ""
     if jam:          # dipakai cek per jam: hanya kartu yang masih valid, format sama dan bisa disalin (maks 5, pesan tidak terpotong)
-        return "\n\n".join(kartu[:5]) + (f"\n\n+{len(kartu) - 5} sinyal valid lain, ketik /sinyal4j" if len(kartu) > 5 else "")
+        return "\n\n".join(([_bb] if _bb else []) + kartu[:5]) + (f"\n\n+{len(kartu) - 5} sinyal valid lain, ketik /sinyal4j" if len(kartu) > 5 else "")
     if not kartu:
         return (kepala + "\nBelum ada sinyal MARKET jalur terbukti yang bisa diikuti di harga sekarang. Sinyal baru dikirim tiap "
                 "candle 4J tutup (03, 07, 11, 15, 19, 23 WIB lewat 5 menit)." + blok_tunggu)
     return (kepala + "\nHanya sinyal yang masih valid di harga sekarang (dalam 0.5R dari entry robot dan belum lewat batas waktu), "
-            "urut dari prioritas 1.\n\n" + "\n\n".join(kartu) + blok_tunggu)
+            "urut dari prioritas 1.\n\n" + "\n\n".join(([_bb] if _bb else []) + kartu) + blok_tunggu)
 
 
 
@@ -3632,7 +3655,8 @@ def cek_jalur(sym, arah=None, entry=None):
         judul = (f"{'🟢' if L else '🔴'} <b>{it['nama']} {it['arah']}</b>"
                  + (f"  ·  ⭐ {' + '.join(lb)}" if lb else ""))
         if ok:
-            blok = (judul + f"\n<pre>{sym} {it['arah']}\nEntry {fp(px, t)} MARKET\nSL    {fp(sl_now, t)}\nTP    "
+            blok = (judul + f"\n<pre>{sym} {it['arah']}\nEntry {fp(px, t)} MARKET\n"
+                    + ((baris_range(bm, t) + "\n") if bm else "") + f"SL    {fp(sl_now, t)}\nTP    "
                     + (fp(it['tp'], t) if it.get("tp") else keluar) + "</pre>\n" + "\n".join(ST.batas_masuk_teks(it, k)))
             valid.append((ST.prioritas(k, it), blok, it["arah"]))
         else:
