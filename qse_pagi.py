@@ -192,6 +192,11 @@ def ramal(sesi="pagi", gerak_t=0):
                             else "tidak terbaca, dianggap tidak ada"), ""]
     try:
         rows += baris_arah()
+        if sesi != "pagi":
+            rows.append("ℹ️ Arah hari ini dihitung jam 06:00 dan berlaku sampai 06:00 besok. Dihitung ulang jam 12 atau 18 "
+                        "lebih jelek di uji 2021-2026 (total profit turun 160-310R), jadi tidak diganti. "
+                        "Larangan hanya untuk sinyal SHORT baru. Posisi SHORT yang sudah jalan tetap ikuti SL dan TP, "
+                        "uji menutupnya lebih awal juga lebih jelek.")
     except Exception as ex:
         print("[WARN] baris arah", ex)
     rows += ["Altcoin ikut arah harian BTC di 81% hari (74% saat serentak), jadi arah BTC jadi patokan altcoin juga."]

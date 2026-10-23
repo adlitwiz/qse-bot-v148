@@ -1283,12 +1283,15 @@ def _kartu_jam(results, b1, led):
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
     if pos:
         peta = {r["symbol"]: r for r in results}
-        bag = []
+        grup = {}
         for it in pos:
-            px = (peta.get(it["sym"]) or {}).get("live")
+            px = (peta.get(it["sym"]) or {}).get("live") or SY.harga_live(it["sym"])
             fl = SY.floating(it, px) if px else None
-            bag.append(f"{it['sym']} {it['arah']} " + (f"{fl['pct']:+.1f}% ({fl['r']:+.2f}R)" if fl else "-"))
-        rows.append("👤 Posisi: " + " | ".join(bag))
+            grup.setdefault(it.get("oleh") or "", []).append(
+                f"{'🟩' if fl and fl['r'] >= 0 else '🟥' if fl else '⬜'} {it['sym']} {it['arah']} "
+                + (f"{fl['pct']:+.1f}% ({fl['r']:+.2f}R)" if fl else "-"))
+        for nm, bag in grup.items():
+            rows.append(f"👤 <b>Posisi {TG.e(nm) if nm else 'kamu'}</b> ({len(bag)})\n" + "\n".join(bag))
         rows.append("↳ Diam, biarkan SL dan TP jalur bekerja. Gerak BTC 1 jam bukan alasan keluar.")
     try:
         sv = SY.sinyal_jalur(jam=True)

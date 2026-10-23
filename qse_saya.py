@@ -2356,7 +2356,7 @@ def blok_posisi(no, it, px, r=None, pasar=None):
         if it["status"] != "TP1":
             lv.append(("TP1", it["tp1"], "TP1"))
         lv.append(("TP2", it["tp2"], "TP2"))
-    pc = lambda x: (x - it["entry"]) / it["entry"] * 100
+    pc = lambda x: (x - it["entry"]) / it["entry"] * 100 * (1 if L else -1)      # + untung, - rugi (SHORT dibalik)
     w_p = max(len(fp(v, t)) for _, v, _ in lv + [("", it["entry"], ""), ("", px or it["entry"], "")])
     pre = [f"{it['sym']} {arah}", f"{'Entry':<6}{fp(it['entry'], t):>{w_p}}"]
     if px:
@@ -2437,7 +2437,7 @@ def status_saya(harga=None):
     else:
         pasar = dict(btc1=btc_1j(), berita=berita_depan(3))
         ket = ["🌐 <b>PASAR</b>\n" + "\n".join("• " + z.strip() for z in baris_pasar().replace("🌐 Pasar: ", "").split(" | ")),
-               "ℹ️ Persen = jarak dari entry. R = hasil kalau kena. ⏱ = jarak dari harga sekarang dan perkiraan waktu."]
+               "ℹ️ Persen dan R: + untung, - rugi kalau harga di level itu (SHORT sudah dibalik). ⏱ = jarak dari harga sekarang dan perkiraan waktu."]
         try:
             import qse_modal as MD
             if MD.lot_normal() > 0:
