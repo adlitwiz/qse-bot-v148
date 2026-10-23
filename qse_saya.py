@@ -2446,9 +2446,73 @@ def status_saya(harga=None):
             ada_fl = True
     if ada_fl:
         blok.append(f"{GARIS}\n{'🟩' if tot >= 0 else '🟥'} <b>Total floating: {tot:+.2f}R{_usdt(tot)}</b>")
+    try:
+        es = estimasi_semua(op)
+        if es:
+            blok.append(es)
+    except Exception as ex:
+        print("[WARN] estimasi semua", ex)
     blok.append(f"{GARIS}\n" + ringkas_rapi("📈 WR TRADE KAMU", d["closed"]))
     blok.append(wr_jalur(d["closed"]))
     return "\n\n".join(blok)
+
+
+def estimasi_semua(op):
+    """Kalau semua posisi jalan kena SL, dan kalau semua yang punya TP kena TP: total R, persen modal, USDT."""
+    jalan = [it for it in op if it["status"] in ("TERISI", "TP1")]
+    if not jalan:
+        return ""
+    try:
+        import qse_modal as MD
+        m = MD.lihat()
+        rp, ln = (m["risk"], MD.lot_normal()) if m["modal"] > 0 else (None, 0)
+    except Exception:
+        rp, ln = None, 0
+    r_sl, r_tp, n_tp, n_trail = 0.0, 0.0, 0, 0
+    for it in jalan:
+        sl_now = it["entry"] if it["status"] == "TP1" and not it.get("sl_manual") else it["sl"]
+        r_sl += _hasil_di(it, sl_now, "SL")
+        if it.get("ikut"):
+            tp = (it.get("tp_jalur"), "TPJ")
+        elif it.get("tanpa_tp"):
+            tp = (None, "")
+        elif it.get("tp1") == it.get("tp2"):
+            tp = (it.get("tp2"), "TPJ")
+        else:
+            tp = (it.get("tp2"), "TP2")
+        if tp[0]:
+            r_tp += _hasil_di(it, tp[0], tp[1])
+            n_tp += 1
+        else:
+            n_trail += 1
+    f = lambda R: (f"{R:+.2f}R" + (f"  ·  {R * rp:+.2f}% modal ({R * ln:+,.2f} USDT)" if rp else ""))
+    rows = [GARIS, "📐 <b>ESTIMASI SEMUA POSISI JALAN</b>",
+            f"🛑 Kalau semua kena SL ({len(jalan)} posisi): {f(r_sl)}"]
+    if n_tp:
+        rows.append(f"🏁 Kalau semua kena TP ({n_tp} posisi ber-TP): {f(r_tp)}")
+    if n_trail:
+        rows.append(f"〰️ {n_trail} posisi trailing tanpa TP tidak dihitung di TP, profitnya ikut sejauh harga lari.")
+    if not rp:
+        rows.append("Isi /modal supaya tampil dalam persen modal dan USDT.")
+    return "\n".join(rows)
+
+
+def tutup_semua(label="TUTUP"):
+    """/tp all, /sl all, /tutup all: tutup semua posisi jalan kamu di harga sekarang."""
+    d = _load()
+    jalan = [(v["sym"], v["arah"]) for v in d["open"].values() if v["status"] in ("TERISI", "TP1")]
+    if not jalan:
+        return "Tidak ada posisi jalan yang bisa ditutup."
+    rows, tot = [], 0.0
+    for sym, arah in dict.fromkeys(jalan):
+        hasil = tutup([sym, arah], label)
+        rows.append(hasil)
+        import re
+        mm = re.search(r"total trade ([+-][\d.]+)R", hasil)
+        if mm:
+            tot += float(mm.group(1))
+    rows.append(f"{'🟩' if tot >= 0 else '🟥'} <b>Total semua: {tot:+.2f}R{_usdt(tot)}</b>")
+    return "\n\n".join(rows)
 
 
 URUT_JALUR = ("saran utama", "saran 1J", "saran cadangan", "saran cadangan 2", "saran fib", "saran siklus", "saran GZH",
@@ -3403,6 +3467,8 @@ def sinyal_jalur(jam=False):
                 ket += "  ·  🔁 pullback"
             if len(it.get("mutu_plus") or []) >= 3:
                 ket += "  ·  💎 mutu tinggi"
+            if it.get("vol_tinggi"):
+                ket += "  ·  🔊 volume pasar tinggi"
             kartu.append((ST.prioritas(k, it), f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
                          f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\nSL    {fp(sl, t)}\nTP    {tp}</pre>"
                          + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it, k=k))))
@@ -3760,6 +3826,40 @@ def spot_btc():
             f"✅ Jadwal kamu: beli Rp100.000 tiap Senin pagi" + (f", sudah {n_dca} minggu berjalan" if n_dca else "")
             + ". Tetap beli berapa pun skor tren minggu ini. Skor di atas hanya gambaran, bukan alasan menunda atau menambah."]
     return "\n".join(rows)
+
+
+_SERENTAK = {}
+
+
+@per_orang
+def posisi_serentak():
+    """Kabar kalau semua posisi jalan (minimal 3) minus dan total floating turun 1R atau lebih dalam 2 jam.
+    Sekali per 4 jam per orang. Info saja: SL di Bybit tetap yang membatasi rugi."""
+    d = _load()
+    jalan = [it for it in d["open"].values() if it["status"] in ("TERISI", "TP1")]
+    u = uid_aktif() or ""
+    now = time.time()
+    if len(jalan) < 3:
+        _SERENTAK.pop(u, None)
+        return []
+    hg = harga_semua()
+    fl = [(it, floating(it, hg.get(it["sym"]))) for it in jalan]
+    fl = [(it, f) for it, f in fl if f]
+    if len(fl) < 3:
+        return []
+    tot = sum(f["r"] for _, f in fl)
+    st = _SERENTAK.setdefault(u, {"riw": [], "t": 0})
+    st["riw"] = [(t, r) for t, r in st["riw"] if now - t <= 7200] + [(now, tot)]
+    puncak = max(r for _, r in st["riw"])
+    if not all(f["r"] < 0 for _, f in fl) or puncak - tot < 1.0 or now - st["t"] < 4 * 3600:
+        return []
+    st["t"] = now
+    baris = [f"Semua {len(fl)} posisi jalan sedang minus. Total {tot:+.2f}R{_usdt(tot)}, turun {puncak - tot:.2f}R dalam 2 jam."]
+    for it, f in sorted(fl, key=lambda z: z[1]["r"]):
+        baris.append(f"🔴 {it['sym']} {it['arah']} {f['r']:+.2f}R  ·  SL {fp(it['sl'], it.get('tick') or tick_of(None, it['sl']))}")
+    baris += ["↳ Pastikan semua SL terpasang di Bybit. Jangan geser SL menjauh dan jangan tambah posisi.",
+              "↳ Uji 2021-2026: tutup lebih awal saat pasar bergejolak menurunkan profit 18 sampai 78%, jadi biarkan SL yang bekerja."]
+    return ["\n".join(baris)]
 
 
 @per_orang

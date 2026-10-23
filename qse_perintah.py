@@ -203,6 +203,12 @@ def balas(cmd, args, dari_main=False):
         if cmd == "/cekdetail":
             return SY.konsultasi(sym, arah, harga)
         return SY.cek_jalur(sym, arah, harga)
+    if cmd in ("/tutup", "/tp", "/sl") and args and args[0] in ("ALL", "SEMUA", "ALLUSDT", "SEMUAUSDT"):
+        return SY.tutup_semua({"/tp": "ambil profit", "/sl": "cut loss"}.get(cmd, "TUTUP"))
+    if cmd in ("/tpall", "/tpsemua"):
+        return SY.tutup_semua("ambil profit")
+    if cmd in ("/slall", "/slsemua"):
+        return SY.tutup_semua("cut loss")
     if cmd == "/tutup":
         return SY.tutup(args)
     if cmd == "/pindah":
@@ -349,7 +355,7 @@ def proses(cmds, dari_main=False):
             ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
                     "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
-                    "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
+                    "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"
             TG.send(isi.split("\n\n"))
             n += 1

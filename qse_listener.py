@@ -183,6 +183,17 @@ def _tugas_berkala():
                 _pin_ichi(TG.send([teks]), "pin_sl")
         except Exception as ex:
             print("[WARN] kartu SL", ex)
+    # info pasar pagi 06:00 WIB (23:00 UTC): peluang gerak serentak hari ini. Sekali per hari.
+    hp = int((now + 3600) // 86400)
+    if time.gmtime(now).tm_hour == 23 and st.get("pagi_hari", 0) < hp:
+        _st({"pagi_hari": hp})
+        try:
+            import qse_pagi as PG
+            m = PG.ramal()
+            if m:
+                TG.send([m])
+        except Exception as ex:
+            print("[WARN] info pagi", ex)
     hari = int(now // 86400) * 86400
     # pengingat DCA spot BTC: Senin 08:00 WIB (Senin 01:00 UTC), Rp100.000 per minggu. Uji 2018-2026: beli rutin
     # mingguan +416%, mengalahkan semua aturan menunggu waktu beli. Hari dan jam beli tidak berpengaruh (beda < 1%),
@@ -392,7 +403,8 @@ _GERAK = []          # snapshot harga tiap menit: (waktu, {simbol: harga}), 40 m
 def _gerak_serentak():
     """Peringatan cepat dari HARGA, bukan berita: berita kripto biasanya terbit setelah harga bergerak.
     Pemicu (30 menit): BTC bergerak 2% atau lebih, atau 70% dari 40 koin paling likuid bergerak 3% searah.
-    Uji data 15 menit 2022-2026: sekitar 6 sampai 9 kali per bulan. Jeda 2 jam antar peringatan. Info saja:
+    Uji data 15 menit 2022-2026: sekitar 6 sampai 9 kali per bulan. Jeda 2 jam antar peringatan.
+    Tambahan 23 Okt 2026, gerak lebih pelan (3 jam): BTC 3% atau 70% koin bergerak 5% searah, sekitar 9 kali per bulan. Info saja:
     uji 2021-2026 menutup posisi lebih awal saat pasar bergejolak menurunkan profit, jadi aturan jalur tetap dipakai."""
     import bybit_fetch as B
     now = time.time()
@@ -401,25 +413,33 @@ def _gerak_serentak():
                                 key=lambda z: -z[1])[:40]]
     snap = {s: tk[s]["last"] for s in top + ["BTCUSDT"] if s in tk and tk[s]["last"] > 0}
     _GERAK.append((now, snap))
-    while _GERAK and now - _GERAK[0][0] > 40 * 60:
+    while _GERAK and now - _GERAK[0][0] > 190 * 60:
         _GERAK.pop(0)
-    lama = next((sn for t, sn in _GERAK if now - t >= 28 * 60), None)
-    if not lama or now - _st().get("gerak_t", 0) < 7200:
+    if now - _st().get("gerak_t", 0) < 7200:
         return
-    ch = {s: (snap[s] / lama[s] - 1) * 100 for s in snap if lama.get(s)}
-    btc = ch.get("BTCUSDT")
-    alt = [v for s, v in ch.items() if s != "BTCUSDT"]
-    if btc is None or len(alt) < 20:
+    pilih = None
+    for menit, b_th, a_th, lab in ((28, 2, 3, "30 menit"), (178, 3, 5, "3 jam")):
+        lama = next((sn for t, sn in _GERAK if now - t >= menit * 60), None)
+        if not lama or now - _GERAK[0][0] < menit * 60:
+            continue
+        lama = next(sn for t, sn in reversed(_GERAK) if now - t >= menit * 60)
+        ch = {s: (snap[s] / lama[s] - 1) * 100 for s in snap if lama.get(s)}
+        btc = ch.get("BTCUSDT")
+        alt = [v for s, v in ch.items() if s != "BTCUSDT"]
+        if btc is None or len(alt) < 20:
+            continue
+        naik = sum(1 for v in alt if v >= a_th) / len(alt)
+        turun = sum(1 for v in alt if v <= -a_th) / len(alt)
+        if abs(btc) >= b_th or naik >= 0.7 or turun >= 0.7:
+            pilih = (lab, a_th, btc, alt, naik, turun, (btc > 0) if abs(btc) >= b_th else naik >= 0.7)
+            break
+    if not pilih:
         return
-    naik = sum(1 for v in alt if v >= 3) / len(alt)
-    turun = sum(1 for v in alt if v <= -3) / len(alt)
-    if not (abs(btc) >= 2 or naik >= 0.7 or turun >= 0.7):
-        return
-    arah_naik = (btc > 0) if abs(btc) >= 2 else naik >= 0.7
+    lab, a_th, btc, alt, naik, turun, arah_naik = pilih
     _st({"gerak_t": now})
     rows = [f"{'🚀' if arah_naik else '💥'} <b>QSE v148 | PASAR BERGERAK SERENTAK {'NAIK' if arah_naik else 'TURUN'}</b>",
-            f"30 menit terakhir: BTC {btc:+.1f}%, {round(naik * len(alt))} dari {len(alt)} koin utama naik 3%+, "
-            f"{round(turun * len(alt))} turun 3%+.",
+            f"{lab} terakhir: BTC {btc:+.1f}%, {round(naik * len(alt))} dari {len(alt)} koin utama naik {a_th}%+, "
+            f"{round(turun * len(alt))} turun {a_th}%+.",
             "Biasanya berita baru muncul setelah ini, jadi peringatan ini dari harga langsung."]
     pos = []
     try:
@@ -430,7 +450,8 @@ def _gerak_serentak():
             fl = SY.floating(it, px) if px else None
             searah = (it["arah"] == "LONG") == arah_naik
             pos.append(f"{'🟢' if searah else '🔴'} {it['sym']} {it['arah']} "
-                       + (f"{fl['r']:+.2f}R" if fl else "") + (" (searah gerak)" if searah else " (melawan gerak)"))
+                       + (f"{fl['r']:+.2f}R" if fl else "") + (" (searah gerak)" if searah else " (melawan gerak)")
+                       + (f"  ·  👤 {it['oleh']}" if it.get("oleh") else ""))
     except Exception as ex:
         print("[WARN] gerak posisi", ex)
     if pos:
@@ -447,6 +468,12 @@ def _tugas_menit():
         _gerak_serentak()
     except Exception as ex:
         print("[WARN] gerak serentak", ex)
+    try:
+        ps = SY.posisi_serentak()
+        if ps:
+            TG.send(["⚠️ <b>QSE v148 | SEMUA POSISI MINUS</b>\n\n" + "\n\n".join(ps)])
+    except Exception as ex:
+        print("[WARN] posisi serentak", ex)
     try:
         pesan = SY.pantau()
         if pesan:

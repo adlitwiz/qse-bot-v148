@@ -205,6 +205,12 @@ def analisa():
         pass
     rows.append("")
 
+    try:
+        import qse_pagi as PG
+        rows += PG.baris_arah() + [""]
+    except Exception as ex:
+        print("[WARN] arah hari cek", ex)
+
     # 4. kesimpulan
     a7, a30 = PELUANG[kond]["f7"], PELUANG[kond]["f30"]
     kuat = all(x[0] - x[2] >= 3 for x in a30) or all(x[0] - x[2] <= -3 for x in a30)

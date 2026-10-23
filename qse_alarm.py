@@ -220,6 +220,9 @@ def _pesan_gzh(a, cl):
                 return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi mutu rendah ({TG.e(ST.mutu_buang(mp, mm))}). Lewati."
         if ST.pump_tolak(df, arah):
             return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi {TG.e(ST.pump_tolak(df, arah))}. Lewati."
+        import qse_pagi as PG
+        if arah == "SHORT" and PG.short_tahan():
+            return f"⏸️ <b>GZH {a['sym']} SHORT</b>: terkonfirmasi, tapi {TG.e(PG.short_tahan())}. Lewati."
     except Exception as ex:
         print("[WARN] gzh mutu", ex)
     d = ST.lihat("GZH")

@@ -320,6 +320,10 @@ def _jalankan(baru_ok=True):
             if ST.pump_tolak(df, arah):
                 print(f"[ICHIMOKU] {sym} dilewati: {ST.pump_tolak(df, arah)}")
                 continue
+            import qse_pagi as PG
+            if arah == "SHORT" and PG.short_tahan():
+                print(f"[ICHIMOKU] {sym} SHORT dilewati: {PG.short_tahan()}")
+                continue
         except Exception as ex:
             print("[WARN] pump ichimoku", ex)
         sl = px - risk if L else px + risk
@@ -332,6 +336,7 @@ def _jalankan(baru_ok=True):
             it["combo_emas"] = ST.combo_emas("ichimoku", it["combo"])
             it["combo_fix"] = ST.combo_fix("ichimoku", it["combo"])
             it["combo_raja"] = ST.combo_raja(it["combo"])
+            it["vol_tinggi"] = ST.vol_tinggi()
         except Exception as ex:
             print("[WARN] combo ichimoku", ex)
         import qse_porto as PO_s

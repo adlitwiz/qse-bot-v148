@@ -448,6 +448,35 @@ PF_JALUR = {"tt": 1.47, "orderblock": 1.45, "ema_short": 1.42, "rsi_vol": 1.34, 
             "msb_hpz": 1.27, "smc_choch": 1.25, "mcginley": 1.24, "GZH": 1.24}
 
 
+_VOLP = {}
+
+
+def vol_pasar():
+    """Volume BTC candle 4J terakhir yang sudah tutup dibagi rata-rata 180 candle (30 hari). Disimpan per candle."""
+    t4 = int(time.time() // 14400)
+    if t4 in _VOLP:
+        return _VOLP[t4]
+    x = None
+    try:
+        df = _k4("BTCUSDT", 200)
+        v = df["volume"].astype(float)
+        if len(v) >= 180:
+            x = float(v.iloc[-1] / v.iloc[-180:].mean())
+    except Exception as ex:
+        print("[WARN] volume pasar", ex)
+    _VOLP.clear()
+    _VOLP[t4] = x
+    return x
+
+
+def vol_tinggi():
+    """Label VOLUME PASAR TINGGI: volume BTC 4J di atas 2.5x rata 30 hari. Uji 2021-2026 sinyal jalur terbukti di candle
+    seperti ini (19% sinyal): PF 1.66 (2021-23) dan 1.86 (2024-26), WR 45/48%, combo 3+ di saat itu PF 1.88/1.99.
+    Konsisten di hampir semua jalur (SnR 0.98/1.41 paling lemah)."""
+    x = vol_pasar()
+    return round(x, 1) if x and x > 2.5 else None
+
+
 def prioritas(k, it):
     """Kunci urut sinyal: jumlah label terbukti dulu (COMBO, COMBO 3+, MUTU TINGGI, PULLBACK), lalu PF jalur.
     Label: combo 3+ PF 1.40, mutu tinggi PF 1.37, McGinley pullback PF 1.43, semua di atas PF jalur mana pun tanpa label."""
@@ -456,6 +485,7 @@ def prioritas(k, it):
     n += (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0)
     n += 1 if len(it.get("mutu_plus") or []) >= 3 else 0
     n += 1 if it.get("pullback") else 0
+    n += 2 if it.get("vol_tinggi") else 0
     return (n, PF_JALUR.get(k, 1.2))
 
 
@@ -465,7 +495,8 @@ def prioritas_teks(k, m):
     g = re.search(r"COMBO (\d+)", m)
     cb = int(g.group(1)) - 1 if g else 0
     n = (1 if cb >= 1 else 0) + (1 if cb >= 2 else 0) + (1 if "MUTU TINGGI" in m else 0) + (1 if "PULLBACK" in m else 0) \
-        + (2 if "COMBO EMAS" in m else 0) + (3 if "COMBO FIX PROFIT" in m else 0) + (5 if "COMBO RAJA" in m else 0)
+        + (2 if "COMBO EMAS" in m else 0) + (3 if "COMBO FIX PROFIT" in m else 0) + (5 if "COMBO RAJA" in m else 0) \
+        + (2 if "VOLUME PASAR TINGGI" in m else 0)
     return (n, PF_JALUR.get(k, 1.2))
 
 
@@ -479,6 +510,8 @@ def label_nama(it):
         out.append("MUTU TINGGI")
     if it.get("pullback"):
         out.append("PULLBACK")
+    if it.get("vol_tinggi"):
+        out.append("VOLUME PASAR TINGGI")
     return out
 
 
@@ -486,7 +519,7 @@ def label_nama_teks(m):
     import re
     g = re.search(r"COMBO (\d+)", m)
     return (["COMBO RAJA"] if "COMBO RAJA" in m else []) + (["COMBO FIX PROFIT"] if "COMBO FIX PROFIT" in m else []) + (["COMBO EMAS"] if "COMBO EMAS" in m else []) + ([f"COMBO {g.group(1)}"] if g else []) + (["MUTU TINGGI"] if "MUTU TINGGI" in m else []) \
-        + (["PULLBACK"] if "PULLBACK" in m else [])
+        + (["PULLBACK"] if "PULLBACK" in m else []) + (["VOLUME PASAR TINGGI"] if "VOLUME PASAR TINGGI" in m else [])
 
 
 def medali(no):
@@ -498,16 +531,18 @@ def label_prioritas(p):
 
 
 def combo_teks(it):
-    """Baris COMBO (dan COMBO EMAS) untuk kartu semua jalur."""
+    """Baris COMBO (dan COMBO EMAS) untuk kartu semua jalur, plus label VOLUME PASAR TINGGI."""
+    vt = ([f"🔊 <b>VOLUME PASAR TINGGI</b>: volume BTC 4J {it['vol_tinggi']:g}x rata 30 hari. Uji 2021-2026 sinyal di saat "
+           f"seperti ini PF 1.66 dan 1.86, harga bergerak cepat ke dua arah, biarkan SL bekerja"] if it.get("vol_tinggi") else [])
     if not it.get("combo"):
-        return []
+        return vt
     emas = ([f"🏆 <b>COMBO EMAS</b>: pasangan dengan {', '.join(it['combo_emas'])} termasuk pasangan terbaik. "
              f"Dipilih dari 2021-2023 (PF 1.45), dicek 2024-2026 PF 1.48, combo biasa 1.25"] if it.get("combo_emas") else [])
     fix = ([f"💎 <b>COMBO FIX PROFIT</b>: searah dengan {' dan '.join(it['combo_fix'])}. Kombinasi 3 teknik terbaik, "
             f"dipilih dari 2021-2023, dicek 2024-2026 PF 1.75, rata-rata 0.33R per trade"] if it.get("combo_fix") else [])
     raja = (["👑 <b>COMBO RAJA</b>: 6 jalur terbukti atau lebih searah. Sinyal paling langka dan paling kuat di uji 2021-2026: "
              "sekitar 2 kali sebulan, WR 57%, PF 3.35, rata +0.73R per trade, untung tiap tahun"] if it.get("combo_raja") else [])
-    return raja + fix + emas + [f"⭐ <b>COMBO {len(it['combo']) + 1}</b>: juga {', '.join(it['combo'])} searah dalam 72 jam. "
+    return vt + raja + fix + emas + [f"⭐ <b>COMBO {len(it['combo']) + 1}</b>: juga {', '.join(it['combo'])} searah dalam 72 jam. "
             f"Uji 2021-2026: combo 3+ PF 1.40, 2 PF 1.25, sendiri PF 1.21"]
 
 
@@ -747,6 +782,11 @@ def jalankan(baru_ok=True):
             if pump_tolak(df, arah):
                 print(f"[STRAT {k}] {sym} {arah} dilewati: {pump_tolak(df, arah)}")
                 continue
+            if arah == "SHORT":
+                import qse_pagi as PG
+                if PG.short_tahan():
+                    print(f"[STRAT {k}] {sym} SHORT dilewati: {PG.short_tahan()}")
+                    continue
             L = arah == "LONG"
             risk = cfg.get("sl_atr", SL_ATR) * a
             if risk / px < 0.003 or risk / px > 0.10:  # SL lebih dari 10% dilewati: uji 2021-2026 SL 10-15% PF 1.05, di atas 15% PF 0.75
@@ -764,6 +804,7 @@ def jalankan(baru_ok=True):
                 it["combo_emas"] = combo_emas(k, it["combo"])
                 it["combo_fix"] = combo_fix(k, it["combo"])
                 it["combo_raja"] = combo_raja(it["combo"])
+                it["vol_tinggi"] = vol_tinggi()
             except Exception as ex:
                 print("[WARN] combo", ex)
             if PO.senin_tolak(it.get("combo"), it.get("combo_emas")):
