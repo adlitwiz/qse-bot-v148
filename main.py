@@ -1019,8 +1019,19 @@ def _blok_cad(no, r, x, tag, led):
 
 def _wr_baris(led):
     """Winrate hanya dari trade yang benar-benar kamu entry (/entry), plus status uji mundur jalur tambahan."""
-    d = SY.lihat()
-    out = f"{GARIS}\n" + SY.ringkas_rapi("📈 WR TRADE KAMU", d["closed"]) + "\n\n" + SY.wr_jalur(d["closed"])
+    us = SY.daftar_pengguna()
+    bag = []
+    for u in us:
+        SY.pakai(u)
+        try:
+            d = SY.lihat()
+            judul = "📈 WR TRADE KAMU" + (f" · {SY.nama_pengguna(u)}" if len(us) > 1 else "")
+            if len(us) > 1 and not d["closed"] and not d["open"]:
+                continue
+            bag.append(SY.ringkas_rapi(judul, d["closed"]) + "\n\n" + SY.wr_jalur(d["closed"]))
+        finally:
+            SY.pakai(None)
+    out = f"{GARIS}\n" + "\n\n".join(bag)
     if QU.lihat():
         out += "\n\n" + QU.ringkas()
     return out
@@ -1155,6 +1166,7 @@ def _blok_posisi_analisa(it, r):
         t = it.get("tick") or 1e-8
         tpj = it.get("tp_jalur")
         return (f"{IKON.get(it['arah'], '')} <b>{TG.e(it['sym'])} {it['arah']}</b>  ·  "
+                + (f"👤 {TG.e(it['oleh'])}  ·  " if it.get("oleh") else "")
                 + (f"{fl['pct']:+.2f}%  ·  {fl['r']:+.2f}R" if fl else "posisi jalan") + "\n"
                 f"✅ Ikut aturan jalur: SL {TG.fp(it['sl'], t)}, "
                 + (f"TP {TG.fp(tpj, t)} penuh" if tpj else "Trailing Stop jalur") + ". Tahan sampai salah satu kena, "
@@ -1163,6 +1175,8 @@ def _blok_posisi_analisa(it, r):
     fl = SY.floating(it, px) if px else None
     ik = {"MASIH SESUAI ANALISA": "✅", "MELEMAH": "⚠️", "BERBALIK": "🛑"}.get(an["vonis"], "•")
     head = f"{IKON.get(it['arah'], '')} <b>{TG.e(it['sym'])} {it['arah']}</b> | {SY.NM_POS.get(it['status'], it['status'])}"
+    if it.get("oleh"):
+        head += f" | 👤 {TG.e(it['oleh'])}"
     if fl:
         head += f" | {fl['pct']:+.2f}% | {fl['r']:+.2f}R"
     sesuai = an["vonis"] == "MASIH SESUAI ANALISA"
@@ -1184,6 +1198,7 @@ def _blok_posisi_analisa(it, r):
     return "\n".join(rows)
 
 
+@SY.per_orang
 def _cek_posisi_berubah(res_map):
     """Kabari bila vonis analisa posisi kamu berubah (misalnya dari MASIH SESUAI ke MELEMAH atau BERBALIK)."""
     out = []
@@ -1962,7 +1977,7 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
             tp = TG.fp(it["tp"], t)
         else:
             jr = it.get("trail_atr", 3.0) / it.get("sl_atr", 2.0) * risk if risk else 0
-            tp = (f"tanpa, Trailing Stop Bybit jarak {TG.fp(jr, t)} ({jr / it['entry'] * 100:.1f}%)" if jr
+            tp = (f"tanpa, Trailing Stop Bybit Retracement {TG.fp(jr, t)}" if jr
                   else "tanpa, pakai SL berjalan")
         e_txt = TG.fp(it["entry"], t) if baru else TG.fp(px, t)
         combo = it.get("combo") or []
@@ -2122,16 +2137,28 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             print("[WARN] altseason", ex)
     tutup_dt = dt.datetime.fromtimestamp(tutup / 1000, dt.timezone.utc) if tutup else now
     if tf == "240" and tutup_dt.hour == 0:
-        out.append(_rekap(SY.lihat(), tutup_dt, 1, "REKAP TRADE KAMU KEMARIN", ("SL", "BE", "TP2", "TUTUP")))
+        for u in SY.daftar_pengguna():
+            SY.pakai(u)
+            try:
+                nm = f" · {SY.nama_pengguna(u)}" if len(SY.daftar_pengguna()) > 1 else ""
+                out.append(_rekap(SY.lihat(), tutup_dt, 1, "REKAP TRADE KAMU KEMARIN" + nm, ("SL", "BE", "TP2", "TUTUP")))
+            finally:
+                SY.pakai(None)
         out.append(_evaluasi_saran(led, tutup_dt))
         bk = MK.berita()
         if bk:
             out.append(f"{GARIS}\n📰 <b>BERITA KRIPTO TERBARU</b> (bacaan, bukan sinyal)\n" + "\n".join("• " + TG.e(b) for b in bk)
                        + "\nBerita paling ramai dan berdampak: /viral")
         if tutup_dt.weekday() == 0:
-            out.append(_rekap(SY.lihat(), tutup_dt, 7, "REKAP 7 HARI TRADE KAMU", ("SL", "BE", "TP2", "TUTUP")))
-            if len(SY._selesai()) >= 5:
-                out.append(SY.evaluasi())
+            for u in SY.daftar_pengguna():
+                SY.pakai(u)
+                try:
+                    nm = f" · {SY.nama_pengguna(u)}" if len(SY.daftar_pengguna()) > 1 else ""
+                    out.append(_rekap(SY.lihat(), tutup_dt, 7, "REKAP 7 HARI TRADE KAMU" + nm, ("SL", "BE", "TP2", "TUTUP")))
+                    if len(SY._selesai()) >= 5:
+                        out.append(SY.evaluasi())
+                finally:
+                    SY.pakai(None)
     so = []
     n_awal = len(out)
     semua = []          # (jalur, r, x, kartu)

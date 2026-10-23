@@ -315,6 +315,13 @@ def _jalankan(baru_ok=True):
         if mp is not None and len(mp) - len(mm) <= -2:
             print(f"[ICHIMOKU] {sym} dilewati: mutu rendah ({', '.join(mm)})")
             continue
+        try:
+            import qse_strat as ST
+            if ST.pump_tolak(df, arah):
+                print(f"[ICHIMOKU] {sym} dilewati: {ST.pump_tolak(df, arah)}")
+                continue
+        except Exception as ex:
+            print("[WARN] pump ichimoku", ex)
         sl = px - risk if L else px + risk
         t = tick.get(sym, 0.0001)
         it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now, mutu=sk, mutu_plus=mp,
@@ -376,8 +383,8 @@ def _jalankan(baru_ok=True):
             "❓ <b>Kenapa tanpa TP</b>",
             "Jalur ini menang sekitar 37%. Untungnya datang dari sedikit trade yang lari jauh, bisa +3R sampai +10R. "
             "TP tetap akan memotong trade besar itu, jadi profit dikunci dengan SL berjalan",
-            f"📐 Cara mudah: tetap pasang SL awal di atas, lalu tambahkan Trailing Stop di Bybit dengan jarak "
-            f"{TG.fp(jarak, t)} ({jarak / px * 100:.1f}%). Hasilnya mirip, jadi tidak perlu geser SL manual"
+            "📐 Cara mudah: tetap pasang SL awal di atas, lalu tambahkan Trailing Stop di Bybit. Tidak perlu geser SL manual\n"
+            + SY.isi_trailing(jarak, sl, t)
             + (f"\n{lot}" if lot else ""),
         ]))
 

@@ -200,7 +200,9 @@ def ambil_perintah(offset, token=None, chat_id=None):
         if not txt.startswith("/"):
             continue
         parts = txt.split()
-        out.append((parts[0].split("@")[0].lower(), [p.upper() for p in parts[1:]]))
+        fr = m.get("from") or {}
+        out.append((parts[0].split("@")[0].lower(), [p.upper() for p in parts[1:]], str(fr.get("id", "")) or None,
+                    " ".join(x for x in (fr.get("first_name"), fr.get("last_name")) if x) or fr.get("username") or ""))
     return out, offset
 
 

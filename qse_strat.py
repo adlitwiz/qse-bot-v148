@@ -357,6 +357,20 @@ def mutu(df, arah):
     return len(plus), plus, minus
 
 
+def pump_tolak(df, arah):
+    """SHORT pada koin yang naik lebih dari 30% dalam 30 hari (180 candle 4J) dilewati. Uji 2021-2026 semua jalur:
+    SHORT seperti ini PF 0.80 (2021-23) dan 0.79 (2024-26). Dibuang: total naik +28R dan +17R, PF naik di dua periode.
+    Return teks alasan atau ''."""
+    try:
+        if arah != "SHORT" or df is None or len(df) < 181:
+            return ""
+        c = df["close"].astype(float)
+        r30 = float(c.iloc[-1]) / float(c.iloc[-181]) - 1
+        return f"koin sudah naik {r30 * 100:.0f}% dalam 30 hari, SHORT melawan pump" if r30 > 0.30 else ""
+    except Exception:
+        return ""
+
+
 def mutu_buang(plus, minus):
     """Saring sinyal impas: minus lebih banyak 2 dari plus. Uji 2021-2026 kelompok ini PF 0.97 (2021-23 0.94,
     2024-26 1.00), sekitar 14% sinyal. Sisa sinyal PF 1.31. Return alasan atau ''."""
@@ -730,6 +744,9 @@ def jalankan(baru_ok=True):
             if mutu_buang(mp, mm):
                 print(f"[STRAT {k}] {sym} {arah} dilewati: mutu rendah ({mutu_buang(mp, mm)})")
                 continue
+            if pump_tolak(df, arah):
+                print(f"[STRAT {k}] {sym} {arah} dilewati: {pump_tolak(df, arah)}")
+                continue
             L = arah == "LONG"
             risk = cfg.get("sl_atr", SL_ATR) * a
             if risk / px < 0.003 or risk / px > 0.10:  # SL lebih dari 10% dilewati: uji 2021-2026 SL 10-15% PF 1.05, di atas 15% PF 0.75
@@ -822,11 +839,12 @@ def kartu(k, no, it, a):
             f"3. Kalau {it.get('maks_bar', MAKS_BAR) // 6} hari belum kena SL atau TP, tutup manual",
             "4. Catat dengan /entry supaya ada pengingat dan analisa volume kalau kena SL"] if it.get("tp") else
           [f"1. Masuk MARKET sekarang. SL di {TG.fp(it['sl'], t)} ({it['risk'] / it['entry'] * 100:.1f}%). Jangan pasang TP",
-           f"2. Pasang Trailing Stop Bybit dengan jarak {TG.fp(jarak, t)} ({jarak / it['entry'] * 100:.1f}%), atau ikuti pesan GESER SL",
+           "2. Pasang Trailing Stop Bybit, isi seperti blok di bawah, atau ikuti pesan GESER SL",
            *([f"   Setelah untung 2R ({TG.fp(it['entry'] + 2 * it['risk'] if L else it['entry'] - 2 * it['risk'], t)}), ganti jarak "
               f"Trailing Stop jadi 5% harga. Robot mengingatkan lewat SL TERBARU"] if it.get("trail_pct_2r") else []),
            "3. Kalau 10 hari belum kena SL, tutup manual",
            "4. Catat dengan /entry supaya pesan GESER SL dan analisa volume SL dikirim"]),
+        *([SY.isi_trailing(jarak, it["sl"], t)] if not it.get("tp") else []),
         *([lot] if lot else []),
     ])
 

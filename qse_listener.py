@@ -530,8 +530,9 @@ def main():
     try:
         import qse_saya as _SY
         _SY.hapus_manual_sekali()
+        _SY.seed_awal()
     except Exception as ex:
-        print("[WARN] hapus manual", ex, flush=True)
+        print("[WARN] hapus manual atau seed", ex, flush=True)
     threading.Thread(target=_pekerja, daemon=True).start()
     threading.Thread(target=_penjaga, daemon=True).start()
     while True:
@@ -561,11 +562,13 @@ def main():
             if str(m.get("chat", {}).get("id")) != str(chat) or not txt.startswith("/"):
                 continue
             parts = txt.split()
-            cmds.append((parts[0].split("@")[0].lower(), parts[1:]))
+            fr = m.get("from") or {}
+            cmds.append((parts[0].split("@")[0].lower(), parts[1:], str(fr.get("id", "")) or None,
+                         " ".join(x for x in (fr.get("first_name"), fr.get("last_name")) if x) or fr.get("username") or ""))
         if data:
             _st({"tg_offset": off})
         if cmds:
-            print("perintah:", [c for c, _ in cmds], flush=True)
+            print("perintah:", [c[0] for c in cmds], flush=True)
             try:
                 print("dibalas:", QP.proses(cmds), flush=True)
             except Exception as ex:

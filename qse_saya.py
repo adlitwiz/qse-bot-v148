@@ -16,10 +16,200 @@ JAM = 3600 * 1000
 FEE = 0.055
 
 
-# ---------------- penyimpanan ----------------
-def _load():
+# ---------------- penyimpanan, terpisah per orang di grup ----------------
+# Tiap orang punya catatan trade sendiri. Pemilik (yang mengetik /milikku) memakai saya.json lama,
+# orang lain saya_<id telegram>.json. Perintah dari Telegram memakai catatan pengirimnya.
+# Tugas otomatis (pantau, notif profit) dijalankan untuk tiap orang dan pesannya diberi nama.
+import functools
+import glob
+import threading
+_CTX = threading.local()
+PENGGUNA = os.path.join(STATE_DIR, "pengguna.json")
+
+
+def _peng():
     try:
-        with open(SAYA) as f:
+        with open(PENGGUNA) as f:
+            p = json.load(f)
+    except Exception:
+        p = {}
+    p.setdefault("pemilik", None)
+    p.setdefault("nama", {})
+    return p
+
+
+def _simpan_peng(p):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(PENGGUNA + ".tmp", "w") as f:
+        json.dump(p, f)
+    os.replace(PENGGUNA + ".tmp", PENGGUNA)
+
+
+def pakai(uid, nama=None):
+    """Pilih catatan trade milik uid untuk thread ini. uid None = lepas (tampilan gabungan semua orang)."""
+    if uid is None:
+        if hasattr(_CTX, "uid"):
+            del _CTX.uid
+        return
+    uid = str(uid)
+    _CTX.uid = uid
+    if nama:
+        p = _peng()
+        ubah_p = p["nama"].get(uid) != nama
+        p["nama"][uid] = nama
+        adli = "adli" in nama.lower()
+        sem = os.path.join(STATE_DIR, "saya_adli.json")
+        if adli and uid != "adli" and os.path.exists(sem) and not os.path.exists(os.path.join(STATE_DIR, f"saya_{uid}.json")):
+            os.replace(sem, os.path.join(STATE_DIR, f"saya_{uid}.json"))     # catatan awal Adli jadi milik akunnya
+            p["nama"].pop("adli", None)
+            ubah_p = True
+        if not adli and not p.get("pemilik"):
+            p["pemilik"] = uid            # pengirim pertama selain Adli = pemilik catatan lama (Rifqi)
+            ubah_p = True
+        if ubah_p:
+            _simpan_peng(p)
+
+
+def uid_aktif():
+    return getattr(_CTX, "uid", None)
+
+
+def _path_uid(uid):
+    p = _peng()
+    if not uid or uid == str(p.get("pemilik")):
+        return SAYA
+    return os.path.join(STATE_DIR, f"saya_{uid}.json")
+
+
+def daftar_pengguna():
+    """Semua pemilik catatan: pemilik saya.json ('' kalau belum ada yang /milikku) lalu tiap saya_<id>.json."""
+    p = _peng()
+    out = [str(p["pemilik"]) if p.get("pemilik") else ""]
+    for f in sorted(glob.glob(os.path.join(STATE_DIR, "saya_*.json"))):
+        u = os.path.basename(f)[5:-5]
+        if u and u not in out:
+            out.append(u)
+    return out
+
+
+def nama_pengguna(uid):
+    p = _peng()
+    return p["nama"].get(str(uid or "")) or ("pemilik" if not uid or str(uid) == str(p.get("pemilik")) else str(uid))
+
+
+def milikku(uid, nama=""):
+    """Catatan trade lama (saya.json) jadi milik pengirim. Hanya sekali, kecuali pengirimnya pemilik itu sendiri."""
+    p = _peng()
+    uid = str(uid)
+    if p.get("pemilik") and str(p["pemilik"]) != uid:
+        return f"Catatan lama sudah milik {nama_pengguna(p['pemilik'])}. Catatan kamu terpisah sejak awal."
+    lain = os.path.join(STATE_DIR, f"saya_{uid}.json")
+    p["pemilik"] = uid
+    if nama:
+        p["nama"][uid] = nama
+    _simpan_peng(p)
+    pindah = 0
+    if os.path.exists(lain):          # trade yang sempat masuk file pribadi sebelum /milikku digabung ke catatan lama
+        try:
+            with open(lain) as f:
+                x = json.load(f)
+            def g(d):
+                for k, v in x.get("open", {}).items():
+                    d["seq"] += 1
+                    d["open"][str(d["seq"])] = v
+                d["closed"] += x.get("closed", [])
+                return len(x.get("open", {}))
+            _CTX.uid = uid
+            pindah = ubah(g)
+            os.replace(lain, lain + ".digabung")
+        except Exception as ex:
+            print("[WARN] milikku", ex)
+    n = len(_baca(SAYA)["open"])
+    return (f"✅ Catatan trade lama sekarang milik {nama or uid}: {n} trade terbuka"
+            + (f", {pindah} trade baru ikut digabung" if pindah else "")
+            + ". Trade orang lain di grup tercatat terpisah. Kalau ada trade orang lain di catatan ini, pindahkan dengan "
+              "/pindah KOIN (orangnya kirim /status sekali dulu supaya dikenali).")
+
+
+def pindah(args):
+    """/pindah KOIN [nama]: trade terbuka koin ini bukan milik pengirim, pindahkan ke catatan orang lain di grup."""
+    if not args:
+        return "Format: /pindah BCH atau /pindah BCH ADLI"
+    sym = args[0] if args[0].endswith("USDT") else args[0] + "USDT"
+    saya = uid_aktif()
+    p = _peng()
+    lain = [u for u in set(list(p["nama"]) + daftar_pengguna()) if u and u != saya]
+    if len(args) > 1:
+        lain = [u for u in lain if nama_pengguna(u).upper().startswith(args[1])]
+    if len(lain) != 1:
+        return ("Tujuan belum jelas. Minta orangnya kirim /status sekali di grup supaya dikenali robot, "
+                "lalu ulangi, atau tulis namanya: /pindah BCH ADLI")
+    tuju = lain[0]
+    ambil = ubah(lambda d: [d["open"].pop(k) for k in [k for k, v in d["open"].items() if v["sym"] == sym]])
+    if not ambil:
+        return f"Tidak ada trade terbuka {sym} di catatan kamu."
+    _CTX.uid = tuju
+    try:
+        def g(d):
+            for v in ambil:
+                d["seq"] += 1
+                d["open"][str(d["seq"])] = v
+        ubah(g)
+    finally:
+        _CTX.uid = saya
+    return f"✅ {len(ambil)} trade {sym} dipindah ke catatan {nama_pengguna(tuju)}."
+
+
+# Posisi terbuka per 23 Okt 2026 07:20 WIB dari screenshot Bybit. Rifqi (akun gelap) dan Adli (akun terang). Semua SHORT.
+SEED_2310 = {
+    "": [("LINKUSDT", "12.253", "12.796", None), ("ENAUSDT", "0.19994", "0.21514", None),
+         ("CHIPUSDT", "0.04391", "0.04816", "0.02966"), ("RUNEUSDT", "0.6417", "0.6683", "0.5179"),
+         ("SANDUSDT", "0.05445", "0.05992", "0.04276")],
+    "adli": [("BCHUSDT", "274.84", None, None), ("MNTUSDT", "0.52800", None, None),
+             ("ZAMAUSDT", "0.07320", "0.07685", "0.0721"), ("ETHFIUSDT", "0.6430", None, None),
+             ("SOLUSDT", "104.290", "107.98", "102.72")],
+}
+
+
+def seed_awal():
+    """Sekali jalan: catatan trade terbuka diganti posisi asli tiap orang (SEED_2310). Catatan TP LINK yang salah dihapus."""
+    p = _peng()
+    if p.get("seed_2310"):
+        return
+    p["seed_2310"] = int(time.time())
+    p["nama"].setdefault("adli", "Adli")
+    _simpan_peng(p)
+    batas = 1792688400000       # 23 Okt 2026 00:00 WIB
+    for kunci, daftar in SEED_2310.items():
+        _CTX.uid = kunci
+        try:
+            def bersih(d):
+                d["open"] = {}
+                d["closed"] = [c for c in d["closed"] if not (c.get("sym") == "LINKUSDT" and c.get("closed_ts", 0) >= batas)]
+            ubah(bersih)
+            for sym, e, sl, tp in daftar:
+                args = ["SHORT", sym, e] + (["SL", sl] if sl else []) + (["TP1", tp, "TP2", tp] if tp else []) + ["TERISI"]
+                try:
+                    print("[INFO] seed", kunci or "pemilik", sym, str(entry(args))[:80].replace("\n", " "), flush=True)
+                    def pas(d, sym=sym, tp=tp):
+                        for v in d["open"].values():
+                            if v["sym"] != sym or v.get("ikut"):
+                                continue
+                            if tp:
+                                v["tp1"] = v["tp2"] = float(tp)
+                            else:
+                                v["tp1"] = v["tp2"] = v["entry"] * 0.01      # tanpa TP di Bybit
+                                v["tanpa_tp"] = True
+                    ubah(pas)
+                except Exception as ex:
+                    print("[WARN] seed", sym, ex, flush=True)
+        finally:
+            del _CTX.uid
+
+
+def _baca(path):
+    try:
+        with open(path) as f:
             d = json.load(f)
         d.setdefault("open", {})
         d.setdefault("closed", [])
@@ -29,18 +219,62 @@ def _load():
         return {"open": {}, "closed": [], "seq": 0}
 
 
+def _gabung():
+    """Tampilan baca saja untuk tugas otomatis tanpa pengirim: trade semua orang, tiap trade diberi nama pemiliknya."""
+    out = {"open": {}, "closed": [], "seq": 0}
+    for u in daftar_pengguna():
+        d = _baca(_path_uid(u))
+        nm = nama_pengguna(u)
+        for k, v in d["open"].items():
+            out["open"][f"{u}|{k}"] = dict(v, oleh=nm)
+        out["closed"] += [dict(c, oleh=nm) for c in d["closed"]]
+    return out
+
+
+def _load():
+    if uid_aktif() is None and len(daftar_pengguna()) > 1:
+        return _gabung()
+    return _baca(_path_uid(uid_aktif()))
+
+
 def ubah(fn):
-    """Baca, ubah, simpan catatan trade kamu dengan kunci file. fn(data) -> hasil."""
+    """Baca, ubah, simpan catatan trade orang yang aktif dengan kunci file. fn(data) -> hasil."""
     os.makedirs(STATE_DIR, exist_ok=True)
-    with open(SAYA + ".lock", "a") as lk:
+    path = _path_uid(uid_aktif())
+    with open(path + ".lock", "a") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
-        d = _load()
+        d = _baca(path)
         hasil = fn(d)
         d["closed"] = d["closed"][-3000:]
-        with open(SAYA + ".tmp", "w") as f:
+        with open(path + ".tmp", "w") as f:
             json.dump(d, f)
-        os.replace(SAYA + ".tmp", SAYA)
+        os.replace(path + ".tmp", path)
         return hasil
+
+
+def per_orang(fn):
+    """Jalankan fn untuk tiap orang (kalau belum ada pengirim aktif). Hasil list pesan digabung, diberi nama kalau
+    lebih dari satu orang."""
+    @functools.wraps(fn)
+    def w(*a, **k):
+        if uid_aktif() is not None:
+            return fn(*a, **k)
+        us = daftar_pengguna()
+        out = []
+        for u in us:
+            _CTX.uid = u
+            try:
+                res = fn(*a, **k) or []
+            except Exception as ex:
+                print("[WARN] per_orang", fn.__name__, ex)
+                res = []
+            finally:
+                del _CTX.uid
+            if res and len(us) > 1:
+                res = [f"👤 <b>{nama_pengguna(u)}</b>  ·  {m}" if isinstance(m, str) else m for m in res]
+            out += list(res)
+        return out
+    return w
 
 
 def hapus_manual_sekali():
@@ -462,6 +696,27 @@ def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp=""
     if catatan_tp:
         rows.append(f"TP    {catatan_tp}")
     return "<pre>" + "\n".join(rows) + "</pre>"
+
+
+def isi_trailing(jarak, sl, t):
+    """Blok siap isi menu Trailing Stop Bybit. Jarak = trail ATR jalur. SL awal tetap terpasang sampai trailing lebih rapat."""
+    return ("🔧 <b>Isi Trailing Stop Bybit</b>\n<pre>"
+            f"Retracement  {fp(jarak, t)}\n"
+            "Mode         Berdasarkan Jarak\n"
+            "Aktivasi     kosongkan\n"
+            f"SL tetap     {fp(sl, t)}</pre>")
+
+
+def jarak_trailing(it, jp=None):
+    """Jarak trailing jalur dari data sinyal: trail_atr dibagi sl_atr dikali risiko awal."""
+    src = jp or it
+    risk = src.get("risk") or it.get("risk0") or abs(it["entry"] - (src.get("sl0") or it["sl"]))
+    ta, sa = src.get("trail_atr"), src.get("sl_atr")
+    if not (ta and sa):
+        j = str((jp or {}).get("jalur") or it.get("jalur") or "")
+        ta, sa = {"saran ichimoku": (4.0, 1.5), "saran ema_short": (4.0, 1.5), "saran msb_hpz": (4.0, 1.5),
+                  "saran rsi_vol": (3.0, 2.0), "saran GZH": (3.0, 2.0)}.get(j, (3.0, 2.0))
+    return ta / sa * risk
 
 
 def baris_kelas(arah, konteks=True, **kw):
@@ -1739,6 +1994,7 @@ def _jalan(it, rows, iv):
     return ev
 
 
+@per_orang
 def pantau():
     """Cek semua trade kamu dengan candle 1 menit. Aman dipanggil tiap menit. Return daftar pesan."""
     d0 = _load()
@@ -1899,6 +2155,7 @@ def _trailing(it, h1, px):
                       f"Ketik /ubah {it['sym'].replace('USDT', '')} sl {fp(trail, t)}")]
 
 
+@per_orang
 def cek_4j(res_map):
     """Dipanggil tiap scan 4 jam: kasus besar yang melawan trade kamu. Tiap kasus dikabari sekali."""
     def f(d):
@@ -2056,7 +2313,7 @@ def blok_posisi(no, it, px, r=None, pasar=None):
     L = arah == "LONG"
     n_gab = len(it.get("gabung", []))
     rows = [GARIS, f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {arah}</b>  ·  {it.get('order', '')}"
-            + (f"  ·  gabungan {n_gab + 1} entry" if n_gab else ""), GARIS]
+            + (f"  ·  gabungan {n_gab + 1} entry" if n_gab else "") + (f"  ·  👤 {it['oleh']}" if it.get("oleh") else ""), GARIS]
     jalur, pola = it.get("jalur", "manual"), it.get("pola", "manual")
     sisa = _sisa(it)
     nm = NM_POS.get(it["status"], it["status"])
@@ -2080,6 +2337,10 @@ def blok_posisi(no, it, px, r=None, pasar=None):
     if it.get("ikut"):
         if it.get("tp_jalur"):
             lv.append(("TP", it["tp_jalur"], "TPJ"))
+    elif it.get("tanpa_tp"):
+        pass
+    elif it.get("tp1") == it.get("tp2"):
+        lv.append(("TP", it["tp2"], "TPJ"))
     else:
         if it["status"] != "TP1":
             lv.append(("TP1", it["tp1"], "TP1"))
@@ -2098,12 +2359,19 @@ def blok_posisi(no, it, px, r=None, pasar=None):
             waktu.append(f"{nama} {abs(harga_lv - px) / px * 100:.2f}% lagi" + (f", {w}" if w and w != "-" else ""))
     if it.get("ikut") and not it.get("tp_jalur"):
         pre.append(f"{'TP':<6}{'trailing':>{w_p}}")
+    elif it.get("tanpa_tp"):
+        pre.append(f"{'TP':<6}{'tidak ada':>{w_p}}")
     tps = [v for nm_, v, _ in lv if nm_ != "SL"]
     if tps:
         pre.append(f"{'Range':<6}{abs(max(tps, key=lambda v: abs(v - sl_now)) - sl_now) / it['entry'] * 100:>{w_p}.2f}%  SL ke TP")
     rows.append("<pre>" + "\n".join(pre) + "</pre>")
     if waktu:
         rows.append("⏱ " + "  ·  ".join(waktu))
+    if it.get("ikut") and not it.get("tp_jalur"):
+        try:
+            rows.append(isi_trailing(jarak_trailing(it, jalur_posisi(it["sym"], arah)), sl_now, t))
+        except Exception as ex:
+            print("[WARN] isi trailing", ex)
     if it.get("ikut") or jalur != "manual":
         try:
             import qse_strat as ST
@@ -2670,6 +2938,7 @@ def berita_depan(jam=3):
     return next((e for e in _BD.get("kal", []) if 0 < e["ts"] - now <= jam * JAM), None)
 
 
+@per_orang
 def peringatan_dini():
     """Dipanggil listener tiap menit. Tiap trade jalan dinilai bertingkat, tiap tingkat dikirim sekali:
     1 = mulai melawan (0.25 ATR atau 0.8%) dan ada tanda balik arah 15 menit / 1 jam / BTC
@@ -3119,7 +3388,7 @@ def sinyal_jalur(jam=False):
                 tp = fp(it["tp"], t)
             else:
                 jr = it.get("trail_atr", 3.0) / it.get("sl_atr", 2.0) * risk if risk else 0
-                tp = (f"tanpa, Trailing Stop Bybit jarak {fp(jr, t)} ({jr / it['entry'] * 100:.1f}%)" if jr
+                tp = (f"tanpa, Trailing Stop Bybit Retracement {fp(jr, t)}" if jr
                       else "tanpa, pakai SL berjalan")
             ket = "🆕 sinyal candle ini" if baru else f"harga masih dekat entry robot {fp(it['entry'], t)} ({d:+.2f}R)"
             if it.get("combo"):
@@ -3171,6 +3440,7 @@ def sinyal_jalur(jam=False):
 
 
 
+@per_orang
 def siaga_berita():
     """60-75 menit sebelum CPI atau FOMC: posisi yang sedang untung ditutup, yang rugi ditahan.
     Uji 2022-2026, 4366 posisi jalur terbukti yang melewati CPI/FOMC (data 1 jam):
@@ -3237,6 +3507,9 @@ def btc_teknik():
 def cek_jalur(sym, arah=None, entry=None):
     """/cek (21 Okt 2026): narasi singkat yang hanya memakai hal teruji. Gambaran koin, sinyal jalur dan validitasnya,
     posisi kamu, kesiapan combo dan mutu untuk LONG dan SHORT, waktu, lalu kesimpulan aksi."""
+    if sym == "BTCUSDT":
+        import qse_btcarah as BA          # /cek BTC: arah per teknik 1W 1D 4J, peluang, sentimen. Tanpa sinyal entry.
+        return BA.analisa()
     import qse_strat as ST
     import qse_porto as PO
     px = harga_live(sym) or 0
@@ -3489,6 +3762,7 @@ def spot_btc():
     return "\n".join(rows)
 
 
+@per_orang
 def kabar_profit():
     """Dipanggil listener tiap menit. Kabar saat posisi kamu jalan ke arah untung, tiap tahap sekali:
     posisi ber-TP tetap: 25%, 50%, dan 90% jarak ke TP (100% = pesan KENA TP yang sudah ada).
@@ -3508,7 +3782,7 @@ def kabar_profit():
         risk = it.get("risk0") or abs(it["entry"] - it["sl"]) or 1e-12
         untung = (px - it["entry"]) if L else (it["entry"] - px)
         sudah = list(it.get("tp_tahap") or [])
-        tp = it.get("tp_jalur") if it.get("ikut") else (it.get("tp2") if it.get("tp2") else None)
+        tp = it.get("tp_jalur") if it.get("ikut") else (it.get("tp2") if it.get("tp2") and not it.get("tanpa_tp") else None)
         jauh = (tp - it["entry"]) * (1 if L else -1) if tp else 0
         r_b = untung / risk
         jp0 = jalur_posisi(it["sym"], it["arah"]) if it.get("ikut") else None

@@ -205,6 +205,8 @@ def balas(cmd, args, dari_main=False):
         return SY.cek_jalur(sym, arah, harga)
     if cmd == "/tutup":
         return SY.tutup(args)
+    if cmd == "/pindah":
+        return SY.pindah(args)
     if cmd == "/tp":
         return SY.tutup(args, "ambil profit")
     if cmd == "/sl":
@@ -316,7 +318,10 @@ def balas(cmd, args, dari_main=False):
         except Exception:
             s4 = None
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
-        return "📊 <b>QSE v148 | STATUS</b>\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
+        return ("📊 <b>QSE v148 | STATUS</b>" + (f"  ·  👤 {SY.nama_pengguna(SY.uid_aktif())}" if SY.uid_aktif() else "")
+                + "\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
+                + ("" if SY._peng().get("pemilik") else "\n\nℹ️ Ketik /milikku supaya catatan trade lama jadi milik kamu. "
+                   "Trade orang lain di grup tercatat terpisah."))
     if cmd in ("/bantuan", "/help", "/start"):
         return BANTUAN_SEMUA if args and args[0] in ("SEMUA", "ALL", "LENGKAP") else BANTUAN
     return ""
@@ -325,17 +330,26 @@ def balas(cmd, args, dari_main=False):
 def proses(cmds, dari_main=False):
     """Jalankan daftar (perintah, argumen), kirim balasan ke Telegram. Return jumlah dibalas."""
     n = 0
-    for cmd, args in cmds:
+    for item in cmds:
+        cmd, args = item[0], item[1]
+        uid, nama = (item[2], item[3]) if len(item) >= 4 else (None, "")
         args = [x for x in (re.sub(r"[^A-Z0-9.,:/%]", "", a.upper()) for a in args) if x]
         try:
-            isi = balas(cmd, args, dari_main)
+            if uid is not None:
+                SY.pakai(uid, nama)       # catatan trade milik pengirim perintah
+            if cmd in ("/milikku", "/punyaku"):
+                isi = SY.milikku(uid, nama) if uid is not None else "Kirim dari grup supaya pengirimnya dikenali."
+            else:
+                isi = balas(cmd, args, dari_main)
         except Exception as ex:
             isi = f"Perintah gagal: {TG.e(str(ex)[:200])}"
+        finally:
+            SY.pakai(None)
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
                     "/uji": "🧪", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
-                    "/bantuan": "❓", "/help": "❓", "/start": "❓"}
+                    "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"
             TG.send(isi.split("\n\n"))
             n += 1

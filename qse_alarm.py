@@ -218,6 +218,8 @@ def _pesan_gzh(a, cl):
             _, mp, mm = ST.mutu(df, arah)
             if ST.mutu_buang(mp, mm):
                 return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi mutu rendah ({TG.e(ST.mutu_buang(mp, mm))}). Lewati."
+        if ST.pump_tolak(df, arah):
+            return f"⏸️ <b>GZH {a['sym']} {arah}</b>: terkonfirmasi, tapi {TG.e(ST.pump_tolak(df, arah))}. Lewati."
     except Exception as ex:
         print("[WARN] gzh mutu", ex)
     d = ST.lihat("GZH")
@@ -231,15 +233,16 @@ def _pesan_gzh(a, cl):
     rm_p = PO.rem()
     try:
         a14 = ST._atr(df["high"].values.astype(float), df["low"].values.astype(float), df["close"].values.astype(float))[-1]
-        jarak = f"{TG.fp(3 * a14, t)} ({3 * a14 / cl * 100:.1f}%)"
+        jarak = TG.fp(3 * a14, t)
+        isi = "\n" + SY.isi_trailing(3 * a14, a["sl"], t)
     except Exception:
-        jarak = "3 ATR"
+        jarak, isi = "3 ATR", ""
     return (f"{'🟢' if L else '🔴'} <b>GZH TERKONFIRMASI  ·  {a['sym']} {arah}</b>\n"
             f"{SY.layak('saran GZH', arah)}\n"
             + (f"🛡 Rem portofolio aktif, lot setengah: {TG.e(rm_p)}\n" if rm_p else "")
             + SY.blok_salin(cl, a["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=a["sym"], arah=arah) + "\n"
-            f"Masuk MARKET sekarang. Pasang Trailing Stop Bybit jarak {jarak}, atau ikuti pesan GESER SL. "
-            f"10 hari belum kena, tutup manual.")
+            f"Masuk MARKET sekarang. Pasang Trailing Stop Bybit Retracement {jarak}, atau ikuti pesan GESER SL. "
+            f"10 hari belum kena, tutup manual." + isi)
 
 
 def _cek_tutup(d0):
