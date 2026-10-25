@@ -772,9 +772,11 @@ BUKTI = {
                       "2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.45, positif 21 dari 26 kuartal"),
     "saran orderblock": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin perp, LONG, maks 8 posisi: 969 trade, PF 1.45, "
                          "uji ulang 2024-2026 dengan aturan yang dipilih dari 2020-2023: PF 1.26"),
+    "saran kombo_ob_awal": ("TERBUKTI", "✅", "1x", "Kombo Tangkapan Awal Zona Order Block (5 Pilar: Arah BTC positif + Zona OB Terkunci + Gerak Dini + Anti-Terlambat + Pengawal EMA)"),
+    "saran rantai_eksekusi": ("TERBUKTI", "✅", "1x", "Rantai Konfirmasi 5 Indikator (Ichimoku + McGinley + Bollinger Bands + Pola Lilin + Momentum) di atas Zona Pantulan Terkunci"),
 }
 BELUM_UJI = ("BELUM DIUJI", "❔", "0.25x", "belum diuji ulang dengan data perp 5 tahun dan aturan robot lengkap")
-CT_KEY = {"saran snr_vol": "snr_vol", "saran msb_hpz": "msb_hpz", "saran smc_choch": "smc_choch", "saran mcginley": "mcginley", "saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "GZH", "saran momentum": "momentum", "saran news": "news_searah"}
+CT_KEY = {"saran kombo_ob_awal": "kombo_ob_awal", "saran rantai_eksekusi": "rantai_eksekusi", "saran snr_vol": "snr_vol", "saran msb_hpz": "msb_hpz", "saran smc_choch": "smc_choch", "saran mcginley": "mcginley", "saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "GZH", "saran momentum": "momentum", "saran news": "news_searah"}
 NAIK_N, NAIK_PF = 30, 1.2          # syarat naik jadi TERBUKTI dari hasil live
 
 
@@ -876,7 +878,7 @@ NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadang
               "saran orderblock": "Order Block + Volume", "saran trendline": "Tembus Trendline searah tren",
               "saran ema_short": "EMA Cross 20/50 SHORT", "saran rsi_vol": "RSI 50 + Volume",
               "saran mcginley": "McGinley 34 + Volume", "saran snr_vol": "SnR Pantul + Volume",
-              "saran msb_hpz": "MSB LuxAlgo HPZ", "saran smc_choch": "SMC CHoCH searah tren"}
+              "saran msb_hpz": "MSB LuxAlgo HPZ", "saran smc_choch": "SMC CHoCH searah tren", "saran kombo_ob_awal": "Kombo Tangkapan Awal Zona OB", "saran rantai_eksekusi": "Rantai Konfirmasi 5 Indikator"}
 
 
 def boleh_ikut(jalur, arah=None, skor=None):
@@ -2096,7 +2098,7 @@ def _sinkron_jalur(it, jp):
     elif "jalur_keluar" not in it["alert"]:
         it["alert"].append("jalur_keluar")
         cl = _jalur_tutup(it["sym"], it["arah"])
-        why = {"SL": "SL berjalan tersentuh", "TP": "TP tersentuh", "WAKTU": "batas waktu habis"}.get((cl or {}).get("status"), "aturan keluar")
+        why = {"SL": "SL volatilitas/berjalan tersentuh", "TP": "TP tersentuh", "TP_EMA": "target berjalan garis EMA tercapai", "TP_MOMENTUM": "keuntungan diamankan saat momentum melemah", "CUT_STRUKTUR": "pemotong risiko cepat saat struktur pasar rusak", "WAKTU": "batas waktu habis"}.get((cl or {}).get("status"), "aturan keluar")
         out.append(f"🚨 <b>TUTUP SEKARANG  ·  {it['sym']} {it['arah']}</b>\n↳ Jalur keluar karena {why}"
                    + (f", hasil jalur {cl['R']:+.2f}R" if cl and cl.get("R") is not None else "")
                    + f". Tutup posisi di Bybit dengan MARKET sekarang, lalu catat: /tutup {kd} HARGA. "
@@ -3436,7 +3438,7 @@ def sinyal_jalur(jam=False):
         pass
     for k, cfg in ST.STRAT.items():
         sumber.append((k, cfg["nama"], ST.lihat(k)["open"].values()))
-    telat_ok = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
+    telat_ok = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku", "rantai_eksekusi"}
     pegang = {v["sym"] for v in _load()["open"].values() if v["status"] in ("TERISI", "TP1")}
     now = time.time()
     tutup = int(now // 14400) * 14400

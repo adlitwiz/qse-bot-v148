@@ -1,5 +1,5 @@
-"""QSE v148 - SKILL TAMBAHAN (konfirmasi, tidak mengubah vonis DASBOR).
-Diport dari dua Pine tambahan milik pengguna:
+"""QSE v148 - SKILL TAMBAHAN & PEMETAAN ZONA PANTULAN TERKUNCI (PILAR 2).
+Diport dari dua Pine tambahan milik pengguna + Peningkatan Pilar 2:
   1. Money Flow Profile: POC, value area 70%, sentimen beli atau jual di POC (200 candle, 25 baris)
   2. Smarter SnR: S1-S3 dan R1-R3 dari pivot swing 20
   3. Cumulative Delta Volume: delta dengan bobot sumbu dan badan candle
@@ -7,10 +7,15 @@ Diport dari dua Pine tambahan milik pengguna:
   5. MSB dan OB probability: OB dari market structure break dengan skor momentum dan volume
   6. Smart Money Concepts: tren struktur swing (50) dan internal (5), BOS atau CHoCH terakhir,
      posisi premium, equilibrium, atau diskon
+  7. Celah Harga (Fair Value Gap / FVG): celah 3-candle yang belum tertutup
+  8. Zona Pantulan Terkunci (Pilar 2): mengawinkan Order Block, patahan struktur pasar (MSB/SMC),
+     batas harga (SnR), dan celah harga (FVG) menjadi satu titik harga presisi dengan syarat minimal
+     2 tumpukan konfirmasi struktur pasar.
 Semua hanya dihitung di candle terakhir, jadi tidak memperlambat scan."""
 import numpy as np
 import pandas as pd
 import qse_ta as T
+import qse_smccore as K
 
 
 def _profil(o, h, l, c, v, e, n=200, rows=25):
@@ -193,6 +198,12 @@ def analisa(v, e):
         out["smc_int"] = _smc(h, l, c, e, 5, 600)[0]
     except Exception:
         out["smc_swing"], out["smc_event"], out["pd"], out["smc_int"] = 0, None, 50.0, 0
+    try:
+        # Pilar 2: Zona pantulan terkunci (OB + MSB/SMC + SnR + FVG, minimal 2 konfirmasi struktur pasar)
+        out["zona_kunci_long"] = K.zona_pantulan_terkunci(o[:e + 1], h[:e + 1], l[:e + 1], c[:e + 1], vol[:e + 1], arah=1, min_konfirmasi=2)
+        out["zona_kunci_short"] = K.zona_pantulan_terkunci(o[:e + 1], h[:e + 1], l[:e + 1], c[:e + 1], vol[:e + 1], arah=-1, min_konfirmasi=2)
+    except Exception:
+        out["zona_kunci_long"] = out["zona_kunci_short"] = None
     out["atr"] = a
     return out
 
@@ -229,6 +240,9 @@ def konfirmasi(sk, arah):
     lv = sk.get("sup") if L else sk.get("res")
     if lv and a > 0 and abs(px - lv[0]) <= a:
         ok.append("dekat support" if L else "dekat resisten")
+    zk = sk.get("zona_kunci_long") if L else sk.get("zona_kunci_short")
+    if zk and zk.get("jumlah_konfirmasi", 0) >= 2 and zk.get("di_zona"):
+        ok.append(f"Zona Terkunci ({zk['jumlah_konfirmasi']} konf)")
     return len(ok), 8, ok
 
 
@@ -266,5 +280,9 @@ def detail(sk, arah, fp):
             ob.append(f"{nama} {fp(z['bot'])}-{fp(z['top'])} skor {z['skor']:.0f}" + (" HPZ" if z["skor"] > 80 else ""))
     if ob:
         rows.append("Order block aktif: " + " | ".join(ob))
+    for lbl, zk in (("LONG", sk.get("zona_kunci_long")), ("SHORT", sk.get("zona_kunci_short"))):
+        if zk and zk.get("jumlah_konfirmasi", 0) >= 2:
+            rows.append(f"🎯 Zona Pantulan Terkunci {lbl} ({zk['jumlah_konfirmasi']} konfirmasi: {', '.join(zk['konfirmasi'])}): "
+                        f"Titik Kunci Presisi {fp(zk['titik_kunci'])} (rentang {fp(zk['zona_bot'])}-{fp(zk['zona_top'])})")
     rows.append(ringkas(sk, arah, fp))
     return rows

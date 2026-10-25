@@ -1,9 +1,9 @@
-"""Info pagi 06:00 WIB: peluang pasar bergerak serentak hari ini dan arah yang biasanya diikuti altcoin.
-Uji 40 koin paling likuid, data 15 menit, Jan 2022 - Sep 2026, hari dihitung 06:00 sampai 06:00 WIB.
-Hari serentak = ada saat BTC bergerak 2% dalam 30 menit atau 3% dalam 3 jam, atau 70% koin bergerak 3% (30 menit)
-atau 5% (3 jam) searah. Rata-rata 28% hari (2022-Jun 2024) dan 22% hari (Jul 2024-2026).
-Arah BTC per hari tidak bisa ditebak (hari ini searah kemarin hanya 46%), tapi altcoin ikut arah BTC di 69% hari
-dan 74% di hari serentak."""
+"""Info pagi 06:00 WIB & Deteksi Pergerakan Dini (PILAR 4):
+1. Peluang pasar bergerak serentak hari ini dan arah yang biasanya diikuti altcoin (uji 40 koin paling likuid, data 15 menit, Jan 2022 - Sep 2026).
+2. Arah sesi pagi 06:00 WIB (uji BTC 1 jam 2018-2026).
+3. Deteksi Pergerakan Dini (Early Mover) & Momentum Sesi Pagi untuk menangkap harga sejak awal ledakan.
+4. Saringan Keterlambatan Harga (Anti-Late Filter) sebagai rem otomatis yang membatalkan rencana masuk posisi apabila harga sudah bergerak terlalu jauh dari zona Order Block / titik kunci.
+"""
 import time
 import numpy as np
 
@@ -118,128 +118,211 @@ def baris_arah():
         return ["🧭 <b>Arah hari ini</b>: data BTC belum terbaca."]
     if d["naik"]:
         return ["🧭 <b>Arah hari ini: CONDONG NAIK</b>",
-                *[f"• {a}" for a in d["alasan"]],
-                "Sejarah kondisi ini: BTC naik di 57% hari (hari biasa sekitar 49%), altcoin naik di 59% hari.",
-                "🛑 Sinyal SHORT baru ditahan hari ini. Uji 2021-2026: SHORT di hari seperti ini rugi (PF 0.94 dan 0.99), "
-                "LONG lebih bagus (PF 1.37 dan 1.21)."]
-    return ["🧭 <b>Arah hari ini: TIDAK BISA DITEBAK</b>",
-            "Tidak ada kondisi yang terbukti menebak arah hari ini, peluang naik atau turun sekitar 50%. "
-            "Ikuti sinyal robot apa adanya, LONG maupun SHORT."]
-
-
-SESI = {"pagi": ("🌅", "INFO PASAR PAGI", 18), "siang": ("☀️", "INFO PASAR SIANG", 12), "malam": ("🌙", "INFO PASAR MALAM", 12)}
+                f"Pemicu kemarin: {', '.join(d['alasan'])}.",
+                "Uji 2018-2026: di hari seperti ini BTC naik 57% (biasanya 49%), keranjang 40 altcoin naik 59%, "
+                "sinyal LONG PF 1.37 dan 1.21, sinyal SHORT rugi (PF 0.94 dan 0.99). Sinyal SHORT baru otomatis ditahan hari ini."]
+    return ["🧭 <b>Arah hari ini: BELUM ADA CONDONG KUAT</b>",
+            "Tidak satu pun dari 4 kondisi pemicu naik terpenuhi kemarin. Peluang naik/turun hari ini mendekati 50:50, "
+            "sinyal LONG dan SHORT jalan normal."]
 
 
 def ramal(sesi="pagi", gerak_t=0):
-    """Info pasar 06:00, 12:00, 18:00 WIB. Peluang serentak dan arah hari ini sama untuk satu hari (06:00-06:00 WIB),
-    siang dan malam ditambah apa yang sudah terjadi sejak 06:00."""
+    """Pesan info pasar 06:00, 12:00, dan 18:00 WIB."""
     import bybit_fetch as B
-    now = time.time()
-    awal = int((now + 7 * 3600 - 6 * 3600) // 86400) * 86400 - 7 * 3600 + 6 * 3600     # 06:00 WIB hari ini (UTC detik)
-    wd = time.gmtime(awal + 7 * 3600).tm_wday
-    akhir_pekan = wd in (5, 6)
-    # rentang harian BTC 7 hari terakhir (hari 06:00-06:00 WIB)
-    h = B._raw("BTCUSDT", "60", 24 * 9)
-    rng = []
-    for k in range(1, 8):
-        a, b = (awal - k * 86400) * 1000, (awal - (k - 1) * 86400) * 1000
-        x = h[(h.index >= a) & (h.index < b)]
-        if len(x) >= 20:
-            rng.append((x["high"].max() / x["low"].min() - 1) * 100)
-    r7 = sum(rng) / len(rng) if rng else None
-    tingkat = None if r7 is None else "rendah" if r7 < BATAS[0] else "sedang" if r7 <= BATAS[1] else "tinggi"
-    # kemarin serentak? 40 koin paling ramai, 15 menit, 24 jam sebelum 06:00 hari ini
-    kemarin = None
-    try:
-        tk = B.get_tickers()
-        top = [s for s, _ in sorted(((s, v["turnover"]) for s, v in tk.items() if s.endswith("USDT") and s != "BTCUSDT"),
-                                    key=lambda z: -z[1])[:39]]
-        cl = {}
-        for s in ["BTCUSDT"] + top:
-            df = B._raw(s, "15", 140)
-            df = df[df.index < awal * 1000].iloc[-108:]
-            if len(df) == 108:
-                cl[s] = list(df["close"].values)
-        kemarin = _serentak(cl)
-    except Exception as ex:
-        print("[WARN] pagi serentak kemarin", ex)
-    ik_s, judul, jam_berita = SESI.get(sesi, SESI["pagi"])
-    rows = [f"{ik_s} <b>QSE v148 | {judul}</b>  ·  {HARI[wd]}", ""]
-    if tingkat is None:
-        return None
-    if sesi != "pagi":
+    from qse_saya import berita_depan
+    tk = B.get_tickers()
+    top = [s for s, _ in sorted(((s, v["turnover"]) for s, v in tk.items() if s.endswith("USDT") and s != "BTCUSDT"),
+                                key=lambda z: -z[1])[:39]]
+    now = int(time.time() * 1000)
+    closes = {}
+    for s in ["BTCUSDT"] + top:
         try:
-            x = h[h.index >= awal * 1000]
-            if len(x):
-                b0 = float(x["open"].iloc[0]) if "open" in x else float(x["close"].iloc[0])
-                px = float((tk.get("BTCUSDT") or {}).get("last") or x["close"].iloc[-1])
-                rows += ["📍 <b>Sejak 06:00 WIB</b>",
-                         f"• BTC {(px / b0 - 1) * 100:+.1f}% (rentang {(x['high'].max() / x['low'].min() - 1) * 100:.1f}%)",
-                         "• Gerak serentak hari ini: " + ("sudah terjadi" if gerak_t >= awal else "belum terjadi"), ""]
-        except Exception as ex:
-            print("[WARN] info sesi", ex)
-    kk = kemarin if kemarin is not None else False
-    p = TABEL[(akhir_pekan, tingkat, kk)]
-    rata = (p[0] + p[1]) / 2
-    lvl = "TINGGI" if rata >= 40 else "SEDANG" if rata >= 20 else "RENDAH"
-    ik = {"TINGGI": "🔴", "SEDANG": "🟡", "RENDAH": "🟢"}[lvl]
-    rows += [f"{ik} Peluang pasar bergerak serentak hari ini: <b>{lvl}</b>",
-             f"Sejarah kondisi yang sama: {p[0]}% dan {p[1]}% hari (rata semua hari 28% dan 22%).", "",
-             "Alasannya:",
-             f"• {'Akhir pekan, pasar biasanya sepi' if akhir_pekan else 'Hari kerja'}",
-             f"• Rentang harian BTC 7 hari terakhir rata {r7:.1f}% ({tingkat})",
-             "• Kemarin " + ("ada gerak serentak" if kemarin else "tidak ada gerak serentak" if kemarin is not None
-                            else "tidak terbaca, dianggap tidak ada"), ""]
-    try:
-        rows += baris_arah()
-        if sesi != "pagi":
-            rows.append("ℹ️ Arah hari ini dihitung jam 06:00 dan berlaku sampai 06:00 besok. Dihitung ulang jam 12 atau 18 "
-                        "lebih jelek di uji 2021-2026 (total profit turun 160-310R), jadi tidak diganti. "
-                        "Larangan hanya untuk sinyal SHORT baru. Posisi SHORT yang sudah jalan tetap ikuti SL dan TP, "
-                        "uji menutupnya lebih awal juga lebih jelek.")
-    except Exception as ex:
-        print("[WARN] baris arah", ex)
-    rows += ["Altcoin ikut arah harian BTC di 81% hari (74% saat serentak), jadi arah BTC jadi patokan altcoin juga."]
-    try:
-        from qse_saya import berita_depan
-        bd = berita_depan(jam_berita)
-        if bd:
-            rows += ["", f"📅 Berita besar {jam_berita} jam ke depan: {bd['judul']}. Jam rilis biasanya memicu gerak cepat."]
-    except Exception:
-        pass
-    rows += ["", "Pastikan semua SL terpasang di Bybit. Robot mengirim peringatan GERAK SERENTAK kalau terjadi."]
+            df = B._raw(s, "15", 120)
+            df = df[df.index + 900000 <= now]
+            closes[s] = df["close"].values.astype(float)[-100:]
+        except Exception:
+            pass
+    if "BTCUSDT" not in closes or len(closes["BTCUSDT"]) < 96:
+        return ""
+    ser = _serentak({s: list(v[:-1]) for s, v in closes.items()})          # 24 jam sebelumnya
+    D = B._raw("BTCUSDT", "D", 12)
+    D = D[D.index + 86400000 <= now]
+    if len(D) < 8:
+        return ""
+    rng = ((D["high"].values[-7:] / D["low"].values[-7:] - 1) * 100).mean()
+    tingkat = "rendah" if rng < BATAS[0] else "sedang" if rng <= BATAS[1] else "tinggi"
+    wib = time.gmtime(time.time() + 7 * 3600)
+    wk = wib.tm_wday in (5, 6)
+    p1, p2, n1, n2 = TABEL[(wk, tingkat, bool(ser))]
+    c4 = B._raw("BTCUSDT", "240", 70)
+    c4 = c4[c4.index + 14400000 <= now]["close"].values.astype(float)
+    k, out = 2 / 51, c4[0]
+    for x in c4[1:]:
+        out = x * k + out * (1 - k)
+    naik = c4[-1] > out
+    bd = berita_depan(18)
+    jdl = {"pagi": "PAGI 06:00", "siang": "SIANG 12:00", "malam": "MALAM 18:00"}.get(sesi, "PASAR")
+    rows = [f"🌅 <b>QSE v148 | INFO PASAR {jdl} WIB ({HARI[wib.tm_wday]})</b>", "",
+            f"Peluang pasar bergerak serentak hari ini: <b>sekitar {(p1 + p2) // 2}%</b> "
+            f"(2022-2024: {p1}% dari {n1} hari, 2024-2026: {p2}% dari {n2} hari).",
+            f"Dasar hitung: {'akhir pekan' if wk else 'hari kerja'}, rentang harian BTC 7 hari terakhir {rng:.1f}% ({tingkat}), "
+            f"24 jam terakhir {'sempat' if ser else 'tidak'} bergerak serentak."]
+    if sesi != "pagi":
+        awal = _awal(time.time())
+        sudah = gerak_t >= awal
+        b0 = B._raw("BTCUSDT", "60", 30)
+        b0 = b0[(b0.index >= awal * 1000) & (b0.index + 3600000 <= now)]
+        if len(b0):
+            ch = (float(b0["close"].iloc[-1]) / float(b0["open"].iloc[0]) - 1) * 100
+            rg = (float(b0["high"].max()) / float(b0["low"].min()) - 1) * 100
+            rows.append(f"Sejak 06:00 WIB tadi: BTC {ch:+.1f}% (rentang {rg:.1f}%), gerak serentak "
+                        + ("SUDAH terjadi hari ini." if sudah else "belum terjadi."))
+    if bd:
+        rows.append(f"📅 Ada berita besar USD hari ini ({bd['judul']}), peluang guncangan lebih tinggi di sekitar jam rilis.")
+    rows += ["", *baris_arah(), "",
+             f"Patokan 4J sekarang: BTC {c4[-1]:,.0f} USDT, {'di atas' if naik else 'di bawah'} EMA 50 ({out:,.0f}). "
+             f"Di 74% hari yang bergerak serentak, mayoritas altcoin bergerak searah BTC.", "",
+             "Yang perlu dilakukan: tidak perlu menebak arah sebelum kejadian. Kalau nanti pasar bergerak serentak, "
+             "robot langsung mengirim peringatan dalam 1 menit."]
     return "\n".join(rows)
 
 
-_BTC_BARIS = [0.0, ""]
-
-
 def baris_btc_sinyal():
-    """Satu blok info BTC yang ikut di setiap pemberitahuan sinyal. Fakta posisi harga lawan EMA, plus kesimpulan uji:
-    uji 2021-2026 35 ribu sinyal, arah BTC (9 teknik di 1W, 1D, 4J, searah atau lawan sinyal) tidak konsisten mengubah
-    hasil sinyal (contoh 3 timeframe lawan PF 0.76 lalu 1.98). Yang konsisten hanya arah hari ini (condong naik)
-    dan volume pasar tinggi, keduanya sudah dipakai robot."""
-    if time.time() - _BTC_BARIS[0] < 600 and _BTC_BARIS[1]:
-        return _BTC_BARIS[1]
+    """Satu baris arah BTC untuk pesan sinyal baru, dari data yang sama dengan /cek BTC."""
+    import bybit_fetch as B
+    now = int(time.time() * 1000)
+    c4 = B._raw("BTCUSDT", "240", 70)
+    c4 = c4[c4.index + 14400000 <= now]["close"].values.astype(float)
+    k, e50 = 2 / 51, c4[0]
+    for x in c4[1:]:
+        e50 = x * k + e50 * (1 - k)
+    naik = c4[-1] > e50
+    d = arah_hari()
+    ah = "hari ini CONDONG NAIK (SHORT ditahan)" if d and d.get("naik") else "arah hari ini netral"
+    return (f"🧭 BTC Sekarang: {c4[-1]:,.0f} USDT, 4J {'DI ATAS' if naik else 'DI BAWAH'} EMA 50 ({e50:,.0f})  ·  {ah}. "
+            f"Detail 1W/1D/4J: /cek BTC")
+
+
+# ==================== PILAR 4: DETEKSI PERGERAKAN DINI & SARINGAN ANTI TERLAMBAT ====================
+
+def deteksi_gerak_dini(df, arah=None):
+    """Tajamkan deteksi pergerakan dini (early mover) dan pembacaan momentum sesi pagi untuk menangkap
+    harga sejak awal ledakan sebelum harga lari terlalu jauh.
+    Kriteria pemicu gerak dini:
+      1. Ekspansi badan lilin dini: badan lilin terakhir >= 0.85x rata-rata 10 lilin sebelumnya & tutup di 30% ujung searah.
+      2. Lonjakan volume awal (early volume ignition): volume >= 1.3x rata-rata 20 lilin atau CDV positif kuat.
+      3. Momentum sesi pagi / harian searah: dorongan dari pembukaan sesi pagi (6 lilin 4J terakhir) searah,
+         serta harga belum melesat melebihi batas jenuh (gerak < 5% di satu lilin agar tidak pucuk, sesuai uji mover.py).
+    Return dict(aktif, arah, skor, alasan, gerak_pct, atr).
+    """
+    if df is None or len(df) < 40:
+        return dict(aktif=False, arah=arah or "LONG", skor=0, alasan=[], gerak_pct=0.0, atr=0.0)
+    o, h, l, c, v = (df[k].values.astype(float) for k in ("open", "high", "low", "close", "volume"))
+    pc = np.r_[c[0], c[:-1]]
+    tr = np.maximum(h - l, np.maximum(np.abs(h - pc), np.abs(l - pc)))
+    atr = float(tr[-14:].mean()) if len(tr) >= 14 else float(h[-1] - l[-1] or 1e-9)
+
+    ch_pct = (c[-1] / o[-1] - 1) * 100
+    d = 1 if (arah == "LONG" if arah else ch_pct >= 0) else -1
+    ar_str = "LONG" if d == 1 else "SHORT"
+
+    body = (c[-1] - o[-1]) * d
+    rng = max(h[-1] - l[-1], 1e-12)
+    avg_body = float(np.abs(c[-11:-1] - o[-11:-1]).mean()) or 1e-9
+    rv = float(v[-1] / max(v[-21:-1].mean(), 1e-12))
+
+    # Posisi penutupan dalam rentang lilin (dekat high untuk LONG, dekat low untuk SHORT)
+    close_pos = (c[-1] - l[-1]) / rng if d == 1 else (h[-1] - c[-1]) / rng
+    # Momentum sesi pagi (perubahan 6 bar / 24 jam atau sejak awal hari)
+    sesi_ret = (c[-1] / c[-6] - 1) * 100 * d if len(c) >= 7 else ch_pct * d
+
+    alasan = []
+    skor = 0
+    if body >= 0.85 * avg_body and close_pos >= 0.65:
+        skor += 35
+        alasan.append(f"pemicu gerak dini (badan lilin {body / avg_body:.1f}x rata-rata, tutup kuat {close_pos * 100:.0f}%)")
+    if rv >= 1.25:
+        skor += 30
+        alasan.append(f"dorongan volume awal {rv:.1f}x rata-rata")
+    if sesi_ret > 0:
+        skor += 20
+        alasan.append(f"momentum sesi pagi searah ({sesi_ret:+.1f}%)")
+    # Sesuai mover.py: gerak awal terbaik saat masih < 5% (awal ledakan, belum terlambat)
+    if 0.3 <= abs(ch_pct) <= 5.5:
+        skor += 15
+        alasan.append(f"awal ledakan terjaga ({ch_pct:+.1f}%, belum jenuh)")
+    elif abs(ch_pct) > 8.0:
+        skor -= 30  # sudah terlalu liar
+
     try:
-        import bybit_fetch as B
-        rows = []
-        px = None
-        for iv, nm in (("240", "4J"), ("D", "1D")):
-            df = B._raw("BTCUSDT", iv, 260)
-            c = df["close"].astype(float)
-            c = c.iloc[:-1]                              # candle terakhir masih berjalan
-            px = px or float(df["close"].iloc[-1])
-            e50 = float(c.ewm(span=50, adjust=False).mean().iloc[-1])
-            e200 = float(c.ewm(span=200, adjust=False).mean().iloc[-1])
-            pos = lambda e: f"{'di atas' if px > e else 'di bawah'} EMA{'50' if e == e50 else '200'} ({(px / e - 1) * 100:+.1f}%)"
-            rows.append(f"{nm}: {pos(e50)}, {pos(e200)}")
-        d = arah_hari()
-        arah = ("CONDONG NAIK (SHORT baru ditahan)" if d and d["naik"] else "tidak bisa ditebak, 50/50") if d else "belum terbaca"
-        teks = (f"₿ <b>BTC {px:,.0f}</b>  ·  " + "  ·  ".join(rows) + f"\n🧭 Arah hari ini: {arah}. "
-                "Posisi BTC lawan EMA di atas hanya info, di uji tidak mengubah hasil sinyal.")
-        _BTC_BARIS[:] = [time.time(), teks]
-        return teks
-    except Exception as ex:
-        print("[WARN] baris btc sinyal", ex)
-        return ""
+        ah = arah_hari()
+        if ah and ah.get("naik") and d == 1:
+            skor += 15
+            alasan.append("didukung arah sesi pagi 06:00 WIB condong NAIK")
+    except Exception:
+        pass
+
+    return dict(
+        aktif=bool(skor >= 50 and body > 0),
+        arah=ar_str,
+        skor=min(100, max(0, skor)),
+        alasan=alasan,
+        gerak_pct=round(float(ch_pct), 2),
+        atr=atr,
+    )
+
+
+def saring_anti_terlambat(px_sekarang, arah, entry_sinyal=None, ob_zona=None, atr=None, maks_atr_ob=1.8, maks_atr_entry=0.5):
+    """PILAR 4: Penyaring keterlambatan harga (Anti-Late Filter) sebagai rem otomatis pada seluruh kombo strategi.
+    Membatalkan rencana masuk posisi apabila:
+      1. Harga sudah bergerak terlalu jauh dari zona Order Block / zona pantulan (> maks_atr_ob ATR dari tepi/titik OB).
+      2. Harga sudah lari terlalu jauh dari harga sinyal penutupan (> maks_atr_entry ATR).
+    Return (lolos: bool, alasan_batal: str, jarak_ob_atr: float).
+    """
+    if not px_sekarang or not atr or atr <= 0:
+        return True, "", 0.0
+    L = arah in ("LONG", 1)
+    jarak_ob_atr = 0.0
+
+    # 1. Cek jarak dari zona Order Block (bila ob_zona tersedia: tuple/list (bot, top) atau dict)
+    if ob_zona is not None:
+        if isinstance(ob_zona, dict):
+            z_bot = float(ob_zona.get("zona_bot", ob_zona.get("ob_low", ob_zona.get("bot", px_sekarang))))
+            z_top = float(ob_zona.get("zona_top", ob_zona.get("ob_top", ob_zona.get("top", px_sekarang))))
+            titik = float(ob_zona.get("titik_kunci", z_top if L else z_bot))
+        elif isinstance(ob_zona, (tuple, list)) and len(ob_zona) >= 2:
+            z_bot, z_top = float(min(ob_zona[0], ob_zona[1])), float(max(ob_zona[0], ob_zona[1]))
+            titik = z_top if L else z_bot
+        else:
+            z_bot = z_top = titik = float(px_sekarang)
+
+        # Jarak searah lari dari tepi atas OB (untuk LONG) atau tepi bawah OB (untuk SHORT)
+        lari_ob = (px_sekarang - z_top) if L else (z_bot - px_sekarang)
+        jarak_ob_atr = float(max(0.0, lari_ob) / atr)
+        if jarak_ob_atr > maks_atr_ob:
+            return (
+                False,
+                f"rem anti-terlambat aktif: harga ({px_sekarang:g}) sudah bergerak terlalu jauh ({jarak_ob_atr:.2f} ATR > batas {maks_atr_ob:g} ATR) dari zona Order Block ({z_bot:g}-{z_top:g})",
+                jarak_ob_atr,
+            )
+        # Cek bila harga sudah jebol ke belakang Order Block (struktur batal)
+        jebol = (z_bot - px_sekarang) if L else (px_sekarang - z_top)
+        if jebol > 0.35 * atr:
+            return (
+                False,
+                f"rem anti-terlambat aktif: harga ({px_sekarang:g}) sudah menembus batas belakang Order Block ({z_bot:g}-{z_top:g})",
+                jarak_ob_atr,
+            )
+
+    # 2. Cek jarak keterlambatan dari harga penutupan lilin sinyal
+    if entry_sinyal is not None and entry_sinyal > 0:
+        lari_entry = (px_sekarang - entry_sinyal) if L else (entry_sinyal - px_sekarang)
+        jarak_e_atr = float(abs(lari_entry) / atr)
+        if lari_entry > maks_atr_entry * atr:
+            return (
+                False,
+                f"rem anti-terlambat aktif: harga ({px_sekarang:g}) sudah lari +{jarak_e_atr:.2f} ATR dari titik pemicu ({entry_sinyal:g})",
+                jarak_ob_atr or jarak_e_atr,
+            )
+
+    return True, "", jarak_ob_atr

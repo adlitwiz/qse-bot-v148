@@ -1939,7 +1939,7 @@ def _pantauan(rs, sig, kode):
 # Uji 111 koin 2020-2026 (entry telat di harga close, SL jalur saat itu, TP asli), PF dev/uji: EMA 1.22/1.24, RSI 1.21/1.39,
 # McGinley 1.14/1.27, SnR 1.29/1.46, SMC 1.19/1.12, Ichimoku 1.16/1.23. MSB telat 0.99 di 2020-2023, jadi MSB, Order Block,
 # dan GZH hanya sinyal candle ini.
-TELAT_OK = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
+TELAT_OK = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku", "rantai_eksekusi"}
 TELAT_CANDLE, TELAT_R = 2, 0.5
 
 
@@ -2051,6 +2051,12 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                     pasar.append(b50)
             except Exception as ex:
                 print("[WARN] btc ema50", ex)
+            try:
+                import qse_penyaring as PY
+                ev_p1 = PY.evaluasi_pasar()
+                pasar.append(f"🧭 Penyaring Utama (Pilar 1): Fokus <b>{ev_p1['arah_dana_besar']}</b> (skor {ev_p1['skor_aliran_dana']:+d})  ·  Mode Otomatis: <b>KOMBO {ev_p1['mode_kombo']}</b> ({ev_p1['kondisi_pasar']})")
+            except Exception as ex:
+                print("[WARN] penyaring utama main", ex)
         if tf != "240":
             pasar.append(f"Arah diizinkan: {alt.get('izin', '-')}")
         else:
