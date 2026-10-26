@@ -245,7 +245,8 @@ def _pesan_gzh(a, cl):
             + (f"🛡 Rem portofolio aktif, lot setengah: {TG.e(rm_p)}\n" if rm_p else "")
             + SY.blok_salin(cl, a["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=a["sym"], arah=arah) + "\n"
             f"Masuk MARKET sekarang. Pasang Trailing Stop Bybit Retracement {jarak}, atau ikuti pesan GESER SL. "
-            f"10 hari belum kena, tutup manual." + isi)
+            f"10 hari belum kena, tutup manual."
+            + "".join("\n" + z for z in ST.tp_cepat_teks(dict(entry=cl, sl=a["sl"], arah=arah, tick=t), fmt=TG.fp)) + isi)
 
 
 def _cek_tutup(d0):

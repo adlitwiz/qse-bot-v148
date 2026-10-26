@@ -1178,6 +1178,8 @@ def _kartu(v, tr, SY, tick=None):
             blok,
             f"🎯 Entry valid sampai {jam} WIB, selama harga masih di dalam Range.",
             f"⏳ Biasanya selesai dalam {m.get('lama', 0):g} hari, paling lama {tr['H'] * 4 // 24} hari.",
+            f"💰 TP sebagian: pasang TP 20% posisi di {_fmt(tr['entry'] + 0.5 * tr['s'] * tr['risk'], t)} (+0.5R). Setelah kena, "
+            f"pindahkan SL ke entry {_fmt(tr['entry'], t)}. Sama dengan aturan semua sinyal robot.",
             "✅ Cara pakai: tekan lama blok di atas untuk salin, kirim /entry lalu tempel isinya. "
             + ("Pasang SL dan TP di Bybit, lalu biarkan sampai kena." if tr.get("tp") else
                "Pasang SL di Bybit, lalu isi Trailing Stop seperti di bawah.")]

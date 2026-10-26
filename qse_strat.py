@@ -443,24 +443,31 @@ def kunci_jalur(j):
     return (j or "").replace("saran ", "").strip()
 
 
+# TP SEBAGIAN (27 Okt 2026, untuk menaikkan win rate). Uji 35 ribu sinyal jalur 2021-2026 di candle 1 jam: tutup 20% di
+# +0.5R lalu SL ke entry, sisa ikut aturan jalur (TP atau trailing). Sinyal mode seimbang (skor 3+): WR 73.2% (2021-23 72.7%,
+# 2024-26 73.6%) lawan 45.5% cara lama (TP bertahap 25% di 1R dan 50% di 2R, 4 jalur tahan sampai TP), PF 1.56 lawan 1.54,
+# rugi beruntun terpanjang 42 lawan 150 trade. Biayanya: total R per lot 57% dari cara lama, drawdown juga turun ke 67%.
+# Semua 9 jalur naik WR ke 69-76%. Pembanding: 20% di 0.4R WR 77% total 47%, 20% di 0.75R WR 65% total 76%, 20% di 1R WR 58%.
+TPS_R, TPS_PORSI = 0.5, 0.20
+
+
+def tp_sebagian(entry, sl0, arah):
+    """Harga TP sebagian (+0.5R dari entry)."""
+    risk = abs(entry - sl0)
+    return entry + TPS_R * risk if arah == "LONG" else entry - TPS_R * risk
+
+
 def tp_cepat_teks(it, fmt=None, k=None):
-    """Jalur TAHAN_TP: peringatan jangan TP manual. Jalur lain: TP bertahap 25% di +1R, 50% di +2R, sisa ikut jalur.
-    Uji 2021-2026 39 ribu trade TP bertahap: WR 43% lawan 38%, PF 1.26 lawan 1.31 (dev 1.25, uji 1.27)."""
+    """Baris TP sebagian untuk semua kartu sinyal: 20% di +0.5R, lalu SL ke entry."""
     try:
         fmt = fmt or TG.fp
-        risk = abs(it["entry"] - it.get("sl0", it["sl"]))
-        if not risk:
+        sl0 = it.get("sl0", it["sl"])
+        if not abs(it["entry"] - sl0):
             return []
-        L = it.get("arah", "LONG") == "LONG"
         t = it.get("tick", 0.0001)
-        kk = kunci_jalur(k)
-        if it.get("combo_fix"):
-            return ["⛔ <b>Tahan sampai TP</b>, jangan TP manual (COMBO FIX)"]
-        if kk in TAHAN_TP:
-            return ["⛔ <b>Tahan sampai TP</b>, jangan TP manual"]
-        r1 = it["entry"] + risk if L else it["entry"] - risk
-        r2 = it["entry"] + 2 * risk if L else it["entry"] - 2 * risk
-        return [f"💰 TP bertahap: 25% di {fmt(r1, t)}, 50% di {fmt(r2, t)}, sisa ikut jalur"]
+        tps = tp_sebagian(it["entry"], sl0, it.get("arah", "LONG"))
+        return [f"💰 TP sebagian: pasang TP {int(TPS_PORSI * 100)}% posisi di {fmt(tps, t)} (+0.5R). Setelah kena, pindahkan SL ke "
+                f"entry {fmt(it['entry'], t)}. Sisanya ikut SL dan TP kartu ini. Uji 2021-2026: menang 73%"]
     except Exception:
         return []
 
@@ -594,13 +601,13 @@ def medali(no):
 def kelas(n):
     """Tanda nilai dari skor label (permintaan user: skor 3 = NILAI 8, 5 = NILAI 9, 8 = NILAI 10).
     Uji 2021-2026 (PF 2021-23 / 2024-26, sudah dengan label BTC.D TURUN): skor 3-4 PF 1.30/1.44, skor 5-7 PF 1.50/1.73,
-    skor 8+ PF 2.25/2.22."""
+    skor 8+ PF 2.25/2.22. Win rate dengan TP sebagian 20% di +0.5R lalu SL ke entry: 71.7%, 74.8%, 77.5% (PF 1.42, 1.73, 2.18)."""
     if n >= 8:
-        return "👑 NILAI 10 (PF uji 2.2)"
+        return "👑 NILAI 10 (menang 78%, PF 2.2)"
     if n >= 5:
-        return "🔥 NILAI 9 (PF uji 1.7)"
+        return "🔥 NILAI 9 (menang 75%, PF 1.7)"
     if n >= 3:
-        return "✅ NILAI 8 (PF uji 1.3)"
+        return "✅ NILAI 8 (menang 72%, PF 1.4)"
     return ""
 
 
@@ -959,11 +966,12 @@ def kartu(k, no, it, a):
         *[f"• {z}" for z in cfg["kenapa"]],
         f"• Bukti: {cfg['bt']}",
         "🛠 <b>Cara</b>",
-        *([f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)}, TP {TG.fp(it['tp'], t)} ({cfg['tp_r']:g}R). Tutup penuh di TP",
-            f"2. Jangan geser SL. TP {cfg['tp_r']:g}R penuh lebih bagus dari trailing di uji",
+        *([f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)}, TP {TG.fp(it['tp'], t)} ({cfg['tp_r']:g}R) untuk sisa posisi",
+            f"2. Pasang juga TP sebagian 20% di +0.5R (lihat baris 💰). Setelah kena, SL ke entry. Selain itu jangan geser SL",
             f"3. Kalau {it.get('maks_bar', MAKS_BAR) // 6} hari belum kena SL atau TP, tutup manual",
             "4. Catat dengan /entry supaya ada pengingat dan analisa volume kalau kena SL"] if it.get("tp") else
-          [f"1. Masuk MARKET sekarang. SL di {TG.fp(it['sl'], t)} ({it['risk'] / it['entry'] * 100:.1f}%). Jangan pasang TP",
+          [f"1. Masuk MARKET sekarang. SL di {TG.fp(it['sl'], t)} ({it['risk'] / it['entry'] * 100:.1f}%). Pasang TP sebagian 20% "
+           f"di +0.5R saja (lihat baris 💰), setelah kena SL ke entry. Sisanya tanpa TP",
            "2. Pasang Trailing Stop Bybit, isi seperti blok di bawah, atau ikuti pesan GESER SL",
            *([f"   Setelah untung 2R ({TG.fp(it['entry'] + 2 * it['risk'] if L else it['entry'] - 2 * it['risk'], t)}), ganti jarak "
               f"Trailing Stop jadi 5% harga. Robot mengingatkan lewat SL TERBARU"] if it.get("trail_pct_2r") else []),

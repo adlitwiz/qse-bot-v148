@@ -383,14 +383,15 @@ def _jalankan(baru_ok=True):
             f"• Koin ini termasuk {TOP_LIKUID} koin paling likuid 30 hari terakhir. Makin likuid, makin bagus hasil Ichimoku",
             "• Bukti: uji 5 tahun 111 koin, 3084 trade, PF 1.29, untung tiap tahun, positif 18 dari 22 kuartal",
             "🛠 <b>Cara</b>",
-            f"1. Masuk MARKET sekarang. Pasang SL di {TG.fp(sl, t)} ({pc:.1f}% dari entry). Jangan pasang TP",
+            f"1. Masuk MARKET sekarang. Pasang SL di {TG.fp(sl, t)} ({pc:.1f}% dari entry). Pasang TP sebagian 20% di +0.5R saja "
+            f"(lihat baris 💰), setelah kena SL ke entry. Sisanya tanpa TP",
             "2. Tiap candle 4J tutup, robot kirim pesan GESER SL. Ubah SL di Bybit ke angka di pesan itu",
             "3. SL hanya maju searah profit, tidak pernah mundur. Saat harga balik menyentuh SL, posisi tutup sendiri dengan profit yang sudah terkunci",
             "4. Kalau 10 hari belum kena SL, robot mengingatkan untuk tutup manual",
             f"5. Catat dengan /entry supaya pesan GESER SL dikirim. Tanpa /entry, robot tidak mengirim pesan lanjutan untuk koin ini",
-            "❓ <b>Kenapa tanpa TP</b>",
-            "Jalur ini menang sekitar 37%. Untungnya datang dari sedikit trade yang lari jauh, bisa +3R sampai +10R. "
-            "TP tetap akan memotong trade besar itu, jadi profit dikunci dengan SL berjalan",
+            "❓ <b>Kenapa sisanya tanpa TP</b>",
+            "Untungnya datang dari sedikit trade yang lari jauh, bisa +3R sampai +10R. TP penuh akan memotong trade besar itu. "
+            "TP sebagian 20% di +0.5R lalu SL ke entry menaikkan win rate jalur ini dari 34% ke 70% di uji 2021-2026",
             "📐 Cara mudah: tetap pasang SL awal di atas, lalu tambahkan Trailing Stop di Bybit. Tidak perlu geser SL manual\n"
             + SY.isi_trailing(jarak, sl, t)
             + (f"\n{lot}" if lot else ""),
