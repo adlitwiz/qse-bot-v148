@@ -1,24 +1,36 @@
 """QSE LAB (26 Okt 2026): robot riset otomatis. Tiap hari mencari, menguji, dan menambah teknik baru sendiri.
 
 Alur:
-1. RISET HARIAN 02:30 WIB (proses terpisah, prioritas rendah): susun 300 teknik baru dari blok bangunan (22 pemicu,
-   11 penyaring, 10 cara keluar, combo 2 pemicu dalam 6 candle). 70% acak, 30% mutasi dari teknik yang hampir lolos.
-   Diuji di 30 koin teramai, candle 4J sejak 2021, biaya 0.15% per trade, masuk di open candle berikutnya.
-2. SYARAT LOLOS (ketat supaya teknik kebetulan terbuang): 2021-2023 minimal 150 trade PF 1.35, 2024-sekarang minimal
-   100 trade PF 1.30, rata-rata minimal +0.10R di dua periode, untung di 2/3 tahun, PF minimal 0.10 di atas masuk acak
+1. RISET HARIAN 02:30 WIB (proses terpisah, prioritas rendah): susun 1000 teknik baru dari blok bangunan (23 pemicu
+   termasuk pola harmonic gagal, 11 penyaring, 10 cara keluar, combo 2 pemicu dalam 6 candle). 70% acak, 30% mutasi
+   dari teknik yang hampir lolos. Diuji di 30 koin teramai, candle 4J sejak Sep 2017 (Binance spot 2017-2020 disambung
+   Bybit), biaya 0.15% per trade, masuk di open candle berikutnya.
+2. SYARAT LOLOS (ketat supaya teknik kebetulan terbuang): seluruh sejarah dibagi dua (paruh lama dan paruh baru),
+   paruh lama PF 1.35, paruh baru PF 1.30, jumlah trade cukup (sekitar 1.4 trade per koin per tahun di tiap paruh),
+   rata-rata minimal +0.10R di dua paruh, untung di 2/3 tahun, PF minimal 0.10 di atas masuk acak
    dengan penyaring dan cara keluar yang sama (bukti pemicunya menambah nilai), tetap untung saat SL atau target digeser
    (PF 1.15), untung di dua kelompok koin terpisah (PF 1.10), dan paling banyak 40% trade sama dengan teknik aktif lain.
    Teknik yang mirip jalur robot dilewati. Uji lokal 600 teknik acak: 8% lolos syarat dasar, mayoritas SHORT breakout,
    jadi dipilih paling banyak 2 terbaik per hari.
+   UJI MAJU PROSES LAB (26 Okt 2026, 40 koin 2017-2026, 4000 teknik acak): robot dibuat seolah hidup di masa lalu,
+   memilih 12 teknik hanya dari data sebelum tahun Y lalu dipakai di tahun Y. Hasil 2021 PF 1.48, 2022 1.15,
+   2023 1.03, 2024 1.44, 2025 1.31, 2026 1.06, gabungan PF 1.26 (+3978R, 25.863 trade), semua tahun untung.
+   Dipilih sekali dari 2017-2020 tanpa diperbarui: PF 1.16. 12 teknik acak: PF 1.07. PF uji teknik terpilih 1.7-2.3,
+   jadi angka uji di kartu terlalu tinggi, harapan jujur PF live sekitar 1.2-1.3.
+   Penyaring bentuk pasar (BTC di atas/bawah EMA200 harian, altcoin kuat/lemah lawan BTC, volatilitas tinggi/rendah)
+   per teknik maupun global, dan penyaring hasil 90-365 hari terakhir: tidak satu pun menaikkan hasil maju (PF 1.02-1.26,
+   tanpa penyaring 1.26, total R turun 15-96%), jadi tidak dipakai. Kolam teknik makin besar tidak merusak hasil
+   (500 teknik: PF 1.19, 4000 teknik: PF 1.26).
 3. KANDIDAT: sinyal 🧪 LAB lot 0.25x, dicatat otomatis di harga live (uji maju). Maksimal 12 teknik aktif.
 4. TERBUKTI LAB: 150 trade maju dalam minimal 90 hari dengan PF 1.15 ke atas, lot 0.5x. DICABUT: 200 trade maju PF di
-   bawah 0.90, atau gagal uji ulang tiap Minggu dengan data terbaru (PF di bawah 1.10). Kalau 12 tempat penuh, teknik baru
-   yang PF-nya 0.15 lebih tinggi menggantikan kandidat terlemah yang uji majunya belum 50 trade (maksimal 1 per hari).
+   bawah 0.90, atau gagal uji ulang tiap Minggu dengan data terbaru (PF salah satu paruh di bawah 1.15). Nilai uji teknik
+   aktif dihitung ulang tiap hari dengan data terbaru. Kalau 12 tempat penuh, teknik baru yang PF-nya 0.10 lebih tinggi
+   menggantikan kandidat terlemah (maksimal 1 per hari), meniru pilih ulang di uji maju di atas.
 5. BULANAN (tanggal 1, atau saat belum pernah): uji saran SL (interval 1, 2, 3, 5%) di sinyal robot sendiri 180 hari.
    Saran SL aktif otomatis hanya kalau total R dan PF lebih tinggi dari aturan jalur. Uji pola open interest BTC
    (risiko likuidasi massal) dengan data Bybit, hasilnya dipakai /cek BTC.
 Risiko jujur: menguji ratusan teknik per hari pasti menemukan beberapa yang bagus karena kebetulan. Penjaganya syarat
-dua periode, uji ketahanan, lot kecil, dan uji maju di harga live sebelum naik status.
+dua paruh sejarah, pembanding masuk acak, uji ketahanan, lot kecil, dan uji maju di harga live sebelum naik status.
 Manual: python qse_lab.py riset | sinyal | bulanan | status"""
 import hashlib
 import html
@@ -37,17 +49,22 @@ LAB = os.path.join(STATE_DIR, "lab")
 DATA = os.path.join(LAB, "data")
 BUKU = os.path.join(LAB, "buku.json")
 H4 = 4 * 3600 * 1000
-MULAI_MS = int(pd.Timestamp("2021-01-01", tz="UTC").value // 10 ** 6)
-BATAS_MS = int(pd.Timestamp("2024-01-01", tz="UTC").value // 10 ** 6)
+MULAI_MS = int(pd.Timestamp("2017-09-01", tz="UTC").value // 10 ** 6)
 AWAL_DATA = int(pd.Timestamp("2020-10-01", tz="UTC").value // 10 ** 6)
-N_RISET = int(os.environ.get("QSE_LAB_N", "300"))
+AWAL_LAMA = int(pd.Timestamp("2017-08-01", tz="UTC").value // 10 ** 6)
+ARSIP_BIN = "https://data.binance.vision/data/spot/monthly/klines"
+API_BIN = ("https://data-api.binance.vision/api/v3/klines", "https://api.binance.com/api/v3/klines")
+NMIN = {"dev": 150, "uji": 100}                      # diatur ulang dari jumlah tahun data koin tiap paruh
+PF_MAJU_PROSES = 1.26                               # hasil uji maju proses lab 2021-2026
+N_RISET = int(os.environ.get("QSE_LAB_N", "1000"))
 MAKS_AKTIF = int(os.environ.get("QSE_LAB_MAKS", "12"))
 N_KOIN = int(os.environ.get("QSE_LAB_KOIN", "30"))
 MAKS_KARTU = 5
 BIAYA = 0.0015
 LOKAL = os.environ.get("QSE_LAB_LOKAL", "")          # folder csv untuk uji tanpa internet
-SYARAT = dict(n_dev=150, n_uji=100, pf_dev=1.35, pf_uji=1.30, exp=0.10, tahun_plus=0.66, tetangga_pf=1.15, separuh_pf=1.10,
-              acak=0.10, tumpang=0.40)
+LOKAL_LAMA = os.environ.get("QSE_LAB_LOKAL_LAMA", "")  # folder csv 2017-2020 untuk uji tanpa internet
+SYARAT = dict(pf_dev=1.35, pf_uji=1.30, exp=0.10, tahun_plus=0.66, tetangga_pf=1.15, separuh_pf=1.10,
+              acak=0.10, tumpang=0.40, ganti=0.10, cabut=1.15)
 MAKS_BARU_HARI = 2
 MAKS_SHORT = 8
 AKTIF = ("KANDIDAT", "TERBUKTI LAB")
@@ -57,6 +74,16 @@ INTERVAL_SL = (1.0, 2.0, 3.0, 5.0)
 
 def _now():
     return float(os.environ.get("QSE_LAB_SEKARANG") or time.time())
+
+
+def _batas():
+    """Titik bagi sejarah: tengah antara Sep 2017 dan sekarang. Paruh lama dan paruh baru sama panjang."""
+    return (MULAI_MS + int(_now() * 1000)) // 2
+
+
+def label_paruh():
+    t = lambda ms: time.gmtime(ms / 1000).tm_year
+    return f"{t(MULAI_MS)}-{t(_batas())}", f"{t(_batas())}-sekarang"
 
 
 def _log(*a):
@@ -128,12 +155,130 @@ def _universe():
     return top
 
 
+def _df_kline(rows, sampai=None):
+    df = pd.DataFrame([[float(x) for x in r[:6]] for r in rows], columns=["t", "open", "high", "low", "close", "volume"])
+    if not len(df):
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"], dtype=float)
+    t = df["t"].astype(np.int64)
+    df.index = np.where(t > 10 ** 14, t // 1000, t)         # arsip Binance baru memakai mikrodetik
+    df = df.drop(columns="t")
+    df = df[~df.index.duplicated(keep="last")].sort_index()
+    return df[df.index < sampai] if sampai else df
+
+
+def _binance_api(sym, sampai):
+    import requests
+    for url in API_BIN:
+        rows, mulai = [], AWAL_LAMA
+        try:
+            while mulai < sampai:
+                r = requests.get(url, params=dict(symbol=sym, interval="4h", startTime=mulai, endTime=sampai - 1, limit=1000),
+                                 timeout=20)
+                if r.status_code == 400:                    # simbol tidak ada di Binance spot
+                    return _df_kline([])
+                if r.status_code != 200:
+                    raise RuntimeError(f"status {r.status_code}")
+                lst = r.json()
+                if not lst:
+                    break
+                rows += lst
+                mulai = int(lst[-1][0]) + H4
+                if len(lst) < 1000:
+                    break
+                time.sleep(0.2)
+            return _df_kline(rows, sampai)
+        except Exception as ex:
+            _log("binance api", url, sym, ex)
+    return None
+
+
+def _binance_arsip(sym, sampai):
+    import io
+    import zipfile
+    import requests
+    from concurrent.futures import ThreadPoolExecutor
+    bulan = pd.period_range("2017-08", time.strftime("%Y-%m", time.gmtime(sampai / 1000)), freq="M").astype(str)
+    gagal = [0]
+
+    def ambil(m):
+        for _ in range(3):
+            try:
+                r = requests.get(f"{ARSIP_BIN}/{sym}/4h/{sym}-4h-{m}.zip", timeout=60)
+                if r.status_code == 404:
+                    return []
+                if r.ok:
+                    z = zipfile.ZipFile(io.BytesIO(r.content))
+                    teks = z.read(z.namelist()[0]).decode()
+                    return [ln.split(",")[:6] for ln in teks.strip().splitlines() if ln and ln[0].isdigit()]
+            except Exception:
+                pass
+        gagal[0] += 1
+        return []
+    with ThreadPoolExecutor(8) as ex:
+        rows = [r for part in ex.map(ambil, bulan) for r in part]
+    if gagal[0] > len(bulan) // 2:
+        return None
+    return _df_kline(rows, sampai)
+
+
+def data_lama(sym, sampai):
+    """Candle 4J Binance spot Agu 2017 sampai sebelum data Bybit, untuk uji 2017-2020. Disimpan permanen.
+    Koin yang tidak ada di Binance dicatat kosong supaya tidak diambil ulang. Gagal jaringan: dicoba lagi lain kali."""
+    kosong = pd.DataFrame(columns=["open", "high", "low", "close", "volume"], dtype=float)
+    if LOKAL:
+        if not LOKAL_LAMA or not os.path.exists(os.path.join(LOKAL_LAMA, f"{sym}_240.csv")):
+            return kosong
+        df = pd.read_csv(os.path.join(LOKAL_LAMA, f"{sym}_240.csv"), index_col=0, parse_dates=True)
+        df.index = (df.index - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta(milliseconds=1)
+        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+        return df[df.index < sampai]
+    p = os.path.join(DATA, f"{sym}_lama.pkl")
+    try:
+        return pd.read_pickle(p)
+    except Exception:
+        pass
+    tanda = p + ".gagal"
+    if os.path.exists(tanda) and time.time() - os.path.getmtime(tanda) < 86400:
+        return kosong                                        # baru gagal: coba lagi besok, jangan memperlambat sinyal
+    if sym[:1].isdigit() or sampai <= AWAL_LAMA + 200 * H4:
+        df = kosong                                          # koin 1000xxx dan koin baru tidak punya data lama
+    else:
+        df = _binance_api(sym, sampai)
+        if df is None:
+            df = _binance_arsip(sym, sampai)
+        if df is None:
+            os.makedirs(DATA, exist_ok=True)
+            open(tanda, "w").close()
+            return kosong
+    os.makedirs(DATA, exist_ok=True)
+    df.to_pickle(p)
+    return df
+
+
+def _sambung(sym, df):
+    """Tempel data lama di depan data Bybit kalau skala harganya cocok dan tidak ada celah waktu."""
+    if not len(df):
+        return df
+    try:
+        lama = data_lama(sym, int(df.index[0]))
+    except Exception as ex:
+        _log("data lama", sym, ex)
+        return df
+    lama = lama[lama.index < df.index[0]] if len(lama) else lama
+    if len(lama) < 200:
+        return df
+    rasio = float(df["close"].iloc[0]) / float(lama["close"].iloc[-1])
+    if not 0.9 <= rasio <= 1.1 or df.index[0] - lama.index[-1] > 3 * H4:
+        return df
+    return pd.concat([lama, df])
+
+
 def data4j(sym):
-    """DataFrame candle 4J yang sudah tutup sejak Okt 2020, index waktu buka (ms)."""
+    """DataFrame candle 4J yang sudah tutup sejak Agu 2017 (Binance spot) lalu Okt 2020 (Bybit), index waktu buka (ms)."""
     if LOKAL:
         df = pd.read_csv(os.path.join(LOKAL, f"{sym}_240.csv"), index_col=0, parse_dates=True)
         df.index = (df.index - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta(milliseconds=1)
-        return df[["open", "high", "low", "close", "volume"]].astype(float)
+        return _sambung(sym, df[["open", "high", "low", "close", "volume"]].astype(float))
     import bybit_fetch as B
     os.makedirs(DATA, exist_ok=True)
     p = os.path.join(DATA, f"{sym}.pkl")
@@ -153,7 +298,7 @@ def data4j(sym):
     if len(df):
         df.to_pickle(p + ".tmp")
         os.replace(p + ".tmp", p)
-    return df[df.index + H4 <= now][["open", "high", "low", "close", "volume"]].astype(float)
+    return _sambung(sym, df[df.index + H4 <= now][["open", "high", "low", "close", "volume"]].astype(float))
 
 
 # ---------------------------------------------------------------- indikator
@@ -233,7 +378,114 @@ def fitur(df, btc=None):
     hdir = np.sign(hc - _ema(hc, 50)).shift(1)
     F["harian"] = hdir.reindex(t.floor("D")).values
     F["btc"] = btc.reindex(df.index).values if btc is not None else np.full(len(cv), np.nan)
+    try:
+        F["hg"] = harmonic_gagal(o.values, h.values, l.values, cv, F["atr"])
+    except Exception as ex:
+        _log("harmonic", ex)
+        F["hg"] = {1: np.zeros(len(cv), bool), -1: np.zeros(len(cv), bool)}
     return F
+
+
+# ---------------------------------------------------------------- pola harmonic XABCD (untuk pemicu harmo_gagal)
+# Uji 26 Okt 2026, 111 koin 2017-2026: masuk balik di zona PRZ (Gartley, Bat, Butterfly, Crab, Deep Crab, Cypher)
+# PF 0.6-1.1 di hampir semua dari 90 variasi, jadi tidak dipakai. Pola GAGAL (harga tembus zona) searah EMA200, SL 2 ATR,
+# trailing 4 ATR PF 1.27/1.21/1.24, tapi masuk acak searah EMA200 PF 1.77/1.18/1.10, jadi belum lebih baik dari acak.
+# Dimasukkan sebagai bahan riset: lab terus menguji combo-nya dan hanya memakai kalau lolos semua syarat.
+POLA_H = {"gartley": ((0.568, 0.668), (0.382, 0.886), 0.786, (1.13, 1.618)),
+          "bat": ((0.382, 0.50), (0.382, 0.886), 0.886, (1.618, 2.618)),
+          "butterfly": ((0.736, 0.836), (0.382, 0.886), 1.27, (1.618, 2.24)),
+          "crab": ((0.382, 0.618), (0.382, 0.886), 1.618, (2.24, 3.618)),
+          "deepcrab": ((0.836, 0.936), (0.382, 0.886), 1.618, (2.0, 3.618))}
+
+
+def _zigzag(h, l, c, at, th=2.0):
+    """Pivot kausal: high/low dikonfirmasi saat close berbalik th*ATR. Return list (bar, harga, +1 high/-1 low, bar_konfirmasi)."""
+    piv, arah = [], 0
+    hi_i, hi_p, lo_i, lo_p = 0, h[0], 0, l[0]
+    for i in range(1, len(h)):
+        if not at[i] > 0:
+            continue
+        if arah == 0:
+            if h[i] > hi_p:
+                hi_i, hi_p = i, h[i]
+            if l[i] < lo_p:
+                lo_i, lo_p = i, l[i]
+            if hi_i < i and hi_p - c[i] >= th * at[i] and hi_i > lo_i:
+                piv.append((hi_i, hi_p, 1, i))
+                arah, lo_i, lo_p = -1, i, l[i]
+            elif lo_i < i and c[i] - lo_p >= th * at[i] and lo_i > hi_i:
+                piv.append((lo_i, lo_p, -1, i))
+                arah, hi_i, hi_p = 1, i, h[i]
+        elif arah == 1:
+            if h[i] > hi_p:
+                hi_i, hi_p = i, h[i]
+            if hi_p - c[i] >= th * at[i]:
+                piv.append((hi_i, hi_p, 1, i))
+                arah, lo_i, lo_p = -1, i, l[i]
+        else:
+            if l[i] < lo_p:
+                lo_i, lo_p = i, l[i]
+            if c[i] - lo_p >= th * at[i]:
+                piv.append((lo_i, lo_p, -1, i))
+                arah, hi_i, hi_p = 1, i, h[i]
+    return piv
+
+
+def harmonic_gagal(o, h, l, c, at, th=2.0, tol=0.05):
+    """Bar tempat pola harmonic gagal: harga menyentuh zona PRZ, lalu dalam 12 candle close menembus batas jauh zona
+    dikurangi 0.5 ATR sebelum target 2R tersentuh. Return dict arah tembusan -> array bool."""
+    N = len(c)
+    out = {1: np.zeros(N, bool), -1: np.zeros(N, bool)}
+    piv = _zigzag(h, l, c, at, th)
+    for k in range(3, len(piv)):
+        X, A, B, C = piv[k - 3], piv[k - 2], piv[k - 1], piv[k]
+        s = 1 if C[2] == 1 else -1
+        x, a, b, cc = X[1], A[1], B[1], C[1]
+        xa, ab, bc = abs(a - x), abs(a - b), abs(cc - b)
+        if xa <= 0 or ab <= 0 or bc <= 0:
+            continue
+        r_ab, r_bc = ab / xa, bc / ab
+        zona = None
+        for nm, ((ab1, ab2), (bc1, bc2), dx, (cd1, cd2)) in POLA_H.items():
+            if not (ab1 <= r_ab <= ab2 and bc1 <= r_bc <= bc2):
+                continue
+            d = a - s * dx * xa
+            zx = (d - tol * xa, d + tol * xa)
+            p1, p2 = cc - s * cd1 * bc, cc - s * cd2 * bc
+            zb = (min(p1, p2), max(p1, p2))
+            if zx[1] < zb[0] or zb[1] < zx[0]:
+                continue
+            zona = (max(zx[0], zb[0]), min(zx[1], zb[1]))
+            if zona[1] - zona[0] < 0.01 * xa:
+                zona = zx
+            break
+        if zona is None:
+            xc = abs(cc - x)
+            if 0.382 <= r_ab <= 0.618 and 1.13 <= xc / xa <= 1.414:          # cypher
+                d = cc - s * 0.786 * xc
+                zona = (d - tol * xc, d + tol * xc)
+        if zona is None:
+            continue
+        dekat, jauh = (zona[1], zona[0]) if s == 1 else (zona[0], zona[1])
+        akhir = piv[k + 1][3] if k + 1 < len(piv) else N - 1
+        for i in range(C[3] + 1, min(akhir + 1, N)):
+            if (h[i] > cc) if s == 1 else (l[i] < cc):
+                break
+            if not ((l[i] <= dekat) if s == 1 else (h[i] >= dekat)):
+                continue
+            e = min(o[i], dekat) if s == 1 else max(o[i], dekat)
+            sl = jauh - s * 0.5 * at[i - 1]
+            if (e - sl) * s <= 0:
+                break
+            tp = e + s * 2 * abs(e - sl)
+            for j in range(i, min(i + 12, N - 1)):
+                if (c[j] < sl) if s == 1 else (c[j] > sl):
+                    out[-s][j] = True
+                    break
+                if (h[j] >= tp) if s == 1 else (l[j] <= tp):
+                    break
+            break
+    return out
 
 
 def btc_arah(df_btc):
@@ -279,8 +531,8 @@ PEMICU = {
     "rsi_balik": ("RSI keluar dari jenuh 30/70", lambda F, s: _x(F["rsi"], 30 if s == 1 else 70, s)),
     "macd_sinyal": ("MACD memotong garis sinyal", lambda F, s: _x(F["macd"], F["macds"], s)),
     "macd_nol": ("MACD melewati nol", lambda F, s: _x(F["macd"], 0, s)),
-    "donchian20": ("tembus Donchian 20", lambda F, s: _x(F["c"], F["dc20h"] if s == 1 else F["dc20l"], s)),
-    "donchian55": ("tembus Donchian 55", lambda F, s: _x(F["c"], F["dc55h"] if s == 1 else F["dc55l"], s)),
+    "donchian20": ("tembus harga tertinggi atau terendah 20 candle (Donchian 20)", lambda F, s: _x(F["c"], F["dc20h"] if s == 1 else F["dc20l"], s)),
+    "donchian55": ("tembus harga tertinggi atau terendah 55 candle (Donchian 55)", lambda F, s: _x(F["c"], F["dc55h"] if s == 1 else F["dc55l"], s)),
     "bb_tembus": ("tembus Bollinger Band", lambda F, s: _x(F["c"], F["bbu"] if s == 1 else F["bbl"], s)),
     "bb_balik": ("balik dari luar Bollinger Band", lambda F, s: _x(F["c"], F["bbl"] if s == 1 else F["bbu"], s)),
     "keltner": ("tembus Keltner Channel", lambda F, s: _x(F["c"], F["kcu"] if s == 1 else F["kcl"], s)),
@@ -288,25 +540,30 @@ PEMICU = {
     "stoch": ("Stochastic silang dari jenuh",
               lambda F, s: _x(F["stk"], F["std"], s) & ((_geser(F["stk"]) < 20) if s == 1 else (_geser(F["stk"]) > 80))),
     "williams": ("Williams %R keluar dari jenuh", lambda F, s: _x(F["wr"], -80 if s == 1 else -20, s)),
-    "roc": ("ROC 10 melewati nol", lambda F, s: _x(F["roc"], 0, s)),
+    "roc": ("momentum 10 candle berbalik arah (ROC melewati nol)", lambda F, s: _x(F["roc"], 0, s)),
     "hma": ("Hull MA berbalik arah", lambda F, s: _x(F["hma"] - _geser(F["hma"]), 0, s)),
-    "engulf": ("candle engulfing", _engulf),
-    "inside_tembus": ("tembus inside bar", _inside),
-    "candle_kuat": ("candle besar searah bervolume", lambda F, s: (((F["c"] - F["o"]) * s) > 1.2 * F["atr"]) & F["vol90"]),
+    "engulf": ("candle engulfing (candle menelan candle sebelumnya)", _engulf),
+    "inside_tembus": ("tembus candle inside bar (candle kecil di dalam candle sebelumnya)", _inside),
+    "candle_kuat": ("candle besar searah dengan volume besar", lambda F, s: (((F["c"] - F["o"]) * s) > 1.2 * F["atr"]) & F["vol90"]),
+    "harmo_gagal": ("pola harmonic gagal (harga tutup menembus zona pembalikan)", lambda F, s: F["hg"][s]),
 }
+# teknik yang diuji duluan di riset berikutnya (tetap harus lolos semua syarat)
+BENIH = [{"p": "harmo_gagal", "p2": None, "arah": "LS", "f": ["tren200"], "ex": ["trail", 2.0, 4.0]},
+         {"p": "harmo_gagal", "p2": None, "arah": "LS", "f": [], "ex": ["trail", 2.0, 4.0]},
+         {"p": "harmo_gagal", "p2": None, "arah": "LS", "f": ["tren200", "vol80"], "ex": ["trail", 2.0, 4.0]}]
 
 SARING = {
-    "tren200": ("searah EMA 200", lambda F, s: _gt(F["c"], F["ema200"], s)),
-    "tren50": ("searah EMA 50", lambda F, s: _gt(F["c"], F["ema50"], s)),
-    "ema2050": ("EMA 20 searah EMA 50", lambda F, s: _gt(F["ema20"], F["ema50"], s)),
-    "adx_tren": ("ADX di atas 20 searah", lambda F, s: (F["adx"] > 20) & _gt(F["pdi"], F["ndi"], s)),
-    "adx_sepi": ("ADX di bawah 20", lambda F, s: F["adx"] < 20),
-    "vol80": ("volume 20% tertinggi", lambda F, s: F["vol80"]),
-    "btc": ("searah BTC 4J (EMA 50)", lambda F, s: F["btc"] == s),
+    "tren200": ("searah tren besar (EMA 200)", lambda F, s: _gt(F["c"], F["ema200"], s)),
+    "tren50": ("searah tren menengah (EMA 50)", lambda F, s: _gt(F["c"], F["ema50"], s)),
+    "ema2050": ("EMA 20 sudah searah EMA 50", lambda F, s: _gt(F["ema20"], F["ema50"], s)),
+    "adx_tren": ("tren sedang kuat (ADX di atas 20)", lambda F, s: (F["adx"] > 20) & _gt(F["pdi"], F["ndi"], s)),
+    "adx_sepi": ("pasar sedang tenang (ADX di bawah 20)", lambda F, s: F["adx"] < 20),
+    "vol80": ("volume tinggi (20% teratas)", lambda F, s: F["vol80"]),
+    "btc": ("searah BTC 4J", lambda F, s: F["btc"] == s),
     "rsi_aman": ("RSI belum jenuh", lambda F, s: (F["rsi"] < 70) if s == 1 else (F["rsi"] > 30)),
-    "squeeze": ("keluar dari Bollinger menyempit", lambda F, s: F["squeeze"]),
-    "awan": ("di luar awan Ichimoku searah", lambda F, s: (F["c"] > F["awan_atas"]) if s == 1 else (F["c"] < F["awan_bawah"])),
-    "harian": ("searah tren harian (EMA 50 1D)", lambda F, s: F["harian"] == s),
+    "squeeze": ("harga baru keluar dari fase menyempit", lambda F, s: F["squeeze"]),
+    "awan": ("harga di luar awan Ichimoku searah sinyal", lambda F, s: (F["c"] > F["awan_atas"]) if s == 1 else (F["c"] < F["awan_bawah"])),
+    "harian": ("searah tren harian", lambda F, s: F["harian"] == s),
 }
 
 KELUAR = [("trail", 1.5, 3.0), ("trail", 1.5, 4.0), ("trail", 2.0, 3.0), ("trail", 2.0, 4.0),
@@ -334,16 +591,22 @@ def _mirip_jalur(spec):
     return any(_mirip(spec, {"p": p, "p2": None, "arah": a, "f": fs}) for p, a, fs in SUDAH_ADA)
 
 
-def nama(spec):
+def bagian(spec):
+    """(arah, cara masuk, cara keluar) dalam bahasa sederhana."""
     arah = {"L": "LONG", "S": "SHORT", "LS": "LONG dan SHORT"}[spec["arah"]]
-    t = PEMICU[spec["p"]][0]
+    masuk = PEMICU[spec["p"]][0]
     if spec.get("p2"):
-        t += f" setelah {PEMICU[spec['p2']][0]} (combo dalam 6 candle)"
+        masuk += f", didahului {PEMICU[spec['p2']][0]} dalam 6 candle terakhir"
     if spec["f"]:
-        t += ", " + ", ".join(SARING[f][0] for f in spec["f"])
-    ex = spec["ex"]
-    t += f", SL {ex[1]:g} ATR, " + (f"trailing {ex[2]:g} ATR" if ex[0] == "trail" else f"TP {ex[2]:g}R")
-    return f"{t} ({arah})"
+        masuk += ", " + ", ".join(SARING[f][0] for f in spec["f"])
+    tipe, slk, x = spec["ex"]
+    keluar = f"SL {slk:g} ATR, " + (f"lalu trailing stop {x:g} ATR, tanpa TP" if tipe == "trail" else f"TP {x:g}R ({x:g} kali jarak SL)")
+    return arah, masuk, keluar
+
+
+def nama(spec):
+    arah, masuk, keluar = bagian(spec)
+    return f"{masuk}. {keluar} ({arah})"
 
 
 def acak_spec(rng):
@@ -439,13 +702,14 @@ def _pf(r):
 
 
 def nilai(hasil):
-    """hasil: list (t, R, candle, arah) semua koin. Ringkasan 2021-2023 (dev) dan 2024-sekarang (uji)."""
+    """hasil: list (t, R, candle, arah) semua koin. Ringkasan paruh lama (dev) dan paruh baru (uji) sejak Sep 2017."""
     if not hasil:
         return None
     t = np.array([z[0] for z in hasil])
     r = np.array([z[1] for z in hasil])
     nb = np.array([z[2] for z in hasil])
-    mdev, muji = (t >= MULAI_MS) & (t < BATAS_MS), t >= BATAS_MS
+    bt = _batas()
+    mdev, muji = (t >= MULAI_MS) & (t < bt), t >= bt
     dev, uji = r[mdev], r[muji]
     th = pd.to_datetime(t, unit="ms", utc=True).year
     tahun = [y for y in sorted(set(th)) if y >= 2021 and (th == y).sum() >= 20]
@@ -455,12 +719,12 @@ def nilai(hasil):
                 exp_dev=round(float(dev.mean()) if len(dev) else 0.0, 3), exp_uji=round(float(uji.mean()) if len(uji) else 0.0, 3),
                 wr=round(float((r[semua] > 0).mean() * 100), 0) if semua.any() else 0.0,
                 lama=round(float(np.median(nb[semua])) * 4 / 24, 1) if semua.any() else 0.0,
-                tahun_plus=round(plus / len(tahun), 2) if tahun else 0.0)
+                tahun_plus=round(plus / len(tahun), 2) if tahun else 0.0, label=list(label_paruh()))
 
 
 def lolos(m):
     S = SYARAT
-    return bool(m) and m["n_dev"] >= S["n_dev"] and m["n_uji"] >= S["n_uji"] and m["pf_dev"] >= S["pf_dev"] \
+    return bool(m) and m["n_dev"] >= NMIN["dev"] and m["n_uji"] >= NMIN["uji"] and m["pf_dev"] >= S["pf_dev"] \
         and m["pf_uji"] >= S["pf_uji"] and m["exp_dev"] >= S["exp"] and m["exp_uji"] >= S["exp"] and m["tahun_plus"] >= S["tahun_plus"]
 
 
@@ -508,7 +772,7 @@ def tahan_uji(FS, spec, per):
     """Uji ketahanan: untung di dua kelompok koin terpisah, dan tetap untung saat SL atau target digeser."""
     syms = sorted(per)
     for grup in (syms[::2], syms[1::2]):
-        r = [z[1] for s in grup for z in per[s] if z[0] >= MULAI_MS]
+        r = [z[1] for s in grup for z in per[s] if z[0] >= MULAI_MS]                  # seluruh sejarah sejak Sep 2017
         if len(r) < 60 or _pf(r) < SYARAT["separuh_pf"]:
             return False, "gagal di separuh koin"
     nb = tetangga(spec)
@@ -543,7 +807,23 @@ def muat_semua(uni=None):
         except Exception as ex:
             _log(f"data {s} gagal: {ex}")
     btc = btc_arah(dfs["BTCUSDT"]) if "BTCUSDT" in dfs else None
-    return {s: fitur(df, btc) for s, df in dfs.items()}
+    FS = {s: fitur(df, btc) for s, df in dfs.items()}
+    atur_nmin(FS)
+    return FS
+
+
+def atur_nmin(FS):
+    """Syarat jumlah trade per paruh: 1.4 trade per koin per tahun data di paruh itu, minimal 80
+    (uji maju memakai 55 per tahun paruh untuk 40 koin)."""
+    bt = _batas()
+    th = {"dev": 0.0, "uji": 0.0}
+    for F in FS.values():
+        t = F["t"]
+        th["dev"] += ((t >= MULAI_MS) & (t < bt)).sum() * 4 / (24 * 365.25)
+        th["uji"] += (t >= bt).sum() * 4 / (24 * 365.25)
+    for k in th:
+        NMIN[k] = max(80, int(1.4 * th[k]))
+    _log("syarat trade per paruh", NMIN, {k: round(v, 1) for k, v in th.items()}, "tahun-koin")
 
 
 # ---------------------------------------------------------------- riset harian
@@ -554,7 +834,7 @@ def riset():
     except Exception:
         pass
     FS = muat_semua()
-    if len(FS) < 10 or not any(F["t"][-1] >= BATAS_MS for F in FS.values()):
+    if len(FS) < 10 or not any(F["t"][-1] >= _batas() for F in FS.values()):
         _log("data kurang, riset batal", len(FS))
         return None
     d = _baca()
@@ -562,9 +842,11 @@ def riset():
     rng = random.Random(int(time.time() * 1000) % 2 ** 31)
     hampir = d["hampir"]
     lulus, baru, coba = [], 0, 0
+    antrian = [dict(b) for b in BENIH if _id(b) not in sudah]
     while baru < N_RISET and coba < N_RISET * 30:
         coba += 1
-        spec = mutasi(rng.choice(hampir)["spec"], rng) if hampir and rng.random() < 0.3 else acak_spec(rng)
+        spec = antrian.pop(0) if antrian else \
+            (mutasi(rng.choice(hampir)["spec"], rng) if hampir and rng.random() < 0.3 else acak_spec(rng))
         k = _id(spec)
         if k in sudah or _mirip_jalur(spec):
             continue
@@ -577,10 +859,14 @@ def riset():
             continue
         if lolos(m):
             lulus.append((spec, m, per))
-        elif m["n_dev"] >= SYARAT["n_dev"] and m["n_uji"] >= SYARAT["n_uji"] and min(m["pf_dev"], m["pf_uji"]) >= 1.15:
+        elif m["n_dev"] >= NMIN["dev"] and m["n_uji"] >= NMIN["uji"] and min(m["pf_dev"], m["pf_uji"]) >= 1.15:
             hampir.append(dict(spec=spec, skor=min(m["pf_dev"], m["pf_uji"])))
     aktif = {k: v for k, v in d["teknik"].items() if v["status"] in AKTIF}
     per_aktif = {k: jalankan(FS, v["spec"]) for k, v in aktif.items()}
+    for k, v in aktif.items():                         # nilai uji dihitung ulang tiap hari dengan data terbaru
+        m_ = nilai(gabung(per_aktif[k]))
+        if m_:
+            v["uji"] = m_
     masuk, n_acak, n_tahan = [], 0, 0
     diganti = []
     skor = lambda m: min(m["pf_dev"], m["pf_uji"])
@@ -589,8 +875,8 @@ def riset():
             break
         ganti = None
         if len(aktif) >= MAKS_AKTIF:
-            lemah = [(skor(v["uji"]), k) for k, v in aktif.items() if v["status"] == "KANDIDAT" and len(v.get("maju", [])) < 50]
-            if diganti or not lemah or skor(m) < min(lemah)[0] + 0.15:
+            lemah = [(skor(v["uji"]), k) for k, v in aktif.items() if v["status"] == "KANDIDAT"]
+            if diganti or not lemah or skor(m) < min(lemah)[0] + SYARAT["ganti"]:
                 continue
             ganti = min(lemah)[1]
         if any(_mirip(spec, v["spec"]) for kk, v in aktif.items() if kk != ganti):
@@ -629,10 +915,8 @@ def riset():
         for k, v in list(aktif.items()):
             if k in masuk:
                 continue
-            m = nilai(gabung(jalankan(FS, v["spec"])))
-            if m:
-                v["uji"] = m
-            if not m or m["pf_uji"] < 1.10 or m["pf_dev"] < 1.10:
+            m = v.get("uji")
+            if not m or min(m["pf_uji"], m["pf_dev"]) < SYARAT["cabut"]:
                 v["status"], v["alasan"] = "DICABUT", "gagal uji ulang mingguan"
                 dicabut.append(k)
     dedup = {}
@@ -641,20 +925,34 @@ def riset():
     d["hampir"] = list(dedup.values())
     d["riwayat"].append(dict(t=int(time.time()), diuji=baru, lolos=len(lulus), masuk=len(masuk), detik=int(time.time() - t0)))
     _simpan(d)
+    th0 = min(time.gmtime(F["t"][250] / 1000).tm_year for F in FS.values() if len(F["t"]) > 250)
     rows = ["🧪 <b>QSE v148 | LAB RISET HARIAN</b>",
-            f"Hari ini diuji {baru} teknik baru di {len(FS)} koin teramai (candle 4J sejak 2021). Total sudah diuji {len(d['diuji']):,}.",
-            f"Lolos syarat 2 periode: {len(lulus)}. Dari yang dicek, lebih baik dari masuk acak {n_acak}, lolos uji ketahanan {n_tahan}. "
-            f"Masuk KANDIDAT hari ini: {len(masuk)} (maksimal {MAKS_BARU_HARI} per hari, harus beda dari teknik aktif)."]
-    for k in masuk:
+            "Tiap malam robot membuat teknik trading baru sendiri, lalu mengujinya di data lama.",
+            f"Hari ini {baru} teknik diuji di {len(FS)} koin teramai, data {th0} sampai sekarang.",
+            f"Hasil: {len(lulus)} lolos uji awal, {n_acak} lebih bagus dari entry acak, {n_tahan} tahan uji ketahanan, "
+            f"{len(masuk)} masuk daftar percobaan (KANDIDAT)."]
+    if not masuk:
+        rows.append("Hari ini tidak ada teknik baru yang lolos semua uji. Teknik yang sudah aktif tetap jalan.")
+    for i, k in enumerate(masuk, 1):
         v = d["teknik"][k]
         m, b = v["uji"], v["acak"]
-        rows.append(f"🆕 {html.escape(v['nama'])}\n   PF 2021-23 {m['pf_dev']}, 2024-sekarang {m['pf_uji']} (masuk acak {b['pf_dev']} dan "
-                    f"{b['pf_uji']}), {m['n_dev'] + m['n_uji']} trade, WR {m['wr']:.0f}%, lama rata {m['lama']:g} hari")
+        lb = m.get("label") or label_paruh()
+        arah, ms, kl = bagian(v["spec"])
+        rows += ["", f"🆕 <b>TEKNIK BARU {i}  ·  {arah}</b>",
+                 f"Cara masuk: {ms}.",
+                 f"Cara keluar: {kl}.",
+                 f"Hasil uji: PF {m['pf_dev']:.2f} ({lb[0]}) dan {m['pf_uji']:.2f} ({lb[1]}). {m['n_dev'] + m['n_uji']} trade, "
+                 f"menang {m['wr']:.0f}%, rata-rata {m['lama']:g} hari per trade.",
+                 f"Pembanding: entry acak dengan syarat yang sama hanya PF {b['pf_dev']:.2f} dan {b['pf_uji']:.2f}."]
     for k in diganti:
-        rows.append(f"🔁 Diganti: {html.escape(d['teknik'][k]['nama'])} (uji majunya belum 50 trade, teknik baru PF lebih tinggi)")
+        rows += ["", f"🔁 Diganti teknik yang lebih kuat, sinyalnya tidak dikirim lagi: {html.escape(nama(d['teknik'][k]['spec']))}"]
     for k in dicabut:
-        rows.append(f"❌ Dicabut: {html.escape(d['teknik'][k]['nama'])} ({d['teknik'][k].get('alasan')})")
-    rows.append(status_teks(d, ringkas=time.gmtime().tm_wday != 6))      # daftar lengkap teknik aktif tiap Minggu
+        rows += ["", f"❌ Dicabut karena hasil ujinya turun, sinyalnya tidak dikirim lagi: {html.escape(nama(d['teknik'][k]['spec']))}"]
+    rows += ["", status_teks(d, ringkas=time.gmtime().tm_wday != 6), "",      # daftar lengkap teknik aktif tiap Minggu
+             "💡 Arti angka: PF = total untung dibagi total rugi, di atas 1 berarti untung. ATR = rata-rata gerak harga per candle 4J. "
+             f"Angka uji selalu lebih tinggi dari hasil nyata. Harapan jujur di pasar live sekitar PF {PF_MAJU_PROSES}.",
+             "✅ Yang perlu Anda lakukan: tidak ada. Kalau teknik lab memberi sinyal, robot kirim kartu 🧪 SINYAL TEKNIK LAB. "
+             "Ambil dengan lot kecil: KANDIDAT 0.25x (seperempat lot biasa), TERBUKTI LAB 0.5x."]
     _kirim("\n".join(rows))
     _log(f"riset selesai {int(time.time() - t0)} detik, diuji {baru}, lolos {len(lulus)}, masuk {len(masuk)}")
     return d
@@ -664,15 +962,16 @@ def status_teks(d=None, ringkas=False):
     d = d or _baca()
     ak = [v for v in d["teknik"].values() if v["status"] in AKTIF]
     sel = [c["R"] for c in d["closed"]]
-    rows = [f"📚 Teknik lab aktif {len(ak)} (kandidat {sum(v['status'] == 'KANDIDAT' for v in ak)}, "
-            f"terbukti lab {sum(v['status'] == 'TERBUKTI LAB' for v in ak)}), dicabut "
-            f"{sum(v['status'] == 'DICABUT' for v in d['teknik'].values())}. Posisi lab jalan {len(d['open'])}, selesai {len(sel)}"
-            + (f" (PF {_pf(sel):.2f}, total {sum(sel):+.1f}R)" if sel else "") + "."]
+    rows = [f"📚 Daftar teknik lab: {len(ak)} aktif ({sum(v['status'] == 'KANDIDAT' for v in ak)} percobaan KANDIDAT, "
+            f"{sum(v['status'] == 'TERBUKTI LAB' for v in ak)} TERBUKTI LAB), {sum(v['status'] == 'DICABUT' for v in d['teknik'].values())} "
+            f"dicabut. Trade lab berjalan {len(d['open'])}, selesai {len(sel)}"
+            + (f" (PF live {_pf(sel):.2f}, total {sum(sel):+.1f}R)" if sel else "") + "."]
     if not ringkas:
         for v in ak:
             mj = v.get("maju", [])
-            rows.append(f"{'✅' if v['status'] == 'TERBUKTI LAB' else '🧪'} {html.escape(v['nama'])}\n   uji PF {v['uji']['pf_dev']} / "
-                        f"{v['uji']['pf_uji']}  ·  maju {len(mj)} trade" + (f", PF {_pf(mj):.2f}" if mj else ""))
+            arah, ms, kl = bagian(v["spec"])
+            rows.append(f"{'✅' if v['status'] == 'TERBUKTI LAB' else '🧪'} {arah}: {html.escape(ms)}. {kl}.\n   uji PF {v['uji']['pf_dev']:.2f} dan "
+                        f"{v['uji']['pf_uji']:.2f}  ·  live {len(mj)} trade" + (f", PF {_pf(mj):.2f}" if mj else ""))
     return "\n".join(rows)
 
 
@@ -735,15 +1034,16 @@ def _kelola_open(d, FSd, tick):
             tk = tick.get(tr["sym"]) or 0.0001
             arah = "LONG" if s == 1 else "SHORT"
             pesan.append(f"{'✅' if R > 0 else '🛑'} <b>LAB SELESAI  ·  {tr['sym']} {arah}  ·  {R:+.2f}R</b>\n"
-                         + ("Target tersentuh." if alasan == "TP" else f"Kena SL di sekitar {_fmt(tr['sl'], tk)}." if alasan == "SL"
-                            else f"Sudah {tr['H']} candle 4J. Tutup sekarang di harga pasar."))
+                         + ("TP tersentuh." if alasan == "TP" else f"Kena SL di sekitar {_fmt(tr['sl'], tk)}." if alasan == "SL"
+                            else f"Sudah {tr['H']} candle 4J ({tr['H'] * 4 // 24} hari). Kalau masih pegang, tutup sekarang di harga pasar."))
         if v:
             v.setdefault("maju", []).append(round(R, 3))
             st, why = _status_maju(v) if v["status"] in AKTIF else (None, "")
             if st and st != v["status"]:
                 v["status"], v["alasan"] = st, why
-                pesan.append(f"{'✅ NAIK JADI TERBUKTI LAB (lot 0.5x)' if st == 'TERBUKTI LAB' else '❌ DICABUT'}: "
-                             f"{html.escape(v['nama'])} ({why})")
+                pesan.append((f"✅ <b>NAIK KELAS JADI TERBUKTI LAB</b>: {html.escape(nama(v['spec']))}. Hasil live {why}. "
+                              "Sinyal berikutnya boleh lot 0.5x.") if st == "TERBUKTI LAB" else
+                             (f"❌ <b>DICABUT</b>: {html.escape(nama(v['spec']))}. Hasil live {why}. Sinyalnya tidak dikirim lagi."))
     return pesan
 
 
@@ -846,8 +1146,8 @@ def sinyal():
     if not (kartu or pesan):
         _log(f"sinyal: tidak ada yang baru ({len(calon)} dicatat diam-diam)")
         return []
-    teks = ("🧪 <b>QSE v148 | SINYAL TEKNIK LAB</b>\nTeknik temuan robot sendiri, lolos uji 2021-2023 dan 2024-sekarang, sedang uji maju "
-            "di harga live. KANDIDAT lot 0.25x, TERBUKTI LAB lot 0.5x dari lot biasa.\n\n" + "\n\n".join(pesan + kartu))
+    teks = ("🧪 <b>QSE v148 | SINYAL TEKNIK LAB</b>\nSinyal dari teknik temuan robot sendiri, masih masa percobaan. Pakai lot kecil: "
+            "KANDIDAT 0.25x, TERBUKTI LAB 0.5x dari lot biasa.\n\n" + "\n\n".join(pesan + kartu))
     _kirim(teks)
     return [teks]
 
@@ -867,17 +1167,23 @@ def _kartu(v, tr, SY, tick=None):
         blok = (f"<pre>{tr['sym']} {arah}\nEntry {tr['entry']:.6g} MARKET\nSL    {tr['sl']:.6g}"
                 + (f"\nTP    {tr['tp']:.6g}" if tr.get("tp") else "") + "</pre>")
     jam = time.strftime("%d/%m %H:%M", time.gmtime((tr["last"] + 2 * H4) / 1000 + 7 * 3600))
+    _, ms, kl = bagian(v["spec"])
+    lb = m.get("label") or label_paruh()
     rows = [f"{'🟢' if L else '🔴'} <b>{tr['sym']} {arah}</b>  ·  {'✅ TERBUKTI LAB' if v['status'] == 'TERBUKTI LAB' else '🧪 KANDIDAT'}"
             f"  ·  lot {lot}",
-            f"📐 {html.escape(v['nama'])}",
-            f"📊 Uji 2021-23 PF {m['pf_dev']}, 2024-sekarang PF {m['pf_uji']}, {m['n_dev'] + m['n_uji']} trade, WR {m['wr']:.0f}%"
-            f"  ·  uji maju {len(mj)} trade" + (f" PF {_pf(mj):.2f}" if mj else ""),
+            f"📐 Cara masuk: {html.escape(ms)}.",
+            f"🚪 Cara keluar: {kl}.",
+            f"📊 Hasil uji: PF {m['pf_dev']:.2f} ({lb[0]}) dan {m['pf_uji']:.2f} ({lb[1]}), {m['n_dev'] + m['n_uji']} trade. Harapan live sekitar "
+            f"PF {PF_MAJU_PROSES}. Live sejauh ini: {len(mj)} trade" + (f", PF {_pf(mj):.2f}." if mj else "."),
             blok,
-            f"🎯 Entry valid sampai {jam} WIB selama harga dalam Range",
-            f"⏳ Lama trade (uji): rata {m.get('lama', 0):g} hari, paling lama {tr['H'] * 4 // 24} hari"]
+            f"🎯 Entry valid sampai {jam} WIB, selama harga masih di dalam Range.",
+            f"⏳ Biasanya selesai dalam {m.get('lama', 0):g} hari, paling lama {tr['H'] * 4 // 24} hari.",
+            "✅ Cara pakai: tekan lama blok di atas untuk salin, kirim /entry lalu tempel isinya. "
+            + ("Pasang SL dan TP di Bybit, lalu biarkan sampai kena." if tr.get("tp") else
+               "Pasang SL di Bybit, lalu isi Trailing Stop seperti di bawah.")]
     if len(mj) >= 40 and _pf(mj[-40:]) < 0.8:
-        rows.append(f"⚠️ 40 trade maju terakhir PF {_pf(mj[-40:]):.2f}. Di uji ini terjadi di 36% waktu walau tekniknya bagus, "
-                    "karena trade datang bergerombol. Lot tetap kecil, jangan dinaikkan.")
+        rows.append(f"⚠️ 40 trade live terakhir teknik ini PF {_pf(mj[-40:]):.2f} (sedang rugi beruntun). Teknik bagus pun mengalami ini "
+                    "di 36% waktu karena trade datang bergerombol. Jangan naikkan lot.")
     if tr["tipe"] == "trail" and SY:
         rows.append(SY.isi_trailing(tr["x"] * tr["atr"], tr["sl"], t))
     return "\n".join(rows)
@@ -936,9 +1242,27 @@ def uji_oi():
     return out
 
 
-NAMA_OI = {"long_menumpuk": "OI naik tajam saat harga naik (LONG menumpuk)",
-           "short_menumpuk": "OI naik tajam saat harga turun (SHORT menumpuk)",
-           "oi_rontok": "OI turun tajam (posisi dilikuidasi atau ditutup)"}
+NAMA_OI = {"long_menumpuk": "OI naik tajam saat harga naik (banyak trader LONG baru)",
+           "short_menumpuk": "OI naik tajam saat harga turun (banyak trader SHORT baru)",
+           "oi_rontok": "OI turun tajam (banyak posisi ditutup atau dilikuidasi)"}
+
+
+def _oi_teks(v):
+    """(ikon, fakta, arti) satu pola open interest dalam bahasa sederhana."""
+    p = v["periode"]
+    if v["arah"]:
+        fakta = (f"24 jam kemudian BTC naik di {p[0]['naik']:.0f}% dan {p[1]['naik']:.0f}% kasus "
+                 f"(biasanya {p[0]['base_naik']:.0f}% dan {p[1]['base_naik']:.0f}%).")
+        if v["arah"] > 0:
+            return "🟢", fakta, ("Artinya BTC lebih sering NAIK. Banyak trader SHORT terjebak, rawan naik tiba-tiba (short squeeze). "
+                                "Kalau mau SHORT BTC, pakai SL disiplin.")
+        return "🔴", fakta, ("Artinya BTC lebih sering TURUN. Banyak trader LONG terjebak, rawan turun tiba-tiba. "
+                            "Kalau mau LONG BTC, pakai SL disiplin.")
+    if v["gerak"]:
+        return "⚠️", (f"24 jam kemudian BTC bergerak lebih dari 3% di {p[0]['gerak3']:.0f}% dan {p[1]['gerak3']:.0f}% kasus "
+                      f"(biasanya {p[0]['base_gerak3']:.0f}% dan {p[1]['base_gerak3']:.0f}%). Arahnya naik atau turun tidak bisa ditebak."), \
+            "Artinya siap gerak besar. Pastikan SL terpasang dan jangan tambah posisi."
+    return "➖", "Tidak ada pola yang konsisten.", "Abaikan."
 
 
 def oi_info():
@@ -952,9 +1276,9 @@ def oi_info():
         _log("oi sekarang gagal", ex)
         return {}
     o = _json("oi_hasil.json")
-    rows = [f"📊 Open interest BTC 24 jam {oi24 * 100:+.1f}%."]
+    rows = [f"📊 Open interest (jumlah posisi futures terbuka) BTC 24 jam {oi24 * 100:+.1f}%."]
     if not o:
-        rows[0] += " Pola open interest belum diuji (uji otomatis bulanan dari VPS)."
+        rows[0] += " Polanya belum diuji (uji otomatis tiap bulan)."
         return {"rows": rows, "arah": 0, "gerak": False}
     try:
         import qse_saya as SY
@@ -968,13 +1292,8 @@ def oi_info():
         rows[0] += " Normal, tidak ada penumpukan posisi."
         return {"rows": rows, "arah": 0, "gerak": False}
     v = o["hasil"][cocok]
-    p = v["periode"]
-    rows.append(f"{'✅' if v['arah'] or v['gerak'] else '➖'} Pola {NAMA_OI[cocok]}. Sejarah 24 jam kemudian: BTC naik di {p[0]['naik']}% dan "
-                f"{p[1]['naik']}% kasus (biasanya {p[0]['base_naik']}% dan {p[1]['base_naik']}%), gerak lebih dari 3% di "
-                f"{p[0]['gerak3']}% dan {p[1]['gerak3']}% (biasanya {p[0]['base_gerak3']}% dan {p[1]['base_gerak3']}%)."
-                + ("" if v["arah"] or v["gerak"] else " Tidak konsisten, info saja."))
-    if v["gerak"]:
-        rows.append("⚠️ Peluang gerak besar 24 jam lebih tinggi dari biasa. Pasang SL, jangan tambah posisi melawan arah.")
+    ikon, fakta, arti = _oi_teks(v)
+    rows.append(f"{ikon} Sedang terjadi: {NAMA_OI[cocok]}. {fakta} {arti}")
     return {"rows": rows, "arah": v["arah"], "gerak": v["gerak"]}
 
 
@@ -1067,33 +1386,38 @@ def uji_slsaran():
 
 def bulanan():
     os.makedirs(LAB, exist_ok=True)
-    rows = ["🗓 <b>QSE v148 | LAB BULANAN</b>"]
+    rows = ["🗓 <b>QSE v148 | LAB BULANAN</b>\nTiap tanggal 1 robot menguji ulang 2 hal dengan data terbaru."]
     try:
         r = uji_slsaran()
         if r["n"] < 150:
-            rows.append(f"📶 Saran pindah SL belum bisa diuji di sinyal live: baru {r['n']} sinyal robot selesai dalam 180 hari, "
-                        "butuh 150. Tetap MATI. Uji 2021-2026 di 12 ribu sinyal: saran SL tiap 1% memotong total profit 55-78%.")
+            rows.append(f"1️⃣ <b>SARAN PINDAH SL</b> (geser SL tiap profit naik 1%)\nBelum bisa diuji: baru {r['n']} sinyal robot selesai "
+                        "dalam 180 hari, butuh 150.\nStatus: MATI. Uji 2021-2026 di 12 ribu sinyal: cara ini memotong total profit 55-78%.\n"
+                        "✅ Yang perlu Anda lakukan: tidak ada. Tetap pakai SL dan TP sesuai sinyal.")
         else:
-            detil = ", ".join(f"tiap {iv:g}% {r['hasil'][str(iv)]['total']:+.1f}R PF {r['hasil'][str(iv)]['pf']}" for iv in INTERVAL_SL)
-            rows.append(f"📶 Saran pindah SL diuji di {r['n']} sinyal robot 180 hari terakhir. Aturan jalur {r['total_dasar']:+.1f}R "
-                        f"(PF {r['pf_dasar']}). Saran SL: {detil}. "
-                        + (f"AKTIF otomatis bulan ini dengan jarak {r['interval']:g}%." if r["aktif"]
-                           else "Tetap MATI karena belum lebih untung dari aturan jalur."))
+            detil = ", ".join(f"tiap {iv:g}% {r['hasil'][str(iv)]['total']:+.1f}R" for iv in INTERVAL_SL)
+            rows.append(f"1️⃣ <b>SARAN PINDAH SL</b> (geser SL tiap profit naik)\nDiuji di {r['n']} sinyal robot 180 hari terakhir. "
+                        f"Tanpa saran SL: {r['total_dasar']:+.1f}R. Dengan saran SL: {detil}.\n"
+                        + (f"Status: AKTIF bulan ini dengan jarak {r['interval']:g}%. Robot kirim saran 📶 tiap profit naik, geser SL sendiri di Bybit."
+                           if r["aktif"] else "Status: MATI karena tidak lebih untung.\n✅ Yang perlu Anda lakukan: tidak ada. "
+                           "Tetap pakai SL dan TP sesuai sinyal."))
     except Exception as ex:
-        rows.append(f"📶 Uji saran SL gagal: {html.escape(str(ex))}")
+        rows.append(f"1️⃣ Uji saran SL gagal: {html.escape(str(ex))}")
     try:
         o = uji_oi()
         if o:
-            for k, v in o["hasil"].items():
-                p = v["periode"]
-                rows.append(f"📊 {NAMA_OI[k]}: 24 jam kemudian BTC naik {p[0]['naik']}% dan {p[1]['naik']}% kasus (biasanya "
-                            f"{p[0]['base_naik']}% dan {p[1]['base_naik']}%), gerak lebih dari 3% {p[0]['gerak3']}% dan {p[1]['gerak3']}% "
-                            f"(biasanya {p[0]['base_gerak3']}% dan {p[1]['base_gerak3']}%). "
-                            + ("Konsisten, dipakai di /cek BTC." if v["arah"] or v["gerak"] else "Tidak konsisten, info saja."))
+            th = lambda ms: time.gmtime(ms / 1000).tm_year
+            bagian_oi = [f"2️⃣ <b>OPEN INTEREST (OI) BTC</b>\nOI = jumlah posisi futures BTC yang masih terbuka. Diuji di data Bybit "
+                         f"{th(o['dari'])}-{th(o['sampai'])}, dibagi dua periode. Pola dipakai hanya kalau sama di dua periode."]
+            for k in ("short_menumpuk", "long_menumpuk", "oi_rontok"):
+                ikon, fakta, arti = _oi_teks(o["hasil"][k])
+                bagian_oi.append(f"{ikon} <b>{NAMA_OI[k]}</b>\n{fakta}\n{arti}")
+            bagian_oi.append("✅ Yang perlu Anda lakukan: tidak ada. Robot memakai pola ini otomatis di /cek BTC. Kalau polanya sedang "
+                             "terjadi, muncul di bagian KESIMPULAN AKHIR.")
+            rows.append("\n\n".join(bagian_oi))
         else:
-            rows.append("📊 Data open interest belum cukup untuk diuji.")
+            rows.append("2️⃣ Data open interest belum cukup untuk diuji.")
     except Exception as ex:
-        rows.append(f"📊 Uji open interest gagal: {html.escape(str(ex))}")
+        rows.append(f"2️⃣ Uji open interest gagal: {html.escape(str(ex))}")
     _kirim("\n\n".join(rows))
     return rows
 
