@@ -772,11 +772,9 @@ BUKTI = {
                       "2020-2023 PF 1.26, uji ulang 2024-2026 PF 1.45, positif 21 dari 26 kuartal"),
     "saran orderblock": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin perp, LONG, maks 8 posisi: 969 trade, PF 1.45, "
                          "uji ulang 2024-2026 dengan aturan yang dipilih dari 2020-2023: PF 1.26"),
-    "saran kombo_ob_awal": ("TERBUKTI", "✅", "1x", "Kombo Tangkapan Awal Zona Order Block (5 Pilar: Arah BTC positif + Zona OB Terkunci + Gerak Dini + Anti-Terlambat + Pengawal EMA)"),
-    "saran rantai_eksekusi": ("TERBUKTI", "✅", "1x", "Rantai Konfirmasi 5 Indikator (Ichimoku + McGinley + Bollinger Bands + Pola Lilin + Momentum) di atas Zona Pantulan Terkunci"),
 }
 BELUM_UJI = ("BELUM DIUJI", "❔", "0.25x", "belum diuji ulang dengan data perp 5 tahun dan aturan robot lengkap")
-CT_KEY = {"saran kombo_ob_awal": "kombo_ob_awal", "saran rantai_eksekusi": "rantai_eksekusi", "saran snr_vol": "snr_vol", "saran msb_hpz": "msb_hpz", "saran smc_choch": "smc_choch", "saran mcginley": "mcginley", "saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "GZH", "saran momentum": "momentum", "saran news": "news_searah"}
+CT_KEY = {"saran snr_vol": "snr_vol", "saran msb_hpz": "msb_hpz", "saran smc_choch": "smc_choch", "saran mcginley": "mcginley", "saran ema_short": "ema_short", "saran rsi_vol": "rsi_vol", "saran ichimoku": "ichimoku", "saran orderblock": "orderblock", "saran GZH": "GZH", "saran momentum": "momentum", "saran news": "news_searah"}
 NAIK_N, NAIK_PF = 30, 1.2          # syarat naik jadi TERBUKTI dari hasil live
 
 
@@ -878,7 +876,7 @@ NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadang
               "saran orderblock": "Order Block + Volume", "saran trendline": "Tembus Trendline searah tren",
               "saran ema_short": "EMA Cross 20/50 SHORT", "saran rsi_vol": "RSI 50 + Volume",
               "saran mcginley": "McGinley 34 + Volume", "saran snr_vol": "SnR Pantul + Volume",
-              "saran msb_hpz": "MSB LuxAlgo HPZ", "saran smc_choch": "SMC CHoCH searah tren", "saran kombo_ob_awal": "Kombo Tangkapan Awal Zona OB", "saran rantai_eksekusi": "Rantai Konfirmasi 5 Indikator"}
+              "saran msb_hpz": "MSB LuxAlgo HPZ", "saran smc_choch": "SMC CHoCH searah tren"}
 
 
 def boleh_ikut(jalur, arah=None, skor=None):
@@ -2098,7 +2096,7 @@ def _sinkron_jalur(it, jp):
     elif "jalur_keluar" not in it["alert"]:
         it["alert"].append("jalur_keluar")
         cl = _jalur_tutup(it["sym"], it["arah"])
-        why = {"SL": "SL volatilitas/berjalan tersentuh", "TP": "TP tersentuh", "TP_EMA": "target berjalan garis EMA tercapai", "TP_MOMENTUM": "keuntungan diamankan saat momentum melemah", "CUT_STRUKTUR": "pemotong risiko cepat saat struktur pasar rusak", "WAKTU": "batas waktu habis"}.get((cl or {}).get("status"), "aturan keluar")
+        why = {"SL": "SL berjalan tersentuh", "TP": "TP tersentuh", "WAKTU": "batas waktu habis"}.get((cl or {}).get("status"), "aturan keluar")
         out.append(f"🚨 <b>TUTUP SEKARANG  ·  {it['sym']} {it['arah']}</b>\n↳ Jalur keluar karena {why}"
                    + (f", hasil jalur {cl['R']:+.2f}R" if cl and cl.get("R") is not None else "")
                    + f". Tutup posisi di Bybit dengan MARKET sekarang, lalu catat: /tutup {kd} HARGA. "
@@ -3438,7 +3436,7 @@ def sinyal_jalur(jam=False):
         pass
     for k, cfg in ST.STRAT.items():
         sumber.append((k, cfg["nama"], ST.lihat(k)["open"].values()))
-    telat_ok = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku", "rantai_eksekusi"}
+    telat_ok = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
     pegang = {v["sym"] for v in _load()["open"].values() if v["status"] in ("TERISI", "TP1")}
     now = time.time()
     tutup = int(now // 14400) * 14400
@@ -3457,7 +3455,7 @@ def sinyal_jalur(jam=False):
             sl = it["sl"]
             if baru and d is not None:
                 baru = abs(d) <= 0.5 and ((px > sl) if L else (px < sl))       # harga sudah lari: tidak ditampilkan
-            masih = (k in telat_ok and umur <= 2.1 and d is not None and abs(d) <= 0.5 and ((px > sl) if L else (px < sl))
+            masih = (k in telat_ok and umur <= ST.umur_maks(k) and d is not None and abs(d) <= 0.5 and ((px > sl) if L else (px < sl))
                      and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
             if not (baru or masih):
                 continue
@@ -3482,6 +3480,8 @@ def sinyal_jalur(jam=False):
                 ket += "  ·  💎 mutu tinggi"
             if it.get("vol_tinggi"):
                 ket += "  ·  🔊 volume pasar tinggi"
+            if it.get("dom_turun"):
+                ket += "  ·  📉 BTC.D turun"
             kartu.append((ST.prioritas(k, it), f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
                          f"<pre>{it['sym']} {it['arah']}\nEntry {fp(px or it['entry'], t)} MARKET\n"
                          + ((baris_range(ST.batas_masuk(it, k), t) + "\n") if ST.batas_masuk(it, k) else "")
@@ -3490,6 +3490,7 @@ def sinyal_jalur(jam=False):
     kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
     # order Tembus Trendline yang masih menunggu (STOP atau LIMIT, berlaku 24 jam): ikut ditampilkan supaya sama dengan cek per jam
     tunggu = []
+    jauh_tt = 0
     try:
         import qse_fixprofit as FX
         for v in FX.load()["open"].values():
@@ -3500,12 +3501,19 @@ def sinyal_jalur(jam=False):
             sisa = (v.get("exp_ts", 0) / 1000 - now) / 3600
             if sisa <= 0:
                 continue
-            jarak = f", harga sekarang {fp(px, t)} ({abs(px - v['entry']) / v['entry'] * 100:.1f}% dari entry)" if px else ""
+            jr = abs(px - v["entry"]) / v["entry"] * 100 if px else 0
+            if jr > 3:
+                jauh_tt += 1          # order STOP jauh jarang tersentuh dalam 24 jam, tidak ditampilkan supaya tidak menunggu sia-sia
+                continue
+            jarak = f", harga sekarang {fp(px, t)} ({jr:.1f}% dari entry)" if px else ""
             tunggu.append(f"⏳ <b>{v['sym']} {v['arah']}</b>  ·  Tembus Trendline  ·  order {v.get('order', '')} menunggu{jarak}, "
                           f"berlaku {sisa:.0f} jam lagi\n<pre>{v['sym']} {v['arah']}\nEntry {fp(v['entry'], t)} {v.get('order', '')}\n"
                           f"SL    {fp(v['sl'], t)}\nTP1   {fp(v['tp1'], t)}\nTP2   {fp(v['tp2'], t)}</pre>")
     except Exception as ex:
         print("[WARN] sinyal4j trendline", ex)
+    if jauh_tt:
+        tunggu.append(f"ℹ️ {jauh_tt} order Tembus Trendline lain masih lebih dari 3% dari harga, jarang tersentuh sebelum kedaluwarsa 24 jam, "
+                      "jadi tidak ditampilkan. Order STOP baru terisi kalau harga MENEMBUS entry.")
     blok_tunggu = ("\n\n⏳ <b>ORDER MENUNGGU TERISI</b> (Tembus Trendline, pasang order ini di Bybit, bukan MARKET)\n\n"
                    + "\n\n".join(tunggu)) if tunggu else ""
     kartu.sort(key=lambda z: z[0], reverse=True)          # prioritas: label terbukti dulu, lalu PF jalur
@@ -3632,6 +3640,17 @@ def cek_jalur(sym, arah=None, entry=None):
         rows += ["", "📘 <b>TENTANG KOIN</b>"] + tentang_koin(sym, df, px)
     except Exception as ex:
         print("[WARN] tentang koin", ex)
+    # 1b2. tokenomics dan perkiraan unlock
+    try:
+        import qse_fundamental as FD
+        tk_ = FD.tokenomik(sym)
+        if tk_.get("rows"):
+            rows += ["", "🔓 <b>TOKENOMICS DAN UNLOCK</b>"] + tk_["rows"]
+            if tk_.get("unlock_ts") and 0 <= tk_["unlock_ts"] - now <= 5 * 86400:
+                rows.append(f"⚠️ Perkiraan unlock +{tk_['unlock_pct']:g}% pasokan dalam {max(0, (tk_['unlock_ts'] - now) / 86400):.0f} hari. "
+                            "Untuk LONG, pakai SL disiplin di sekitar tanggal itu.")
+    except Exception as ex:
+        print("[WARN] tokenomik", ex)
     # 1c. berita terbaru
     try:
         import qse_news as NW
@@ -3724,6 +3743,15 @@ def cek_jalur(sym, arah=None, entry=None):
         waktu.append("BTC: " + ST.btc_ema50_teks().split(" ", 1)[1] + ". Info saja, tidak dipakai menyaring sinyal.")
     except Exception:
         pass
+    try:
+        import qse_pagi as PG
+        lu_ = PG.pasar_luas() or {}
+        if lu_.get("dom_turun") is not None:
+            waktu.append("BTC.D: " + ("tren TURUN, altcoin lebih kuat dari BTC. Sinyal SHORT di koin ini dapat label 📉 BTC.D TURUN "
+                                      "(uji 2017-2026 SHORT PF 1.57, 1.34, 1.68, biasanya 1.09, 1.18, 1.24)." if lu_["dom_turun"] else
+                                      "tren NAIK, BTC lebih kuat dari altcoin. Sinyal SHORT altcoin hasil biasa."))
+    except Exception as ex:
+        print("[WARN] btc.d cek", ex)
     rows += ["", "🕐 <b>WAKTU DAN PASAR</b>"] + waktu
     # 6. kesimpulan
     rows += ["", "✅ <b>KESIMPULAN</b>"]

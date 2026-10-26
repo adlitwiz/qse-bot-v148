@@ -1,5 +1,6 @@
 """QSE v148 - FUNDAMENTAL DAN DERIVATIF untuk /cek.
-  1. CoinGecko (gratis, tanpa key): market cap, peringkat, FDV, suplai beredar, jarak dari ATH, performa, kategori
+  1. CoinGecko (gratis, tanpa key): market cap, peringkat, FDV, suplai beredar, jarak dari ATH, performa, kategori,
+     tokenomics dan perkiraan unlock dari riwayat pasokan beredar 1 tahun (26 Okt 2026)
   2. Bybit: funding, open interest 24 jam, rasio akun long dan short, volume, umur listing
 Semua dibaca ulang paling cepat 6 jam sekali (cache). Kalau sumber gagal, bagian itu dilewati."""
 import json
@@ -66,6 +67,114 @@ def coingecko(sym):
     except Exception as ex:
         print("[WARN] coingecko:", ex)
         return c.get(k)
+
+
+def _pasokan(cid):
+    """Deret pasokan beredar harian 1 tahun dari CoinGecko (market cap dibagi harga). Disimpan 1 hari."""
+    c = _load()
+    k = "sup_" + cid
+    if k in c and time.time() - c[k].get("_ts", 0) < 86400:
+        return c[k]["d"]
+    try:
+        j = requests.get(f"{CG}/coins/{cid}/market_chart", headers=UA, timeout=20,
+                         params=dict(vs_currency="usd", days=365, interval="daily")).json()
+        d = [[int(a[0] // 1000), b[1] / a[1]] for a, b in zip(j.get("prices", []), j.get("market_caps", [])) if a[1] and b[1]]
+    except Exception as ex:
+        print("[WARN] pasokan coingecko:", ex)
+        return (c.get(k) or {}).get("d")
+    if len(d) < 60:
+        return (c.get(k) or {}).get("d")
+    c[k] = dict(_ts=time.time(), d=d)
+    _save(c)
+    return d
+
+
+def tokenomik(sym):
+    """Tokenomics dan perkiraan unlock dari CoinGecko gratis. Jadwal unlock resmi hanya ada di layanan berbayar, jadi unlock
+    diperkirakan dari lonjakan pasokan beredar harian (naik 1% atau lebih dalam sehari dan tidak balik turun dalam 3 hari).
+    Contoh cek ARB Okt 2025 - Okt 2026: 11 lonjakan +1.6 sampai +3.9%, tanggal 17-20 tiap bulan, cocok dengan unlock resmi
+    tanggal 16 (CoinGecko telat 1-3 hari). Return dict(rows, unlock_ts, unlock_pct). Info saja, belum diuji ke sinyal robot."""
+    f = coingecko(sym) or {}
+    rows = []
+    tot = f.get("maks") or f.get("total")
+    if f.get("beredar") and tot:
+        pct = f["beredar"] / tot * 100
+        rows.append(f"Beredar {pct:.0f}% dari pasokan {'maksimal' if f.get('maks') else 'total'} ({_angka(f['beredar'])} dari "
+                    f"{_angka(tot)})" + (". Sisa besar, unlock bisa jadi tekanan jual." if pct < 50 else "."))
+    if f.get("fdv") and f.get("mcap"):
+        rasio = f["fdv"] / f["mcap"]
+        rows.append(f"FDV {_uang(f['fdv'])}, {rasio:.1f} kali market cap" + (", banyak token belum beredar." if rasio >= 2 else "."))
+    out = dict(rows=rows, unlock_ts=None, unlock_pct=None)
+    d = _pasokan(f["id"]) if f.get("id") else None
+    if not d:
+        return out
+    t = [x[0] for x in d]
+    v = [x[1] for x in d]
+    naik = lambda hari: (v[-1] / v[-1 - hari] - 1) * 100 if len(v) > hari else None
+    n30, n365 = naik(30), naik(min(365, len(v) - 1))
+    if n30 is not None:
+        rows.append(f"Pasokan beredar 30 hari {n30:+.1f}%, 1 tahun {n365:+.1f}% (CoinGecko)"
+                    + (". Inflasi pasokan tinggi, harga butuh permintaan baru untuk naik." if (n365 or 0) >= 20 else "."))
+    loncat = []
+    for i in range(1, len(v)):
+        r = v[i] / v[i - 1] - 1
+        if r >= 0.01 and all(v[j] >= v[i] * 0.995 for j in range(i, min(len(v), i + 4))):
+            loncat.append((t[i], r * 100))
+    if len(loncat) >= 3:
+        jarak = sorted((loncat[i][0] - loncat[i - 1][0]) / 86400 for i in range(1, len(loncat)))
+        med = jarak[len(jarak) // 2]
+        rata = sum(z[1] for z in loncat) / len(loncat)
+        tgl = sorted(time.gmtime(z[0]).tm_mday for z in loncat)
+        bulanan = 24 <= med <= 36
+        lo_, hi_ = tgl[len(tgl) // 4], tgl[(3 * len(tgl)) // 4]
+        teks = (f"Pola unlock (perkiraan): {len(loncat)} lonjakan pasokan dalam 1 tahun, rata +{rata:.1f}%, sekitar tiap {med:.0f} hari"
+                + ((f", biasanya tanggal {lo_}" if lo_ == hi_ else f", biasanya tanggal {lo_}-{hi_}") if bulanan else ""))
+        if bulanan:
+            # tanggal tengah pola di bulan berikutnya. CoinGecko biasanya telat 1-3 hari dari unlock resmi, jadi jendela mundur 2 hari.
+            hari_pola = tgl[len(tgl) // 2]
+            g = time.gmtime()
+            th, bl = g.tm_year, g.tm_mon
+            import calendar
+            pusat = 0
+            for _ in range(3):
+                pusat = calendar.timegm((th, bl, min(hari_pola, 28), 0, 0, 0))
+                if pusat >= time.time() - 86400:
+                    break
+                th, bl = (th + 1, 1) if bl == 12 else (th, bl + 1)
+            nxt = pusat - 2 * 86400
+            a_, b_ = time.gmtime(nxt), time.gmtime(pusat)
+            teks += (f". Berikutnya sekitar {a_.tm_mday}" + (f" {BULAN[a_.tm_mon - 1]}" if a_.tm_mon != b_.tm_mon else "")
+                     + f" sampai {_tgl(pusat)}")
+        else:
+            nxt = loncat[-1][0] + med * 86400
+            while nxt < time.time() - 86400:
+                nxt += med * 86400
+            if med <= 45:
+                teks += f". Berikutnya sekitar {_tgl(nxt)}"
+        if med <= 45:
+            out.update(unlock_ts=nxt, unlock_pct=round(rata, 1))
+        rows.append(teks + ".")
+    elif loncat:
+        rows.append(f"Lonjakan pasokan terakhir {_tgl(loncat[-1][0])} (+{loncat[-1][1]:.1f}%), belum ada pola rutin.")
+    else:
+        rows.append("Tidak ada lonjakan pasokan 1% atau lebih dalam 1 tahun, tidak terlihat unlock besar.")
+    rows.append("Unlock diperkirakan dari perubahan pasokan, bukan jadwal resmi (jadwal resmi hanya di layanan berbayar). Info saja, belum diuji ke sinyal robot.")
+    return out
+
+
+BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+
+
+def _tgl(ts):
+    g = time.gmtime(ts)
+    return f"{g.tm_mday} {BULAN[g.tm_mon - 1]} {g.tm_year}"
+
+
+def _angka(x):
+    for v, s in ((1e9, " miliar"), (1e6, " juta"), (1e3, " ribu")):
+        if abs(x) >= v:
+            return f"{x / v:,.1f}{s}"
+    return f"{x:,.0f}"
 
 
 def derivatif(sym):

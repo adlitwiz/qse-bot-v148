@@ -1,15 +1,13 @@
-"""QSE v148 - JALUR ORDER BLOCK + VOLUME & KOMBO TANGKAPAN AWAL PADA ZONA ORDER BLOCK (PILAR 1-5).
-Meningkatkan kemampuan Order Block klasik dengan 5 Pilar Utama:
-  1. Penyaring Utama Aliran Dana Besar (arah Bitcoin positif, musim altcoin, makro, rotasi sektor, reaksi berita).
-  2. Zona Pantulan Terkunci (mengawinkan Order Block, patahan struktur MSB/SMC, batas harga SnR, dan celah harga FVG
-     yang saling mengunci di satu titik harga presisi dengan minimal 2 konfirmasi struktur pasar).
-  3. Rantai Konfirmasi Eksekusi Agresif (Ichimoku + garis dinamis McGinley + Bollinger Bands + pola lilin + momentum
-     sebagai satu kesatuan, menghentikan pembacaan garis McGinley dan momentum secara terpisah).
-  4. Pemicu Gerak Dini & Saringan Anti-Terlambat (membatalkan rencana masuk posisi apabila harga sudah bergerak terlalu
-     jauh dari zona Order Block).
-  5. Perlindungan Modal & Pengawalan Target Garis EMA (batas rugi berbasis volatilitas + pemotong risiko cepat saat
-     struktur rusak + pengunci keuntungan bertahap + target berjalan mengikuti garis EMA + amankan profit saat momentum melemah).
-"""
+"""QSE v148 - JALUR ORDER BLOCK + VOLUME (koin unggulan), candle 4J. Juga analisa volume saat kena SL.
+Diuji dari 2 script TradingView kamu (Order Block Finder, LuxAlgo MSB + OB, LuxAlgo SMC BOS/CHoCH + OB, SnR swing):
+111 koin perp, Jul 2020 - Okt 2026, biaya 0.15%. Aturan dipilih di data 2020-2023, diuji ulang di 2024-2026.
+  Gagal: entry limit saat harga retest OB (semua versi PF < 1), SMC, MSB, SnR (PF uji 0.9 - 1.12).
+  Lolos: Order Block Finder searah momentum + volume, hanya LONG.
+Aturan (sama persis dengan backtest):
+  Candle merah, lalu 5 candle hijau beruntun, naik minimal 2% dari close candle merah.
+  Close di atas EMA 200, volume candle ke-5 masuk 20% tertinggi dari 100 candle, koin masuk 50 paling likuid
+  (nilai transaksi 30 hari), BTC 4J close di atas EMA 50.
+  Entry MARKET. SL di bawah low candle merah (order block) dikurangi 0.3 ATR. TP 4R. Tutup paksa setelah 60 candle (10 hari)."""
 import fcntl
 import json
 import os
@@ -19,11 +17,6 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 import bybit_fetch as B
 import telegram_notify as TG
-import qse_smccore as K
-import qse_penyaring as PY
-import qse_rantai as RN
-import qse_pagi as PG
-import qse_proteksi as PR
 from config import STATE_DIR
 
 FILE = os.path.join(STATE_DIR, "orderblock.json")
@@ -34,11 +27,10 @@ VP_MIN, TOP_LIKUID, TOP_KOIN = 80, 50, 150
 MAKS_BARU, MAKS_BUKA = 5, 8
 BIAYA = 0.0015
 TELAT_ATR = 0.5
-MAKS_JARAK_OB_ATR = 1.8
-BT = ("111 koin perp Jul 2020 - Okt 2026 + Peningkatan 5 Pilar (Kombo Tangkapan Awal Zona Order Block): "
-      "969 trade dasar, WR 41%, PF 1.45, uji ulang 2024-2026 PF 1.26. Dilengkapi pijakan Zona OB Terkunci (min 2 konfirmasi), "
-      "rantai eksekusi McGinley+Ichimoku+BB+Lilin+Momentum, pemicu gerak dini, rem anti-terlambat, dan pengawal target EMA.")
-BT_PENDEK = "Kombo Tangkapan Awal Zona OB (5 Pilar: Arah BTC Positif + Zona OB Terkunci + Gerak Dini + Anti-Terlambat + Target EMA)"
+BT = ("111 koin perp Jul 2020 - Okt 2026, maks 8 posisi: 969 trade, WR 41%, PF 1.45, positif 16 dari 26 kuartal. "
+      "Risiko 0.5%: +113%, turun terdalam 12.9%, rugi beruntun terpanjang 21. Uji ulang 2024-2026 (aturan dipilih "
+      "dari data 2020-2023): PF 1.26, turun terdalam 10.1%. Tahun rugi: 2022 (PF 0.80) dan 2025 (PF 0.95)")
+BT_PENDEK = "uji 6 tahun 111 koin: 969 trade, PF 1.45, uji ulang 2024-2026 PF 1.26"
 
 
 def _ubah(fn, file=FILE, kosong=None):
@@ -99,88 +91,28 @@ def _cdv(o, h, l, c, v):
 
 
 def _sinyal(df):
-    """Deteksi Sinyal Order Block + Kombo Tangkapan Awal pada Zona Order Block (Pilar 2, 3, 4).
-    Menggabungkan:
-      - Pijakan harga di area Order Block & Zona Pantulan Terkunci (minimal 2 konfirmasi struktur pasar: OB, MSB/SMC, SnR, FVG)
-      - Rantai konfirmasi terpadu (Ichimoku + McGinley Dynamic + Bollinger Bands + Pola Lilin + Momentum, bukan terpisah)
-      - Pemicu gerak dini & momentum sesi pagi
-      - Saringan anti-terlambat apabila harga sudah bergerak terlalu jauh dari zona Order Block.
-    """
+    """Cek candle tutup terakhir. Return dict setup atau None. Semua syarat kecuali likuiditas dan BTC."""
     o, h, l, c, v = (df[k].values.astype(float) for k in ("open", "high", "low", "close", "volume"))
     s = len(c) - 1
     if s < 210:
         return None
+    j = s - P_OB
+    if not (c[j] < o[j] and (c[j + 1:s + 1] > o[j + 1:s + 1]).all()):
+        return None
+    gerak = abs(c[j] - c[s]) / c[j] * 100
+    if gerak < MIN_GERAK:
+        return None
     e200 = _ema(c, 200)[s]
     if c[s] <= e200:
         return None
-    a = _atr(h, l, c)[s]
-    if np.isnan(a) or a <= 0:
-        return None
     vp = float((v[s - 100:s] <= v[s]).mean() * 100)
-
-    # Jalur A: Order Block Finder Momentum + Volume klasik (5 candle hijau)
-    j = s - P_OB
-    klasik_ok = bool(c[j] < o[j] and (c[j + 1:s + 1] > o[j + 1:s + 1]).all() and abs(c[j] - c[s]) / c[j] * 100 >= MIN_GERAK and vp >= VP_MIN)
-
-    # Jalur B (Peningkatan Utama): Kombo Tangkapan Awal pada Zona Order Block Terkunci (Pilar 2 + Pilar 3 + Pilar 4)
-    zk = K.zona_pantulan_terkunci(o, h, l, c, v, arah=1, min_konfirmasi=2)
-    rantai = RN.evaluasi_rantai(df, arah_target="LONG")
-    dini = PG.deteksi_gerak_dini(df, arah="LONG")
-
-    kombo_awal_ok = False
-    if zk and zk["jumlah_konfirmasi"] >= 2 and rantai.get("aktif") and dini.get("aktif"):
-        # Pastikan saringan anti-terlambat lolos (harga belum bergerak terlalu jauh dari zona Order Block)
-        lolos_telat, _, jrk_ob = PG.saring_anti_terlambat(c[s], "LONG", entry_sinyal=c[s], ob_zona=zk, atr=float(a), maks_atr_ob=MAKS_JARAK_OB_ATR)
-        if lolos_telat:
-            kombo_awal_ok = True
-
-    if not (klasik_ok or kombo_awal_ok):
+    if vp < VP_MIN:
         return None
-
-    if kombo_awal_ok and zk:
-        ob_low = float(zk["zona_bot"])
-        ob_top = float(zk["zona_top"])
-        titik_kunci = float(zk["titik_kunci"])
-        konf_struktur = zk["konfirmasi"]
-        jml_konf = zk["jumlah_konfirmasi"]
-    else:
-        ob_low = float(l[j])
-        ob_top = float(o[j])
-        titik_kunci = float((ob_low + ob_top) / 2)
-        konf_struktur = zk["konfirmasi"] if (zk and zk["jumlah_konfirmasi"] >= 2) else ["Order Block Finder", "Patahan Momentum Volume"]
-        jml_konf = max(2, zk["jumlah_konfirmasi"] if zk else 2)
-
-    # Saringan Anti-Terlambat Otomatis terhadap zona Order Block
-    lolos_ob, alasan_telat, jrk_ob = PG.saring_anti_terlambat(
-        float(c[s]), "LONG", entry_sinyal=float(c[s]), ob_zona=dict(zona_bot=ob_low, zona_top=ob_top, titik_kunci=titik_kunci),
-        atr=float(a), maks_atr_ob=MAKS_JARAK_OB_ATR
-    )
-    if not lolos_ob:
+    a = _atr(h, l, c)[s]
+    if np.isnan(a):
         return None
-
-    sl_vol = PR.hitung_sl_volatilitas(float(c[s]), "LONG", float(a), sl_zona=ob_low - BUF_ATR * float(a), sl_atr_mult=1.5)
-    gerak = float(abs(c[s] - ob_low) / max(ob_low, 1e-9) * 100)
-    e20 = float(_ema(c, 20)[s])
-
-    return dict(
-        ob_low=ob_low,
-        ob_top=ob_top,
-        titik_kunci=titik_kunci,
-        atr=float(a),
-        vp=vp,
-        gerak=gerak,
-        close=float(c[s]),
-        sl=sl_vol,
-        e200=float(e200),
-        ema20=e20,
-        ts=int(df.index[-1]),
-        kombo_awal=kombo_awal_ok,
-        jumlah_konfirmasi=jml_konf,
-        konfirmasi_struktur=konf_struktur,
-        rantai=rantai.get("rantai_konfirmasi", []),
-        gerak_dini=dini.get("alasan", []),
-        jarak_ob_atr=round(jrk_ob, 2),
-    )
+    return dict(ob_low=float(l[j]), ob_top=float(o[j]), atr=float(a), vp=vp, gerak=gerak, close=float(c[s]),
+                sl=float(l[j] - BUF_ATR * a), e200=float(e200), ts=int(df.index[-1]))
 
 
 def _k4(sym, bars=600):
@@ -202,18 +134,31 @@ def btc_naik():
 
 
 def _kelola(it, df):
-    """Kelola posisi menggunakan mesin perlindungan modal & pengawal target garis EMA (Pilar 5)."""
-    st, R, sl_lama, info = PR.kelola_posisi_pilar5(it, df, biaya=BIAYA, maks_bar=MAKS_BAR)
-    return st, R, sl_lama, info
+    """Aturan keluar persis backtest: SL dicek dulu, TP tidak dicek di candle masuk, tutup paksa 60 candle."""
+    e, risk = it["entry"], it["risk"]
+    for k, ts in enumerate(df.index):
+        if ts <= it["last"]:
+            continue
+        hi, lo, cl = float(df["high"].iloc[k]), float(df["low"].iloc[k]), float(df["close"].iloc[k])
+        if lo <= it["sl"]:
+            return "SL", (it["sl"] - e) / risk - BIAYA * e / risk
+        if it["bar"] > 0 and hi >= it["tp"]:
+            return "TP", TP_R - BIAYA * e / risk
+        it["bar"] += 1
+        it["last"] = int(ts)
+        it["close"] = cl
+        if it["bar"] >= MAKS_BAR:
+            return "WAKTU", (cl - e) / risk - BIAYA * e / risk
+    return "BUKA", None
 
 
-def _catat_ledger(it, R, ket="ob volume + ema"):
+def _catat_ledger(it, R):
     import qse_catat as CT
 
     def f(d):
         d["closed"].append(dict(jalur="orderblock", sym=it["sym"], arah="LONG", entry=it["entry"], sl=it["sl"],
                                 tp1=it["tp"], tp2=it["tp"], t=it["t"], status="SELESAI", R=round(R, 2), isi=it["t"],
-                                selesai=time.time(), ket=ket))
+                                selesai=time.time(), ket="ob volume"))
     CT._ubah(f)
 
 
@@ -248,43 +193,28 @@ def _jalankan(baru_ok=True):
         if df is None or not len(df):
             continue
         it = dict(it)
-        st, R, sl_lama, info_p5 = _kelola(it, df)
-        hasil[key] = (it, st, R, sl_lama, info_p5)
+        st, R = _kelola(it, df)
+        hasil[key] = (it, st, R)
     try:
         pegang = {v["sym"] for v in SY.lihat()["open"].values()
                   if v.get("status") in ("TERISI", "TP1") and v.get("arah") == "LONG"}
     except Exception:
         pegang = set()
-    for key, (it, st, R, sl_lama, info_p5) in hasil.items():
-        t = it.get("tick", 0.0001)
+    for key, (it, st, R) in hasil.items():
         if st == "BUKA":
-            if it["sym"] in pegang and abs(it["sl"] - sl_lama) >= 0.20 * it["risk"]:
-                kunci = (it["sl"] - it["entry"]) / it["risk"]
-                out.append(
-                    f"🔁 <b>ORDER BLOCK + PENGAWAL EMA  ·  {it['sym']} LONG  ·  GESER SL</b>\n"
-                    f"Ubah SL di Bybit ke <code>{TG.fp(it['sl'], t)}</code> (sebelumnya {TG.fp(sl_lama, t)})\n"
-                    f"Status Pengawal: {info_p5 or 'Pengunci keuntungan bertahap & garis EMA 20'}  ·  Profit terkunci: {kunci:+.2f}R"
-                )
             continue
-        _catat_ledger(it, R, ket=st.lower())
+        _catat_ledger(it, R)
         if it["sym"] not in pegang:
             continue
+        t = it.get("tick", 0.0001)
         if st == "WAKTU":
             out.append(f"⏰ <b>ORDER BLOCK SELESAI  ·  {it['sym']} LONG  ·  {R:+.2f}R</b>\nSudah {MAKS_BAR} candle 4J (10 hari). "
                        f"Tutup posisi sekarang di harga pasar, sekitar {TG.fp(it['close'], t)}.")
-        elif st in ("TP", "TP_EMA", "TP_MOMENTUM"):
-            alasan_tp = (f"Momentum melemah ({info_p5}), keuntungan langsung diamankan." if st == "TP_MOMENTUM" else
-                         f"Target berjalan pengikut garis EMA / pengunci profit ({info_p5}) tercapai." if st == "TP_EMA" else
-                         f"TP {TG.fp(it['tp'], t)} tersentuh.")
-            out.append(f"✅ <b>ORDER BLOCK PROFIT DIAMANKAN  ·  {it['sym']} LONG  ·  {R:+.2f}R</b>\n{alasan_tp}")
-        elif st == "CUT_STRUKTUR":
-            out.append(f"🛡 <b>PEMOTONG RISIKO CEPAT (STRUKTUR RUSAK)  ·  {it['sym']} LONG  ·  {R:+.2f}R</b>\n"
-                       f"{info_p5}. Posisi dipotong lebih cepat sebelum menyentuh SL penuh untuk melindungi modal.")
-        elif st == "SL":
-            out.append(f"🛑 <b>ORDER BLOCK SL  ·  {it['sym']} LONG  ·  {R:+.2f}R</b>\nKena batas rugi volatilitas di {TG.fp(it['sl'], t)}.")
+        elif st == "TP":
+            out.append(f"✅ <b>ORDER BLOCK TP  ·  {it['sym']} LONG  ·  {R:+.2f}R</b>\nTP {TG.fp(it['tp'], t)} tersentuh.")
 
     def simpan_kelola(dd):
-        for key, (it, st, R, _, _) in hasil.items():
+        for key, (it, st, R) in hasil.items():
             if key not in dd["open"]:
                 continue
             if st == "BUKA":
@@ -303,13 +233,10 @@ def _jalankan(baru_ok=True):
     if slot <= 0 or not baru_ok:
         _ALASAN[0] = "slot posisi penuh" if slot <= 0 else "robot telat, hanya kelola posisi"
         return out
-
-    # PILAR 1: Penyaring Utama Aliran Dana Besar (Arah BTC + Altseason + Makro + Sektor + Berita)
-    ev_pasar = PY.evaluasi_pasar()
-    bn = ev_pasar["btc"]["naik_ema50"]
+    bn = btc_naik()
     if not bn:
-        _ALASAN[0] = "Penyaring Utama: arah BTC 4J negatif (di bawah EMA 50), sinyal LONG Order Block ditahan"
-        print("[ORDERBLOCK] Penyaring Utama: BTC 4J negatif, sinyal baru ditahan")
+        _ALASAN[0] = "BTC 4J di bawah EMA 50, sinyal LONG ditahan"
+        print("[ORDERBLOCK] BTC 4J di bawah EMA 50, sinyal baru ditahan (uji: PF 0.87 saat BTC turun)")
         return out
     try:
         tk = B.get_tickers()
@@ -317,7 +244,7 @@ def _jalankan(baru_ok=True):
         return out
     pindai = [s for s in sorted(tk, key=lambda s: -tk[s]["turnover"]) if s in tick or not tick][:TOP_KOIN]
     buka = {it["sym"] for it in d["open"].values()}
-    tutup_kini = {it["sym"] for it, st, _, _, _ in hasil.values() if st != "BUKA"}
+    tutup_kini = {it["sym"] for it, st, _ in hasil.values() if st != "BUKA"}
 
     def cek(sym):
         df = _k4(sym, 600)
@@ -328,36 +255,24 @@ def _jalankan(baru_ok=True):
         semua = list(ex.map(cek, pindai))
     likuid = {x[0] for x in sorted(semua, key=lambda x: -x[3])[:TOP_LIKUID]}
     calon = sorted([x for x in semua if x[1] and x[0] in likuid and x[0] not in buka and x[0] not in tutup_kini],
-                   key=lambda x: (-int(x[1].get("kombo_awal", False)), -x[1].get("jumlah_konfirmasi", 2), -x[1]["vp"]))
+                   key=lambda x: -x[1]["vp"])
     now = time.time()
     baru = []
     for sym, sg, df, _ in calon:
         if len(baru) >= slot:
             break
-        # Cek Penyaring Utama (Pilar 1: fokus koin searah aliran dana besar)
-        lolos_p1, why_p1, _ = PY.saring_koin(sym, "LONG", df=df, jalur="orderblock", evaluasi=ev_pasar)
-        if not lolos_p1:
-            print(f"[ORDERBLOCK] {sym} ditahan Penyaring Utama: {why_p1}")
-            continue
         import qse_porto as PO
         why = SY.cek_lintas(sym, "LONG") or PO.izin(sym, "LONG", "orderblock")
         if why:
             print(f"[ORDERBLOCK] {sym} ditahan: {why}")
             continue
         px = tk[sym]["last"] or sg["close"]
-
-        # PILAR 4: Rem Otomatis Saringan Keterlambatan Harga terhadap Zona Order Block & Titik Pemicu
-        lolos_telat, why_telat, jrk_ob = PG.saring_anti_terlambat(
-            px, "LONG", entry_sinyal=sg["close"],
-            ob_zona=dict(zona_bot=sg["ob_low"], zona_top=sg["ob_top"], titik_kunci=sg.get("titik_kunci", sg["ob_top"])),
-            atr=sg["atr"], maks_atr_ob=MAKS_JARAK_OB_ATR, maks_atr_entry=TELAT_ATR
-        )
-        if not lolos_telat:
-            print(f"[ORDERBLOCK] {sym} dibatalkan ({why_telat})")
+        telat = now * 1000 - (sg["ts"] + H4)
+        if telat > 1800000 and abs(px - sg["close"]) > TELAT_ATR * sg["atr"]:
+            print(f"[ORDERBLOCK] {sym} dilewati: telat {telat / 60000:.0f} menit dan harga sudah lari")
             continue
-
         risk = px - sg["sl"]
-        if risk <= 0 or not (0.004 <= risk / px <= 0.10):
+        if risk <= 0 or not (0.004 <= risk / px <= 0.10):  # SL lebih dari 10% dilewati: uji 2021-2026 SL 10-15% PF 1.05, di atas 15% PF 0.75
             continue
         try:
             import qse_strat as ST
@@ -369,14 +284,8 @@ def _jalankan(baru_ok=True):
             print(f"[ORDERBLOCK] {sym} dilewati: mutu rendah ({', '.join(mm)})")
             continue
         t = tick.get(sym, 0.0001)
-        it = dict(
-            sym=sym, arah="LONG", entry=px, sl=sg["sl"], sl0=sg["sl"], tp=px + TP_R * risk, risk=risk, best=px,
-            bar=0, t=now, mutu=sk, mutu_plus=mp, last=sg["ts"], close=px, tick=t, vp=sg["vp"],
-            ob_low=sg["ob_low"], ob_top=sg["ob_top"], titik_kunci=sg.get("titik_kunci", sg["ob_top"]),
-            kombo_awal=sg.get("kombo_awal", False), jumlah_konfirmasi=sg.get("jumlah_konfirmasi", 2),
-            konfirmasi_struktur=sg.get("konfirmasi_struktur", []), rantai=sg.get("rantai", []),
-            gerak_dini=sg.get("gerak_dini", []), ema_kawal=sg.get("ema20", px),
-        )
+        it = dict(sym=sym, arah="LONG", entry=px, sl=sg["sl"], tp=px + TP_R * risk, risk=risk, bar=0, t=now, mutu=sk, mutu_plus=mp,
+                  last=sg["ts"], close=px, tick=t, vp=sg["vp"])
         try:
             import qse_strat as ST
             it["combo"] = ST._combo(df, "orderblock", "LONG", ST.btc_naik(), sym)
@@ -433,31 +342,29 @@ def kartu(no, it, sg):
     except Exception:
         lot = ""
     pc = it["risk"] / it["entry"] * 100
-    konf_str = ", ".join(sg.get("konfirmasi_struktur") or ["Order Block", "Struktur Pasar"])
-    rantai_str = " + ".join(sg.get("rantai") or ["McGinley Dynamic + Ichimoku + Bollinger + Lilin + Momentum"])
-    dini_str = ", ".join(sg.get("gerak_dini") or ["Pemicu gerak dini sesi pagi"])
     return "\n".join([
         SY.GARIS,
-        f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  {'Kombo Tangkapan Awal Zona Order Block' if sg.get('kombo_awal') else 'Order Block + Volume'} 4J",
+        f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  Order Block + Volume 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
         *_combo_teks(it),
         *([cat_hari] if cat_hari else []),
         SY.GARIS,
         SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG"),
         *_tpc(it),
-        *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Lot dipotong setengah sampai pulih"] if rm else []),
-        "💡 <b>Rantai Konfirmasi 5 Pilar (Bukan Sinyal Terpisah)</b>",
-        f"• <b>Pilar 1 (Penyaring Utama)</b>: Arah Bitcoin positif, searah aliran dana besar & rotasi sektor ({PY.sektor_koin(it['sym'])})",
-        f"• <b>Pilar 2 (Zona Pantulan Terkunci)</b>: Tumpukan {sg.get('jumlah_konfirmasi', 2)} konfirmasi ({konf_str}) mengunci di titik presisi {TG.fp(sg.get('titik_kunci', sg['ob_top']), t)} (area OB {TG.fp(sg['ob_low'], t)}-{TG.fp(sg['ob_top'], t)})",
-        f"• <b>Pilar 3 (Rantai Eksekusi Agresif)</b>: {rantai_str}",
-        f"• <b>Pilar 4 (Gerak Dini & Anti-Terlambat)</b>: {dini_str}. Jarak dari zona OB {sg.get('jarak_ob_atr', 0):.2f} ATR (lolos rem anti-terlambat <= {MAKS_JARAK_OB_ATR:g} ATR)",
-        f"• <b>Pilar 5 (Proteksi & Pengawal EMA)</b>: SL berbasis volatilitas di {TG.fp(it['sl'], t)} ({pc:.1f}%), dikawal pengunci profit bertahap (+1R/+2R) & garis EMA 20 ({TG.fp(sg.get('ema20', it['entry']), t)})",
+        *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Tetap boleh entry, pakai lot setengah sampai pulih"] if rm else []),
+        "💡 <b>Kenapa</b>",
+        f"• Order block bullish: candle merah lalu 5 candle hijau beruntun, naik {sg['gerak']:.1f}%",
+        f"• Volume candle terakhir masuk {100 - sg['vp']:.0f}% teratas dari 100 candle. Pembeli besar masuk",
+        f"• Harga di atas EMA 200 4J dan BTC 4J di atas EMA 50. Koin termasuk {TOP_LIKUID} paling likuid",
         f"• Bukti: {BT_PENDEK}",
-        "🛠 <b>Cara Eksekusi & Pengawalan</b>",
-        f"1. Masuk MARKET sekarang di {TG.fp(it['entry'], t)}. SL volatilitas di {TG.fp(it['sl'], t)} ({pc:.1f}%), tepat di bawah zona Order Block",
-        f"2. Target puncak di {TG.fp(it['tp'], t)} (4R), dikawal otomatis oleh pengunci keuntungan bertahap & garis EMA 20",
-        "3. Robot otomatis mengirim instruksi amankan profit bila indikator momentum melemah atau memotong risiko cepat bila struktur pasar rusak",
-        "4. Catat dengan /entry supaya robot mengawal target EMA dan menganalisa volume kalau kena SL"
+        "🛠 <b>Cara</b>",
+        f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)} ({pc:.1f}%), tepat di bawah order block",
+        f"2. TP {TG.fp(it['tp'], t)} (4R). Jangan geser SL",
+        "3. Kalau 10 hari belum kena SL atau TP, tutup manual. Hampir separuh trade selesai dengan cara ini",
+        "4. Catat dengan /entry supaya robot mengingatkan dan menganalisa volume kalau kena SL",
+        "❓ <b>Kenapa tidak tunggu retest order block</b>",
+        "Di uji 6 tahun, limit di order block PF di bawah 1. Order block yang dibentuk volume besar jarang dites ulang, "
+        "jadi entry ikut momentum."
         + (f"\n{lot}" if lot else ""),
     ])
 
@@ -479,7 +386,7 @@ def status_singkat():
     rm = rem()
     if rm:
         rows.append(f"rem drawdown aktif ({rm})")
-    rows.append(f"dicek tiap candle 4J tutup, {TOP_LIKUID} koin paling likuid, terintegrasi 5 Pilar Utama")
+    rows.append(f"dicek tiap candle 4J tutup, {TOP_LIKUID} koin paling likuid, hanya saat BTC 4J di atas EMA 50")
     return "  ·  ".join(rows)
 
 
@@ -491,14 +398,13 @@ def baru_berlaku(jam=4):
 
 def teks():
     d = lihat()
-    rows = [f"<b>Jalur Order Block + Kombo Tangkapan Awal 4J (LONG)</b>\nBacktest: {BT}"]
+    rows = [f"<b>Jalur Order Block + Volume 4J (LONG)</b>\nBacktest: {BT}"]
     if d["open"]:
         rows.append(f"\nPosisi berjalan ({len(d['open'])}):")
         for it in d["open"].values():
             g = (it["close"] - it["entry"]) / it["risk"]
-            kawal = f" | Pengawal: {it['tahap_kunci']}" if it.get("tahap_kunci") else ""
             rows.append(f"🟢 {it['sym']} | entry {TG.fp(it['entry'], it['tick'])} | SL {TG.fp(it['sl'], it['tick'])} | "
-                        f"TP {TG.fp(it['tp'], it['tick'])} | sekarang {g:+.2f}R{kawal} | candle {it['bar']}/{MAKS_BAR}")
+                        f"TP {TG.fp(it['tp'], it['tick'])} | sekarang {g:+.2f}R | candle {it['bar']}/{MAKS_BAR}")
     else:
         rows.append("\nBelum ada posisi berjalan.")
     rs = [x["R"] for x in d["closed"] if x.get("R") is not None]
@@ -507,13 +413,14 @@ def teks():
         lo = -sum(x for x in rs if x < 0)
         rows.append(f"\nSelesai {len(rs)} trade | WR {sum(x > 0 for x in rs) / len(rs) * 100:.0f}% | "
                     f"PF {w / lo if lo > 0 else 9.99:.2f} | total {sum(rs):+.1f}R")
-    rows.append("\nSeluruh sinyal Order Block kini menyatukan: arah BTC positif (Pilar 1), pijakan Zona OB Terkunci min 2 konfirmasi (Pilar 2), "
-                "rantai konfirmasi McGinley+Ichimoku+BB+Lilin+Momentum (Pilar 3), pemicu gerak dini & saringan anti-terlambat (Pilar 4), "
-                "serta pengawalan target garis EMA & pemotong risiko cepat (Pilar 5).")
+    rows.append("\nSMC CHoCH, MSB HPZ, dan SnR + Volume dipasang terpisah di /strategi dengan syarat tren. "
+                "Entry retest order block dan sisi SHORT order block tidak dipakai karena gagal uji.")
     return "\n".join(rows)
 
 
 # ---------------- analisa volume saat kena SL ----------------
+# Uji 40.341 kejadian SL (order block, MSB, SMC, SnR, 111 koin 2020-2026). "Balik" = harga kembali ke entry dalam
+# 12 candle 4J. "Lanjut" = harga bergerak 1R lagi melewati SL dalam 12 candle.
 TABEL_SL = {
     ("sumbu", "kecil"): (0.28, 0.20, 2379), ("sumbu", "sedang"): (0.30, 0.23, 7217), ("sumbu", "besar"): (0.38, 0.22, 7869),
     ("tembus", "kecil"): (0.21, 0.33, 3024), ("tembus", "sedang"): (0.18, 0.39, 9281), ("tembus", "besar"): (0.18, 0.51, 10522),
@@ -609,7 +516,10 @@ def proses_sl():
 
 
 def baris_unggulan(harga=None, jam=5):
-    """Sinyal order block berjalan yang masih terjangkau dan lolos saringan anti-terlambat (Pilar 4)."""
+    """Sinyal order block berjalan yang masih terjangkau: dikirim dalam `jam` terakhir, harga belum lari lebih dari
+    0.3R dari entry dan belum menyentuh SL. Untuk daftar KOIN UNGGULAN. harga: dict sym -> harga terakhir.
+    Uji entry telat 2020-2026 (1150 sinyal): telat 1 candle PF 1.49/1.21 (dev/uji), 2 candle 1.45/1.04,
+    4 candle atau lebih di bawah 1 di 2024-2026. Jadi hanya sinyal 1 candle sebelumnya (dulu 24 jam)."""
     import qse_saya as SY
     ok, tk, ik, lot = SY.boleh_ikut("saran orderblock", "LONG")
     if not ok:
@@ -628,7 +538,7 @@ def baris_unggulan(harga=None, jam=5):
         if not px or px <= it["sl"] or px > it["entry"] + 0.3 * it["risk"]:
             continue
         t = it.get("tick", 0.0001)
-        out.append(f"🟢 <b>{TG.e(it['sym'])} LONG</b>  ·  Kombo Tangkapan Awal Order Block  ·  {ik} {tk}  ·  lot {lot}  ·  "
+        out.append(f"🟢 <b>{TG.e(it['sym'])} LONG</b>  ·  Order Block + Volume  ·  {ik} {tk}  ·  lot {lot}  ·  "
                    f"sinyal {time.strftime('%d/%m %H:%M', time.gmtime(it['t'] + 7 * 3600))} WIB\n"
                    + SY.blok_salin(px, it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah="LONG"))
     return out
@@ -642,7 +552,7 @@ def jalankan(baru_ok=True):
     _ALASAN[0] = ""
     out = _jalankan(baru_ok)
     n = sum(1 for m in out if "BISA DIIKUTI" in m)
-    why = _ALASAN[0] or ("" if n else "tidak ada koin yang lolos semua syarat 5 pilar")
+    why = _ALASAN[0] or ("" if n else "tidak ada koin yang lolos semua syarat")
 
     def f(d):
         d["cek"] = dict(t=time.time(), n=n, why=why)
@@ -654,6 +564,7 @@ def jalankan(baru_ok=True):
 
 
 def baris_cek():
+    """Contoh: 'dicek 07:03 WIB: 0 sinyal baru, tidak ada koin yang lolos semua syarat'."""
     c = lihat().get("cek")
     if not c:
         return "belum pernah dicek sejak update"

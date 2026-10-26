@@ -244,6 +244,7 @@ def teks():
            ("💎 MUTU TINGGI", lambda c: len(c.get("mutu_plus") or []) >= 3, 0.18),
            ("🔁 PULLBACK McGinley", lambda c: c.get("pullback"), 0.24),
            ("🔊 VOLUME PASAR TINGGI", lambda c: c.get("vol_tinggi"), 0.30),
+           ("📉 BTC.D TURUN (SHORT)", lambda c: c.get("dom_turun"), 0.23),
            ("Tanpa label", lambda c: not (c.get("combo") or len(c.get("mutu_plus") or []) >= 3 or c.get("pullback")), 0.11)]
     rows += ["", "🏷 <b>PER LABEL</b> (label dicatat sejak 20 Okt 2026)"]
     for nm, fn, ex in lab:

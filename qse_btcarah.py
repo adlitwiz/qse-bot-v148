@@ -1,6 +1,8 @@
-"""/cek BTC (23 Okt 2026): arah BTC per teknik di 1W, 1D, 4J, peluang dari sejarah, dan sentimen yang teruji.
-Tidak memberi sinyal entry. Semua angka peluang dari uji BTC Agu 2018 - Okt 2026, dibagi dua periode:
-2018-2021 (dev) dan 2022-2026 (uji). Yang hanya bagus di satu periode ditandai tidak konsisten."""
+"""/cek BTC (23 Okt 2026, kesimpulan akhir 26 Okt): arah BTC per teknik di 1W, 1D, 4J, peluang dari sejarah, sentimen,
+funding, open interest (hasil uji lab bulanan), arah hari ini, dan dominasi BTC (BTC.D CoinGecko plus indeks altcoin/BTC).
+Ditutup KESIMPULAN AKHIR 24 jam, 7 hari, 30 hari, dampak ke altcoin, dan satu arah akhir. Tidak memberi sinyal entry.
+Semua angka peluang dari uji BTC Agu 2018 - Okt 2026, dibagi dua periode: 2018-2021 (dev) dan 2022-2026 (uji).
+Yang hanya bagus di satu periode ditandai tidak konsisten dan tidak dihitung."""
 import time
 import requests
 import numpy as np
@@ -196,6 +198,13 @@ def analisa():
             rows.append(f"📅 Berita besar 24 jam ke depan: {bd['judul']}. Harga biasanya bergerak cepat di jam itu.")
     except Exception:
         pass
+    oi = {}
+    try:
+        import qse_lab as LB
+        oi = LB.oi_info()
+        rows += oi.get("rows", [])
+    except Exception as ex:
+        print("[WARN] oi cek", ex)
     try:
         import qse_news as NW
         bk = NW.berita_koin("BTCUSDT", maks=3)
@@ -205,29 +214,109 @@ def analisa():
         pass
     rows.append("")
 
+    # 4. arah hari ini (aturan pagi dan lebar pasar)
+    lu, dh = {}, None
     try:
         import qse_pagi as PG
-        rows += PG.baris_arah() + [""]
+        rows += PG.baris_arah() + PG.kesimpulan_arah() + [""]
+        lu = PG.pasar_luas() or {}
+        dh = PG.arah_hari()
     except Exception as ex:
         print("[WARN] arah hari cek", ex)
 
-    # 4. kesimpulan
-    a7, a30 = PELUANG[kond]["f7"], PELUANG[kond]["f30"]
-    kuat = all(x[0] - x[2] >= 3 for x in a30) or all(x[0] - x[2] <= -3 for x in a30)
-    rows.append("🧾 <b>KESIMPULAN</b>")
-    if sum(edge) > 0:
-        rows.append("Condong NAIK dalam 30 hari. Alasannya sentimen di atas, yang di sejarah konsisten diikuti kenaikan.")
-    elif sum(edge) < 0:
-        rows.append("Condong TURUN atau tertahan dalam 30 hari. Alasannya funding terlalu tinggi, yang di sejarah konsisten "
-                    "diikuti hasil lebih buruk dari biasa.")
-    elif kuat:
-        naik = all(x[0] - x[2] >= 3 for x in a30)
-        rows.append(f"Kondisi teknikal ini di dua periode lebih sering diikuti {'kenaikan' if naik else 'penurunan'} 30 hari "
-                    f"dari biasa. Lihat rata-ratanya di bagian peluang sebelum menyimpulkan besar geraknya.")
+    # 5. dominasi BTC
+    rows.append("🪙 <b>DOMINASI BTC (BTC.D)</b>")
+    dom = _btcd()
+    dt = lu.get("dom_turun")
+    a7d, a30d = (lu.get("altbtc_7h") or 0) * 100, (lu.get("altbtc_30h") or 0) * 100
+    if dom is not None:
+        rows.append(f"BTC.D sekarang {dom:.1f}% dari total kapitalisasi kripto (CoinGecko).")
+    if dt is None:
+        rows.append("Tren dominasi belum terbaca dari data Bybit.")
+    elif dt:
+        rows += [f"📉 Tren TURUN: indeks 40 altcoin teramai lawan BTC di atas EMA 20 harian (7 hari {a7d:+.1f}%, 30 hari {a30d:+.1f}%). "
+                 "Altcoin sedang lebih kuat dari BTC.",
+                 "✅ Uji 9 jalur 2017-2026: SHORT altcoin di kondisi ini PF 1.57, 1.34, 1.68, biasanya 1.09, 1.18, 1.24. "
+                 "Sinyal SHORT dapat label 📉 BTC.D TURUN."]
     else:
-        rows.append("Belum ada keunggulan arah yang jelas. Peluang BTC naik dalam 30 hari mendekati normal, sekitar 56%.")
-    if kond == "3naik":
-        rows.append("Saat 1W, 1D, dan 4J searah naik, kenaikan rata-rata 30 hari lebih besar dari biasa di dua periode "
-                    "(+9.7% dan +5.3%, biasanya +7.2% dan +2.3%).")
-    rows.append("Arah teknikal di 4J saja tidak bisa menebak arah 1 sampai 3 hari ke depan (uji: 49 sampai 55%, sama dengan acak).")
+        rows += [f"📈 Tren NAIK: indeks 40 altcoin teramai lawan BTC di bawah EMA 20 harian (7 hari {a7d:+.1f}%, 30 hari {a30d:+.1f}%). "
+                 "BTC sedang lebih kuat dari altcoin.",
+                 "➖ Di kondisi ini SHORT altcoin kembali ke hasil biasa. LONG altcoin tidak terpengaruh konsisten."]
+    rows += ["Tren dominasi tidak terbukti menebak arah BTC sendiri (uji 2018-2026 tidak konsisten), jadi tidak masuk hitungan arah BTC.", ""]
+
+    # 6. kesimpulan akhir
+    tanda = lambda tb: 1 if all(x[0] - x[2] >= 3 for x in tb) else -1 if all(x[0] - x[2] <= -3 for x in tb) else 0
+    t7, t30 = tanda(PELUANG[kond]["f7"]), tanda(PELUANG[kond]["f30"])
+    pagi_naik = bool(dh and dh.get("naik"))
+    luas_naik = (lu.get("d50") or 0) >= 0.8
+    oi_arah = oi.get("arah") or 0
+    naik24 = pagi_naik or luas_naik or oi_arah > 0
+    turun24 = oi_arah < 0 and not naik24
+    alasan30 = []
+    if t30:
+        alasan30.append(f"teknikal {NAMA_KOND[kond]} ({'+' if t30 > 0 else '-'})")
+    if fg is not None and fg <= 20:
+        alasan30.append("takut ekstrem (+)")
+    if fu is not None and fu < 0:
+        alasan30.append("funding negatif (+)")
+    elif fu is not None and fu >= 0.000261:
+        alasan30.append("funding terlalu tinggi (-)")
+    skor30 = t30 + sum(edge)
+    rows.append("🏁 <b>KESIMPULAN AKHIR</b>")
+    if naik24:
+        al = ([dh["alasan"][0]] if pagi_naik else []) + (["80%+ koin di atas EMA50 1D"] if luas_naik else []) \
+            + (["pola open interest teruji"] if oi_arah > 0 else [])
+        rows.append(f"⏱ 24 jam: 🟢 CONDONG NAIK ({', '.join(al)}). Sejarah benar sekitar 57% hari, 43% tetap salah.")
+    elif turun24:
+        rows.append("⏱ 24 jam: 🔴 CONDONG TURUN (pola open interest teruji di uji bulanan). Tetap peluang, bukan kepastian.")
+    else:
+        rows.append("⏱ 24 jam: ⚪ NETRAL. Tidak ada kondisi teruji hari ini, naik atau turun sekitar 50%.")
+    a, b = PELUANG[kond]["f7"]
+    rows.append(f"📅 7 hari: {'🟢 CONDONG NAIK' if t7 > 0 else '🔴 CONDONG TURUN' if t7 < 0 else '⚪ NETRAL'}. "
+                f"Kondisi {NAMA_KOND[kond]} naik di {a[0]}% dan {b[0]}% kasus, biasanya {a[2]}% dan {b[2]}%.")
+    rows.append(f"🗓 30 hari: {'🟢 CONDONG NAIK' if skor30 > 0 else '🔴 CONDONG TURUN atau tertahan' if skor30 < 0 else '⚪ NETRAL'}"
+                + (f" ({', '.join(alasan30)})." if alasan30 else ". Teknikal, sentimen, dan funding tidak memberi keunggulan arah."))
+    rows.append("🪙 Altcoin: " + ("BTC.D turun, SHORT altcoin lebih kuat dari biasa." if dt else
+                                  "BTC.D naik, sinyal altcoin hasil biasa." if dt is not None else "dominasi belum terbaca."))
+    if naik24 and skor30 >= 0:
+        akhir = "🟢 CONDONG NAIK"
+        aksi = "Utamakan sinyal LONG robot." + (" SHORT baru ditahan otomatis hari ini." if pagi_naik else
+                                                " SHORT tetap boleh sesuai sinyal, pakai SL disiplin.")
+    elif turun24 and skor30 <= 0:
+        akhir, aksi = "🔴 CONDONG TURUN (24 jam)", "Ikuti sinyal robot. LONG baru pakai SL disiplin, jangan tambah posisi melawan arah."
+    elif turun24:
+        akhir, aksi = "🟡 CAMPUR: 24 jam condong turun, 30 hari condong naik", "Jangan kejar LONG hari ini. Ikuti sinyal robot apa adanya."
+    elif skor30 > 0:
+        akhir, aksi = "🟢 CONDONG NAIK (jangka 30 hari)", "Hari ini tetap ikuti sinyal robot LONG dan SHORT. DCA spot tetap jalan seperti biasa."
+    elif skor30 < 0 and naik24:
+        akhir, aksi = "🟡 CAMPUR: 24 jam condong naik, 30 hari condong tertahan", "Ambil LONG jangka pendek sesuai sinyal, jangan tahan terlalu lama."
+    elif skor30 < 0:
+        akhir, aksi = "🔴 CONDONG TURUN atau tertahan (jangka 30 hari)", "Ikuti sinyal robot. SHORT tidak ditahan, LONG pakai SL disiplin."
+    else:
+        akhir, aksi = "⚪ NETRAL", "Ikuti sinyal robot apa adanya, LONG dan SHORT sama peluangnya."
+    if dt:
+        aksi += " Kalau ambil SHORT altcoin, pilih yang berlabel BTC.D TURUN."
+    if oi.get("gerak"):
+        aksi += " Peluang gerak besar 24 jam lebih tinggi dari biasa, pasang SL."
+    rows += [f"➡️ <b>ARAH AKHIR BTC: {akhir}</b>", f"🎯 {aksi}",
+             "Ini arah, bukan sinyal entry. Entry tetap dari sinyal robot. Arah teknikal 4J saja tidak bisa menebak 1 sampai 3 hari "
+             "(uji 49 sampai 55%, sama dengan acak)."]
     return "\n".join(rows)
+
+
+def _btcd():
+    """BTC.D sekarang dari CoinGecko, cadangan CoinPaprika. Disimpan 1 jam."""
+    c = _CACHE.get("btcd")
+    if c and time.time() - c[0] < 3600:
+        return c[1]
+    v = None
+    try:
+        v = float(requests.get("https://api.coingecko.com/api/v3/global", timeout=10,
+                               headers={"User-Agent": "qse-bot/148"}).json()["data"]["market_cap_percentage"]["btc"])
+    except Exception:
+        try:
+            v = float(requests.get("https://api.coinpaprika.com/v1/global", timeout=10).json()["bitcoin_dominance_percentage"])
+        except Exception:
+            v = None
+    _CACHE["btcd"] = (time.time(), v)
+    return v

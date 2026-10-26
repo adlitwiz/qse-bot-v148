@@ -193,7 +193,7 @@ def _tugas_berkala():
             print("[WARN] kartu SL", ex)
     # info pasar 06:00, 12:00, 18:00 WIB (23, 05, 11 UTC): peluang gerak serentak dan arah hari ini. Sekali per sesi.
     hp = int((now + 3600) // 86400)
-    sesi = {23: "pagi", 5: "siang", 11: "malam"}.get(time.gmtime(now).tm_hour)
+    sesi = {23: "pagi", 5: "siang", 11: "malam", 17: "tengah"}.get(time.gmtime(now).tm_hour)
     if sesi and st.get("info_" + sesi, 0) < hp:
         _st({"info_" + sesi: hp})
         try:
@@ -266,6 +266,10 @@ def _tugas_berkala():
                 TG.send([teks])
         except Exception as ex:
             print("[WARN] kartu tidur", ex)
+    if now - hari >= 900 and st.get("unlock_hari", 0) < hari and now - hari <= 6 * 3600:
+        # 07:15 WIB: kabari posisi jalan yang koinnya diperkirakan unlock pasokan dalam 3 hari (thread sendiri, CoinGecko pelan)
+        _st({"unlock_hari": hari})
+        threading.Thread(target=_cek_unlock, daemon=True).start()
     if now - hari >= 300 and st.get("arah_hari", 0) < hari and now - hari <= 6 * 3600:
         # 07:05 WIB, candle harian baru tutup: kirim arah pasar otomatis (BTC, ETH, posisi kamu, berita hari ini)
         _st({"arah_hari": hari})
@@ -275,6 +279,10 @@ def _tugas_berkala():
         except Exception as ex:
             print("[WARN] arah harian", ex)
     _jaga_main(now)
+    try:
+        _jadwal_lab(now)
+    except Exception as ex:
+        print("[WARN] jadwal lab", ex)
     tutup4 = int(now // 14400) * 14400
     if now - tutup4 >= 120 and st.get("scan4", 0) < tutup4 * 1000 and now - st.get("susul_coba", 0) >= 900:
         # laporan 4 jam terakhir belum pernah jadi (bot mati, update, atau gagal): susulkan sekarang
@@ -288,6 +296,91 @@ def _tugas_berkala():
 
 MAIN = {"p": None, "t": 0.0, "lapor": 0.0}
 LOG_MAIN = os.path.join(STATE_DIR, "main.log")
+def _cek_unlock():
+    """Info: posisi jalan yang koinnya diperkirakan unlock pasokan dalam 3 hari (pola lonjakan pasokan beredar CoinGecko)."""
+    try:
+        import qse_fundamental as FD
+        pos = [v for v in SY.lihat()["open"].values() if v.get("status") in ("TERISI", "TP1")]
+        rows, now = [], time.time()
+        for s in sorted({v["sym"] for v in pos if v["sym"] != "BTCUSDT"})[:12]:
+            try:
+                tk = FD.tokenomik(s)
+            except Exception as ex:
+                print("[WARN] tokenomik", s, ex)
+                continue
+            u = tk.get("unlock_ts")
+            if u and -86400 <= u - now <= 3 * 86400:
+                siapa = ", ".join(sorted({f"{v.get('oleh', '')} {v['arah']}".strip() for v in pos if v["sym"] == s}))
+                rows.append(f"🔓 {s}: perkiraan unlock +{tk['unlock_pct']:g}% pasokan sekitar {FD._tgl(u)} sampai "
+                            f"{FD._tgl(u + 2 * 86400)}. Posisi: {siapa}.")
+            time.sleep(15)
+        if rows:
+            TG.send(["🔓 <b>QSE v148 | PERKIRAAN UNLOCK TOKEN</b>\nDari pola lonjakan pasokan beredar 1 tahun (CoinGecko), bukan jadwal "
+                     "resmi. Info saja, belum diuji ke sinyal robot. Untuk LONG, pastikan SL terpasang.\n\n" + "\n".join(rows)])
+    except Exception as ex:
+        print("[WARN] cek unlock", ex)
+
+
+LABP = {"p": None, "t": 0.0, "tugas": ""}
+LOG_LAB = os.path.join(STATE_DIR, "lab", "lab.log")
+
+
+def _lab_jalan(tugas, now):
+    """Jalankan qse_lab.py di proses terpisah (prioritas rendah) supaya balasan perintah tidak tertahan."""
+    import subprocess
+    os.makedirs(os.path.dirname(LOG_LAB), exist_ok=True)
+    if os.path.exists(LOG_LAB) and os.path.getsize(LOG_LAB) > 2_000_000:
+        os.replace(LOG_LAB, LOG_LAB + ".1")
+    log = open(LOG_LAB, "a")
+    log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} lab {tugas} =====\n")
+    log.flush()
+    LABP.update(p=subprocess.Popen(["nice", "-n", "10", sys.executable, "-u", "qse_lab.py", tugas],
+                                   cwd=os.path.dirname(os.path.abspath(__file__)), env=os.environ.copy(),
+                                   stdout=log, stderr=subprocess.STDOUT, start_new_session=True), t=now, tugas=tugas)
+    log.close()
+
+
+def _jadwal_lab(now):
+    """QSE LAB: sinyal 7 menit setelah candle 4J tutup, riset harian 02:30 WIB (riset pertama langsung setelah update),
+    uji bulanan tanggal 1 (atau saat belum pernah). Satu proses lab sekaligus, dihentikan kalau lebih dari 50 menit."""
+    import signal
+    p = LABP["p"]
+    if p is not None:
+        if p.poll() is None:
+            if now - LABP["t"] > 50 * 60:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except Exception:
+                    pass
+                print("[WARN] lab", LABP["tugas"], "lebih dari 50 menit, dihentikan")
+                LABP["p"] = None
+            return
+        if p.returncode:
+            print("[WARN] lab", LABP["tugas"], "berhenti dengan kode", p.returncode)
+        LABP["p"] = None
+    st = _st()
+    tutup4 = int(now // 14400) * 14400
+    if now - tutup4 >= 420 and st.get("lab_sinyal", 0) < tutup4:
+        _st({"lab_sinyal": tutup4})
+        _lab_jalan("sinyal", now)
+        return
+    hari = int(now // 86400) * 86400
+    buku = os.path.join(STATE_DIR, "lab", "buku.json")
+    if not os.path.exists(buku) and not st.get("lab_pertama"):
+        _st({"lab_pertama": now})
+        _lab_jalan("riset", now)
+        return
+    if now >= hari + 19 * 3600 + 1800 and st.get("lab_riset", 0) < hari:     # 19:30 UTC = 02:30 WIB
+        _st({"lab_riset": hari})
+        _lab_jalan("riset", now)
+        return
+    g = time.gmtime(now)
+    bln = g.tm_year * 12 + g.tm_mon
+    f = os.path.join(STATE_DIR, "lab", "slsaran_auto.json")
+    basi = not os.path.exists(f) or now - os.path.getmtime(f) > 32 * 86400
+    if st.get("lab_bulan", 0) < bln and (g.tm_mday == 1 or basi) and now - tutup4 >= 1800:
+        _st({"lab_bulan": bln})
+        _lab_jalan("bulanan", now)
 
 
 def _main_terkunci():
@@ -439,7 +532,8 @@ def _gerak_serentak():
     if now - _st().get("gerak_t", 0) < 7200:
         return
     pilih = None
-    for menit, b_th, a_th, lab in ((28, 2, 3, "30 menit"), (178, 3, 5, "3 jam")):
+    # tingkat kecil (26 Okt 2026): BTC 1.5% atau 60% koin 2% dalam 30 menit, sekitar 19 kali per bulan (data 15 menit 2022-2026)
+    for menit, b_th, a_th, lab, fr in ((28, 2, 3, "30 menit", 0.7), (178, 3, 5, "3 jam", 0.7), (28, 1.5, 2, "30 menit (gerak kecil)", 0.6)):
         lama = next((sn for t, sn in _GERAK if now - t >= menit * 60), None)
         if not lama or now - _GERAK[0][0] < menit * 60:
             continue
@@ -451,8 +545,8 @@ def _gerak_serentak():
             continue
         naik = sum(1 for v in alt if v >= a_th) / len(alt)
         turun = sum(1 for v in alt if v <= -a_th) / len(alt)
-        if abs(btc) >= b_th or naik >= 0.7 or turun >= 0.7:
-            pilih = (lab, a_th, btc, alt, naik, turun, (btc > 0) if abs(btc) >= b_th else naik >= 0.7)
+        if abs(btc) >= b_th or naik >= fr or turun >= fr:
+            pilih = (lab, a_th, btc, alt, naik, turun, (btc > 0) if abs(btc) >= b_th else naik >= fr)
             break
     if not pilih:
         return
@@ -516,6 +610,13 @@ def _tugas_menit():
             _st({"pin_dini": None})
     except Exception as ex:
         print("[WARN] dini", ex)
+    try:
+        import qse_slsaran as SLS          # saran SL: otomatis nyala hanya kalau uji bulanan lab membuktikan lebih untung
+        sp = SY.per_orang(SLS.cek)()
+        if sp:
+            TG.send(["📶 <b>QSE v148 | SARAN PINDAH SL</b>\n\n" + "\n\n".join(sp)])
+    except Exception as ex:
+        print("[WARN] saran sl", ex)
     try:
         kp = SY.kabar_profit()
         if kp:

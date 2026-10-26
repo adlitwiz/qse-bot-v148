@@ -1301,10 +1301,12 @@ def _kartu_jam(results, b1, led):
             rows.append("📡 Belum ada sinyal jalur terbukti yang valid di harga sekarang")
     except Exception as ex:
         print("[WARN] sinyal per jam", ex)
-    aktif = [v for v in led["open"].values() if v["status"] == "MENUNGGU"]
-    rows.append(f"⏳ Order Tembus Trendline menunggu terisi: {len(aktif)}" + (" (detail di /sinyal4j)" if aktif else ""))
     peta_px = {r["symbol"]: (r.get("live") or r["close"], r["tick"]) for r in results}
-    for v in sorted(aktif, key=lambda v: abs((peta_px.get(v["sym"], (v["entry"], 0))[0] - v["entry"]) / v["entry"]))[:5]:
+    jr_ = lambda v: abs((peta_px.get(v["sym"], (v["entry"], 0))[0] - v["entry"]) / v["entry"]) * 100
+    aktif = [v for v in led["open"].values() if v["status"] == "MENUNGGU" and jr_(v) <= 3]   # yang jauh jarang terisi
+    if aktif:
+        rows.append(f"⏳ Order Tembus Trendline dekat entry (maks 3%): {len(aktif)} (detail di /sinyal4j)")
+    for v in sorted(aktif, key=jr_)[:5]:
         px, t = peta_px.get(v["sym"], (None, 0.0001))
         rows.append(f"↳ {v['sym']} {v['arah']} entry {TG.fp(v['entry'], t)}"
                     + (f", harga {TG.fp(px, t)}, jarak {abs(px - v['entry']) / v['entry'] * 100:.2f}%" if px else ""))
@@ -1939,7 +1941,7 @@ def _pantauan(rs, sig, kode):
 # Uji 111 koin 2020-2026 (entry telat di harga close, SL jalur saat itu, TP asli), PF dev/uji: EMA 1.22/1.24, RSI 1.21/1.39,
 # McGinley 1.14/1.27, SnR 1.29/1.46, SMC 1.19/1.12, Ichimoku 1.16/1.23. MSB telat 0.99 di 2020-2023, jadi MSB, Order Block,
 # dan GZH hanya sinyal candle ini.
-TELAT_OK = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku", "rantai_eksekusi"}
+TELAT_OK = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
 TELAT_CANDLE, TELAT_R = 2, 0.5
 
 
@@ -1966,7 +1968,7 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
         risk = it.get("risk") or abs(it["entry"] - it.get("sl0", it["sl"]))
         d = ((px - it["entry"]) * (1 if L else -1) / risk) if (px and risk) else None
         sl_now, sl0 = it.get("sl", it.get("sl0")), it.get("sl0", it.get("sl"))
-        masih = (not baru and kunci in TELAT_OK and umur <= TELAT_CANDLE + 0.1 and d is not None and abs(d) <= TELAT_R
+        masih = (not baru and kunci in TELAT_OK and umur <= __import__('qse_strat').umur_maks(kunci) and d is not None and abs(d) <= TELAT_R
                  and ((px > sl_now) if L else (px < sl_now))
                  and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
         if baru and px and risk and d is not None:
@@ -2051,12 +2053,6 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                     pasar.append(b50)
             except Exception as ex:
                 print("[WARN] btc ema50", ex)
-            try:
-                import qse_penyaring as PY
-                ev_p1 = PY.evaluasi_pasar()
-                pasar.append(f"🧭 Penyaring Utama (Pilar 1): Fokus <b>{ev_p1['arah_dana_besar']}</b> (skor {ev_p1['skor_aliran_dana']:+d})  ·  Mode Otomatis: <b>KOMBO {ev_p1['mode_kombo']}</b> ({ev_p1['kondisi_pasar']})")
-            except Exception as ex:
-                print("[WARN] penyaring utama main", ex)
         if tf != "240":
             pasar.append(f"Arah diizinkan: {alt.get('izin', '-')}")
         else:
