@@ -13,7 +13,13 @@ Rentang: regresi log rentang 24 jam (rentang 24 jam dan 7 hari, volatilitas 30 h
 LATIH ULANG OTOMATIS (27 Okt 2026): tiap Senin 05:30 WIB qse_latih melatih ulang model dari sejarah riset + catatan live bot
 (tiap tebakan yang sudah lewat 24 jam dicatat ke arah_live.json). Model baru dipakai hanya kalau lolos penjaga kualitas
 (tanda koefisien sama, akurasi uji maju tidak turun lebih dari 1 poin, keyakinan KUAT tidak turun lebih dari 2 poin).
-Uji maju: batas 80% berisi seluruh gerak 24 jam di 79-82% hari tiap periode, R2 log rentang 0.42 (rata 7 hari saja 0.22)."""
+Uji maju: batas 80% berisi seluruh gerak 24 jam di 79-82% hari tiap periode, R2 log rentang 0.42 (rata 7 hari saja 0.22).
+UJI ULANG TAMPILAN (27 Okt 2026, uji maju 2019-2026, 4 sesi, dibagi 2019-21, 2022-23, 2024-26):
+- NAIK keyakinan KUAT: BTC benar 57-60%, 52-56%, 55-57%, selalu di atas dasar "selalu naik" (54-56%, 48-51%, 51-54%).
+  Altcoin ikut naik 60-62%, 55-60%, tapi 50-54% di 2024-26.
+- TURUN keyakinan KUAT: 40-63% per periode, tidak konsisten. SEDANG dan TIPIS (dua arah): 40-60%, acak.
+Jadi yang tampil CONDONG hanya NAIK KUAT dan aturan naik teruji. Sisanya tampil NETRAL 50:50. Tebakan mentah tetap
+dicatat untuk akurasi nyata dan latih ulang."""
 import json
 import math
 import os
@@ -237,7 +243,7 @@ def _catat(r, h):
     log = _f("tebak_log.json") or []
     if not any(e["T"] == r["T"] and e["H"] == r["H"] for e in log):
         log.append(dict(T=r["T"], H=r["H"], p=round(r["p"], 4), arah=r["arah"], tingkat=r["tingkat"], harga=r["harga"],
-                        atas=r["atas"], bawah=r["bawah"], x=r.get("x"), xr=r.get("xr")))
+                        atas=r["atas"], bawah=r["bawah"], x=r.get("x"), xr=r.get("xr"), lama=lama_aktif(r)))
     hi, lo, cl = h["high"], h["low"], h["close"]
     for e in log:
         if e.get("hasil") is not None:
@@ -308,47 +314,80 @@ def _alasan(r, maks=3):
     return out
 
 
+def lama_aktif(r):
+    """Aturan naik teruji aktif di sesi 06:00 WIB (dengan atau tanpa model ikut NAIK)."""
+    return bool(r and (r.get("pakai_lama") or (r.get("H") == 23 and r.get("lama") and r.get("arah") == "NAIK")))
+
+
+def terbukti(r):
+    """True kalau arah ini lolos uji ulang dan boleh tampil CONDONG: NAIK keyakinan KUAT atau aturan naik teruji.
+    TURUN, SEDANG, dan TIPIS tampil NETRAL 50:50 (uji ulang 27 Okt 2026, lihat catatan di atas)."""
+    return bool(r and (lama_aktif(r) or (r.get("arah") == "NAIK" and r.get("tingkat") == "kuat")))
+
+
+def alasan_netral(r):
+    """Kenapa tebakan ini tampil NETRAL: 'model condong naik tipis, uji benar 53%, sama dengan lempar koin'."""
+    arah = r["arah"].lower()
+    if r["tingkat"] == "kuat":
+        return f"model condong {arah} kuat, tapi tebakan TURUN di uji tidak konsisten (40-63% per periode)"
+    return f"model condong {arah} {r['tingkat']}, uji benar {r['benar']:.0f}%, sama dengan lempar koin"
+
+
 def judul(r):
-    """'CONDONG NAIK, keyakinan KUAT (uji benar 56%)'."""
-    if r.get("pakai_lama"):
+    """'CONDONG NAIK, keyakinan KUAT (uji benar 56%)' atau 'NETRAL 50:50 (model condong naik tipis, ...)'."""
+    if lama_aktif(r):
         return f"CONDONG NAIK, aturan teruji aktif (sejarah naik {LAMA_NAIK:.0f}%)"
-    return f"CONDONG {r['arah']}, keyakinan {r['tingkat'].upper()} (uji benar {r['benar']:.0f}%)"
+    if terbukti(r):
+        return f"CONDONG NAIK, keyakinan KUAT (uji benar {r['benar']:.0f}%)"
+    return f"NETRAL 50:50 ({alasan_netral(r)})"
 
 
 def baris_keyakinan(r):
     M = model()["sesi"][str(r["H"])]["uji"]
-    tk = r["tingkat"].upper()
     if r.get("pakai_lama"):
         return (f"Model condong turun tipis, tapi aturan naik teruji sedang aktif. Uji 2019-2026: saat aturan ini aktif "
                 f"BTC naik di {LAMA_NAIK:.0f}% hari, jadi arah dibuat NAIK.")
+    if lama_aktif(r):
+        return f"Aturan naik teruji sedang aktif. Uji 2019-2026: saat aturan ini aktif BTC naik di {LAMA_NAIK:.0f}% hari."
     per = f"Uji maju {M['dari'][:4]}-{M['sampai'][:4]}"
-    if tk == "TIPIS":
-        return (f"{per}: tebakan berkeyakinan TIPIS benar {r['benar']:.0f}% hari, sama dengan lempar koin. "
-                "Jangan jadikan alasan entry.")
-    return (f"{per}: tebakan berkeyakinan {tk} benar {r['benar']:.0f}% hari, muncul di {M['tingkat'][r['tingkat']][0]:.0f}% hari. "
-            f"Semua hari rata benar {M['akurasi']:.0f}%.")
+    if not terbukti(r):
+        return f"{per}: {alasan_netral(r)}. Tidak dipakai sebagai arah."
+    return (f"{per}: tebakan NAIK berkeyakinan KUAT benar {r['benar']:.0f}% hari, di atas rata-rata di 2019-21, 2022-23, "
+            f"dan 2024-26. Semua tebakan rata benar {M['akurasi']:.0f}%.")
+
+
+def _cek_terbukti(e):
+    return bool(e.get("lama") or (e.get("arah") == "NAIK" and e.get("tingkat") == "kuat"))
 
 
 def baris_nyata(H=None):
     n, b, isi = akurasi_nyata(H)
     if n < 5:
         return f"📊 Akurasi nyata sejak dipasang: baru {n} tebakan dinilai, ditampilkan setelah 5."
-    return (f"📊 Akurasi nyata sejak dipasang: {b} dari {n} tebakan benar ({b / n * 100:.0f}%), "
+    log = _f("tebak_log.json") or []
+    t = [e for e in log if e.get("hasil") in (0, 1) and (H is None or e["H"] == H) and _cek_terbukti(e)]
+    bt = sum(e["hasil"] for e in t)
+    tc = (f"yang tampil CONDONG {bt} dari {len(t)} benar ({bt / len(t) * 100:.0f}%)" if len(t) >= 5 else
+          f"yang tampil CONDONG baru {len(t)} dinilai")
+    return (f"📊 Akurasi nyata sejak dipasang: semua tebakan {b} dari {n} benar ({b / n * 100:.0f}%), {tc}, "
             f"rentang 80% terisi {isi / n * 100:.0f}%.")
 
 
 def teks_arah(r, lengkap=True):
     """Blok arah untuk info pasar."""
-    M = model()["sesi"][str(r["H"])]["uji"]
-    ket = "aturan teruji aktif" if r.get("pakai_lama") else f"keyakinan {r['tingkat'].upper()}"
-    rows = [f"🧭 <b>ARAH BTC 24 JAM DARI {NAMA_JAM[r['H']]} WIB: CONDONG {r['arah']}</b>, {ket}", baris_keyakinan(r)]
-    al = _alasan(r, 3 if lengkap else 2)
+    if terbukti(r):
+        ket = "aturan teruji aktif" if lama_aktif(r) else "keyakinan KUAT"
+        rows = [f"🧭 <b>ARAH BTC 24 JAM DARI {NAMA_JAM[r['H']]} WIB: CONDONG NAIK</b>, {ket}", baris_keyakinan(r)]
+    else:
+        rows = [f"🧭 <b>ARAH BTC 24 JAM DARI {NAMA_JAM[r['H']]} WIB: NETRAL 50:50</b>", baris_keyakinan(r)]
+    al = _alasan(r, 3 if lengkap else 2) if terbukti(r) else []
     if al:
         rows += ["Alasan utama:"] + [f"{ik} {t}" for ik, t in al]
     if lengkap:
-        rows += [f"Altcoin: saat tebakan NAIK, altcoin ikut naik di {M['alt_naik_benar']:.0f}% hari. "
-                 f"Tebakan TURUN belum terbukti untuk altcoin (turun {M['alt_turun_benar']:.0f}% hari).",
-                 "Sinyal robot tetap diikuti apa adanya. Uji 2021-2026: membuang sinyal yang melawan tebakan ini tidak "
+        if terbukti(r) and not lama_aktif(r):
+            rows.append("Altcoin di hari BTC condong naik KUAT ikut naik 60-62% (2019-21), 55-60% (2022-23), tapi hanya "
+                        "50-54% (2024-26). Jadi arah BTC ini bukan alasan LONG altcoin.")
+        rows += ["Sinyal robot tetap diikuti apa adanya. Uji 2021-2026: membuang sinyal yang melawan tebakan ini tidak "
                  "menaikkan hasil.", baris_nyata(r["H"])]
     return rows
 
@@ -381,12 +420,14 @@ def baris_sinyal_gerak(r, pendek=False):
 
 
 def ringkas(r):
-    """Satu baris: 'CONDONG NAIK, keyakinan KUAT (uji benar 56%)'."""
+    """Satu baris: 'CONDONG NAIK, keyakinan KUAT (uji benar 56%)' atau 'NETRAL 50:50 (...)'."""
     return judul(r)
 
 
 def dasar(r):
-    """Untuk kesimpulan: 'BTC condong naik, keyakinan KUAT (uji benar 56%)'."""
-    if r.get("pakai_lama"):
+    """Untuk kesimpulan: 'BTC condong naik, keyakinan KUAT (uji benar 56%)' atau 'BTC 50:50 (...)'."""
+    if lama_aktif(r):
         return f"BTC condong naik, aturan teruji aktif (sejarah naik {LAMA_NAIK:.0f}%)"
-    return f"BTC condong {r['arah'].lower()}, keyakinan {r['tingkat'].upper()} (uji benar {r['benar']:.0f}%)"
+    if terbukti(r):
+        return f"BTC condong naik, keyakinan KUAT (uji benar {r['benar']:.0f}%)"
+    return f"BTC 50:50 ({alasan_netral(r)})"

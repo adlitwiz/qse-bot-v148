@@ -218,7 +218,7 @@ def analisa():
     lu, dh = {}, None
     try:
         import qse_pagi as PG
-        rows += PG.tebak_teks("cek") + [""] + PG.baris_arah("cek") + PG.kesimpulan_arah() + [""]
+        rows += PG.tebak_teks("cek") + [""] + PG.baris_arah("cek") + [""] + PG.kesimpulan_arah() + [""]
         lu = PG.pasar_luas() or {}
         dh = PG.arah_hari()
     except Exception as ex:
@@ -256,12 +256,10 @@ def analisa():
         tbk = TB.tebak()
     except Exception as ex:
         print("[WARN] tebak cek", ex)
-    if tbk:                                  # model arah 24 jam (uji maju 53-56%) selalu memberi arah BTC
-        naik24 = tbk["arah"] == "NAIK"
-        turun24 = not naik24
-    else:
-        naik24 = pagi_naik or luas_naik or oi_arah > 0
-        turun24 = oi_arah < 0 and not naik24
+    # 24 jam: hanya dasar yang lolos uji ulang 27 Okt 2026. Model arah hanya NAIK KUAT (BTC 55-57%), aturan naik pagi
+    # (BTC naik 55-58% di semua periode), atau pola open interest teruji. Lebar pasar 80%+ hanya untuk altcoin (BTC 50-53%).
+    naik24 = bool(tbk and TB.terbukti(tbk)) or pagi_naik or oi_arah > 0
+    turun24 = oi_arah < 0 and not naik24
     alasan30 = []
     if t30:
         alasan30.append(f"teknikal {NAMA_KOND[kond]} ({'+' if t30 > 0 else '-'})")
@@ -274,15 +272,18 @@ def analisa():
     skor30 = t30 + sum(edge)
     rows.append("🏁 <b>KESIMPULAN AKHIR</b>")
     if naik24:
-        al = ([TB.dasar(tbk)] if tbk and tbk["arah"] == "NAIK" else
-              [dh["alasan"][0]] if pagi_naik and not tbk else []) \
-            + (["80%+ koin di atas EMA50 1D"] if luas_naik else []) + (["pola open interest teruji"] if oi_arah > 0 else [])
+        al = [f"{dh['alasan'][0]} (aturan teruji)"] if pagi_naik else []
+        if tbk and TB.terbukti(tbk) and not (pagi_naik and tbk.get("pakai_lama")):
+            al.append(TB.dasar(tbk))
+        if oi_arah > 0:
+            al.append("pola open interest teruji")
         rows.append(f"⏱ 24 jam: 🟢 CONDONG NAIK. Dasar: {', '.join(al)}. Tetap peluang, bukan kepastian.")
     elif turun24:
-        al = ([TB.dasar(tbk)] if tbk else []) + (["pola open interest teruji"] if oi_arah < 0 else [])
-        rows.append(f"⏱ 24 jam: 🔴 CONDONG TURUN. Dasar: {', '.join(al)}. Tetap peluang, bukan kepastian.")
+        rows.append("⏱ 24 jam: 🔴 CONDONG TURUN. Dasar: pola open interest teruji. Tetap peluang, bukan kepastian.")
+    elif tbk:
+        rows.append(f"⏱ 24 jam: ⚪ NETRAL 50:50 ({TB.alasan_netral(tbk)}). Ikuti sinyal robot apa adanya.")
     else:
-        rows.append("⏱ 24 jam: data BTC belum lengkap untuk model arah. Ikuti sinyal robot apa adanya.")
+        rows.append("⏱ 24 jam: ⚪ NETRAL. Data BTC belum lengkap untuk model arah. Ikuti sinyal robot apa adanya.")
     a, b = PELUANG[kond]["f7"]
     rows.append(f"📅 7 hari: {'🟢 CONDONG NAIK' if t7 > 0 else '🔴 CONDONG TURUN' if t7 < 0 else '⚪ NETRAL'}. "
                 f"Kondisi {NAMA_KOND[kond]} naik di {a[0]}% dan {b[0]}% kasus, biasanya {a[2]}% dan {b[2]}%.")
@@ -290,11 +291,13 @@ def analisa():
                 + (f" ({', '.join(alasan30)})." if alasan30 else ". Teknikal, sentimen, dan funding tidak memberi keunggulan arah."))
     rows.append("🪙 Altcoin: " + ("BTC.D turun, SHORT altcoin lebih kuat dari biasa." if dt else
                                   "BTC.D naik, sinyal altcoin hasil biasa." if dt is not None else "dominasi belum terbaca.")
-                + (" 80%+ koin di atas EMA50 1D: altcoin naik besok di 57-58% hari." if luas_naik else ""))
+                + (" 80%+ koin di atas EMA50 1D: altcoin naik besok di 56-58% hari (biasanya 51-56%)." if luas_naik else ""))
     if naik24 and skor30 >= 0:
         akhir = "🟢 CONDONG NAIK"
-        aksi = "Utamakan sinyal LONG robot." + (" SHORT baru ditahan otomatis hari ini." if pagi_naik else
-                                                " SHORT tetap boleh sesuai sinyal, pakai SL disiplin.")
+        # Utamakan LONG hanya di hari aturan pagi (uji sinyal: SHORT PF 0.94/0.99, LONG 1.37/1.21). Arah lain tidak
+        # terbukti mengubah hasil sinyal (membuang sinyal lawan tebakan: PF naik di satu periode, turun di periode lain).
+        aksi = ("Utamakan sinyal LONG robot. SHORT baru ditahan otomatis hari ini." if pagi_naik else
+                "Ikuti sinyal robot LONG dan SHORT apa adanya. Arah ini tidak terbukti mengubah hasil sinyal.")
     elif turun24 and skor30 <= 0:
         akhir, aksi = "🔴 CONDONG TURUN (24 jam)", "Ikuti sinyal robot. LONG baru pakai SL disiplin, jangan tambah posisi melawan arah."
     elif turun24:
@@ -302,7 +305,9 @@ def analisa():
     elif skor30 > 0:
         akhir, aksi = "🟢 CONDONG NAIK (jangka 30 hari)", "Hari ini tetap ikuti sinyal robot LONG dan SHORT. DCA spot tetap jalan seperti biasa."
     elif skor30 < 0 and naik24:
-        akhir, aksi = "🟡 CAMPUR: 24 jam condong naik, 30 hari condong tertahan", "Ambil LONG jangka pendek sesuai sinyal, jangan tahan terlalu lama."
+        akhir = "🟡 CAMPUR: 24 jam condong naik, 30 hari condong tertahan"
+        aksi = ("Ikuti sinyal LONG robot, SHORT baru ditahan otomatis hari ini." if pagi_naik else
+                "Ikuti sinyal robot LONG dan SHORT.") + " Posisi tetap ikuti SL dan TP."
     elif skor30 < 0:
         akhir, aksi = "🔴 CONDONG TURUN atau tertahan (jangka 30 hari)", "Ikuti sinyal robot. SHORT tidak ditahan, LONG pakai SL disiplin."
     else:
