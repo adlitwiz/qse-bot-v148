@@ -262,8 +262,10 @@ def teks():
     try:
         import qse_porto as PO
         rm = PO.rem()
-        rows.append("🛡 Rem portofolio: " + (f"AKTIF, lot setengah ({rm})" if rm else "tidak aktif, lot normal"))
+        rows.append("🛡 Rem portofolio: " + (f"AKTIF, lot setengah ({rm})" if rm else "tidak aktif, lot normal" if PO.REM_LOT else
+                                            "mati, diganti batas 5 posisi per orang (uji 2021-2026: rasio profit/drawdown 3.6 jadi 11.1)"))
     except Exception:
         pass
-    rows.append("Jalur terbukti tidak dimatikan otomatis dari hasil live pendek. Pengaman yang dipakai: rem lot setengah.")
+    rows.append("Jalur terbukti tidak dimatikan otomatis dari hasil live pendek. Pengaman yang dipakai: batas 5 posisi per orang "
+                "dan risiko tetap per trade.")
     return "\n".join(rows)

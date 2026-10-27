@@ -74,6 +74,32 @@ def _rapi(b):
     return "\n".join(out)
 
 
+def _titik_potong(b, maks):
+    """Posisi potong untuk blok kepanjangan: baris kosong dulu, lalu batas baris, dan tidak pernah di dalam tag
+    <pre>, <code>, <b>, <i> (potongan di dalam tag membuat Telegram menolak format dan pesan jadi teks polos)."""
+    def aman(k):
+        s = b[:k]
+        return all(s.count(f"<{t}>") == s.count(f"</{t}>") for t in ("pre", "code", "b", "i"))
+    for sep in ("\n\n", "\n"):
+        k = b.rfind(sep, 0, maks)
+        while k > 0:
+            if aman(k):
+                return k
+            k = b.rfind(sep, 0, k)
+    return maks
+
+
+def pecah_blok(b, maks=3800):
+    """Blok panjang dipotong jadi beberapa bagian yang masing-masing aman dikirim (format HTML utuh)."""
+    out = []
+    while len(b) > maks:
+        k = _titik_potong(b, maks)
+        out.append(b[:k].rstrip("\n"))
+        b = b[k:].lstrip("\n")
+    out.append(b)
+    return out
+
+
 def send(blocks, token=None, chat_id=None):
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
@@ -83,13 +109,7 @@ def send(blocks, token=None, chat_id=None):
     msgs, cur = [], ""
     pecah = []
     for b in blocks:
-        b = _rapi(b)
-        while len(b) > 3800:                      # blok kepanjangan: potong di batas baris
-            k = b.rfind("\n", 0, 3800)
-            k = k if k > 0 else 3800
-            pecah.append(b[:k])
-            b = b[k:].lstrip("\n")
-        pecah.append(b)
+        pecah += pecah_blok(_rapi(b))              # blok kepanjangan: potong di baris kosong, di luar tag HTML
     for b in pecah:
         if len(cur) + len(b) + 2 > 3800 and cur:
             msgs.append(cur)

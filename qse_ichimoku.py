@@ -88,7 +88,11 @@ REM_DD_R, REM_RUGI = 16.0, 6      # rem drawdown: uji 5 tahun top 20 likuid, dra
 
 def rem():
     """Rem drawdown jalur Ichimoku dari catatan robot: lot setengah saat hasil turun lebih dari 16R dari puncak
-    (sekitar 8% modal di risiko 0.5%) atau rugi 6 kali beruntun. Kembali normal setelah keduanya lewat. Return alasan atau ''."""
+    (sekitar 8% modal di risiko 0.5%) atau rugi 6 kali beruntun. Kembali normal setelah keduanya lewat. Return alasan atau ''.
+    Mati sejak 27 Okt 2026 (qse_porto.REM_LOT): dengan batas 5 posisi per orang rem menurunkan rasio profit/drawdown."""
+    import qse_porto as PO_r
+    if not PO_r.REM_LOT:
+        return ""
     eq = peak = 0.0
     rugi = 0
     for c in sorted(lihat().get("closed", []), key=lambda c: c.get("selesai", 0)):
@@ -231,12 +235,8 @@ def _jalankan(baru_ok=True):
                           if st == "SL" else f"Sudah {MAKS_BAR} candle 4J (10 hari). Tutup posisi sekarang di harga pasar, "
                           f"sekitar {TG.fp(it['close'], t)}.")
                        + f"\nEntry tadi {TG.fp(it['entry'], t)}.")
-        elif kabar and abs(it["sl"] - sl_lama) >= 0.25 * it["risk"]:
-            L = it["arah"] == "LONG"
-            kunci = ((it["sl"] - it["entry"]) if L else (it["entry"] - it["sl"])) / it["risk"]
-            out.append(f"🔁 <b>ICHIMOKU  ·  {it['sym']} {it['arah']}  ·  GESER SL</b>\n"
-                       f"Ubah SL di Bybit ke <code>{TG.fp(it['sl'], t)}</code> (sebelumnya {TG.fp(sl_lama, t)})\n"
-                       f"Profit yang sudah aman kalau harga balik: {kunci:+.2f}R  ·  hari ke-{it['bar'] // 6 + 1} dari 10")
+        # pesan GESER SL dikirim per orang oleh pantau() (qse_saya._kabar_geser): dari entry dan SL masing-masing,
+        # tidak pernah mundur setelah TP sebagian memindah SL ke entry
 
     def simpan_kelola(dd):
         for key, (it, st, R, _) in hasil.items():
@@ -343,8 +343,9 @@ def _jalankan(baru_ok=True):
         except Exception as ex:
             print("[WARN] combo ichimoku", ex)
         import qse_porto as PO_s
-        if PO_s.senin_tolak(it.get("combo"), it.get("combo_emas")):
-            print(f"[ICHIMOKU] {sym} dilewati: {PO_s.senin_tolak(it.get('combo'), it.get('combo_emas'))}")
+        tolak_senin = PO_s.senin_tolak(it.get("combo"), it.get("combo_emas"), it.get("combo_fix"), it.get("dom_turun"))
+        if tolak_senin:
+            print(f"[ICHIMOKU] {sym} dilewati: {tolak_senin}")
             continue
         baru.append(it)
         PO.pesan(sym, arah)
@@ -360,7 +361,7 @@ def _jalankan(baru_ok=True):
         rm = rem() or PO.rem()
         if rm:
             lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
-        lot_b, cat_hari = PO.lot_hari(lot_b)
+        lot_b, cat_hari = PO.lot_hari(lot_b, it.get("dom_turun"))
         try:
             import qse_modal as MD
             lot = MD.baris_lot(px, sl, SY.lot_angka(lot_b))
@@ -373,8 +374,8 @@ def _jalankan(baru_ok=True):
             *ST_combo(it),
             *([cat_hari] if cat_hari else []),
             SY.GARIS,
-            SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=sym, arah=arah),
-            *ST_tpc(dict(entry=px, sl=sl, arah=arah, tick=t, t=now, risk=risk)),
+            SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=sym, arah=arah, sebagian=True),
+            *ST_tpc(dict(entry=px, sl=sl, arah=arah, tick=t, t=now, risk=risk, trail_atr=TRAIL_ATR, sl_atr=SL_ATR)),
             *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Tetap boleh entry, pakai lot setengah sampai pulih. Di uji 5 tahun rem ini "
                 f"menurunkan drawdown dari 28% ke 18% tanpa mengurangi profit"] if rm else []),
             "💡 <b>Kenapa</b>",
@@ -387,7 +388,9 @@ def _jalankan(baru_ok=True):
             f"(lihat baris 💰), setelah kena SL ke entry. Sisanya tanpa TP",
             "2. Tiap candle 4J tutup, robot kirim pesan GESER SL. Ubah SL di Bybit ke angka di pesan itu",
             "3. SL hanya maju searah profit, tidak pernah mundur. Saat harga balik menyentuh SL, posisi tutup sendiri dengan profit yang sudah terkunci",
-            "4. Kalau 10 hari belum kena SL, robot mengingatkan untuk tutup manual",
+            "4. Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup market. Robot mengabari. "
+            "Sudah aman tapi 10 hari belum kena SL: robot "
+            "mengingatkan untuk tutup manual",
             f"5. Catat dengan /entry supaya pesan GESER SL dikirim. Tanpa /entry, robot tidak mengirim pesan lanjutan untuk koin ini",
             "❓ <b>Kenapa sisanya tanpa TP</b>",
             "Untungnya datang dari sedikit trade yang lari jauh, bisa +3R sampai +10R. TP penuh akan memotong trade besar itu. "

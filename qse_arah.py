@@ -190,11 +190,20 @@ def harian():
     blok = []
     hari_ = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"][_t.gmtime(_t.time() + 7 * 3600).tm_wday]
     hh = PO.hari()
-    rencana = {"senin": "hanya sinyal COMBO EMAS, COMBO FIX, atau COMBO 3+ yang dikirim (sinyal Senin lain PF 0.89). "
-                        "Jadwal DCA BTC spot Rp100.000 hari ini.",
-               "akhir_pekan": "sinyal tetap dikirim dengan lot setengah (uji 2021-2026 akhir pekan PF sekitar 0.9)."}.get(
+    rencana = {"senin": "hanya sinyal COMBO EMAS, COMBO FIX, COMBO 3+, atau berlabel BTC.D TURUN yang dikirim "
+                        "(sinyal Senin lain PF 0.89, label BTC.D TURUN PF 2.0 dan 4.5). Jadwal DCA BTC spot Rp100.000 hari ini.",
+               "akhir_pekan": "sinyal tetap dikirim dengan lot setengah, kecuali berlabel BTC.D TURUN lot penuh "
+                              "(uji 2021-2026 akhir pekan PF 1.18 dan 1.00, BTC.D TURUN 1.75 dan 1.52)."}.get(
         hh, "hari terbaik, sinyal normal dengan lot penuh (uji Selasa-Jumat PF 1.32-1.50).")
     blok.append(f"📅 <b>{hari_.upper()}</b>: {rencana}")
+    try:
+        import qse_tebak as TB
+        r = TB.tebak()
+        if r:
+            blok.append(f"🧭 <b>ARAH BTC 24 JAM</b>: {TB.ringkas(r)}. Perkiraan rentang gerak {r['s'] * 100:.1f}% "
+                        f"({r['lv']}). Info saja, sinyal robot tetap diikuti. Detail di INFO PASAR PAGI dan /cek BTC.")
+    except Exception as ex:
+        print("[WARN] harian tebak", ex)
     try:
         sv = SY.sinyal_jalur(jam=True)
         blok.append("🎯 <b>SINYAL VALID SEKARANG</b> (urut prioritas)\n" + (sv if sv else
@@ -218,10 +227,10 @@ def harian():
         import qse_berita as BR
         ev = BR.hari_ini()
         blok.append("📰 <b>BERITA BESAR USD HARI INI</b>\n" + ("\n".join(
-            f"• {e['judul']} jam {BR.jam_wib(e['ts'])[6:]}: sinyal baru ditahan 2 jam sebelum sampai 1 jam sesudah"
-            + (". CPI/FOMC: robot kirim SIAGA sekitar 1 jam sebelum (tutup yang untung, tahan yang rugi)"
+            f"• {BR.dampak(e['judul'], 'USD')} {e['judul']} jam {BR.jam_wib(e['ts'])[6:]}"
+            + (": robot kirim SIAGA sekitar 1 jam sebelum (tutup yang untung, tahan yang rugi)"
                if any(x in e["judul"].upper() for x in ("CPI", "FOMC", "FED", "INTEREST RATE")) else "")
-            for e in ev[:5]) if ev else "Tidak ada."))
+            for e in ev[:5]) + "\nSinyal jalur tetap jalan saat berita (uji 2021-2026: tidak lebih jelek)." if ev else "Tidak ada."))
     except Exception:
         pass
     try:

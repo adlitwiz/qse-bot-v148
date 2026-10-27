@@ -70,7 +70,7 @@ def get_tickers():
             bid, ask = float(it.get("bid1Price") or 0), float(it.get("ask1Price") or 0)
             t[it["symbol"]] = dict(
                 turnover=float(it.get("turnover24h") or 0), funding=float(it.get("fundingRate") or 0),
-                last=float(it.get("lastPrice") or 0),
+                last=float(it.get("lastPrice") or 0), chg24=float(it.get("price24hPcnt") or 0),
                 spread=(ask - bid) / ((ask + bid) / 2) * 100 if bid > 0 and ask > 0 else 99.0)
         except (TypeError, ValueError):
             pass

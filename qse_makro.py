@@ -5,6 +5,7 @@ Aturan: bila yield naik minimal 15 bp dalam 5 hari kerja DAN dolar naik minimal 
 status TEKANAN MAKRO: lot LONG yang disarankan dipotong setengah dan muncul peringatan. Vonis DASBOR tidak diubah.
 Ambang ini titik awal, belum terbukti. Matikan dengan QSE_MAKRO=0."""
 import csv
+import html
 import io
 import json
 import os
@@ -96,7 +97,7 @@ def berita(n=4):
             for it in re.findall(r"<item>(.*?)</item>", x, re.S)[:3]:
                 m = re.search(r"<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", it, re.S)
                 if m:
-                    out.append(f"{nama}: {re.sub(r'<[^>]+>', '', m.group(1)).strip()}")
+                    out.append(f"{nama}: {html.unescape(re.sub(r'<[^>]+>', '', m.group(1))).strip()}")      # &#8217; jadi tanda kutip
         except Exception as ex:
             print("[WARN] rss", nama, ex)
     if out:
@@ -136,8 +137,9 @@ def berita_baru():
             ln = re.search(r"<link>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</link>", it, re.S)
             if not m:
                 continue
-            judul = re.sub(r"<[^>]+>", "", m.group(1)).strip()
-            if judul in sudah:
+            mentah = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+            judul = html.unescape(mentah).strip()          # &#8217; dan &amp; dari RSS jadi huruf biasa
+            if judul in sudah or mentah in sudah:
                 continue
             sudah.add(judul)
             low = " " + judul.lower() + " "

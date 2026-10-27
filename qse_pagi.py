@@ -2,8 +2,8 @@
 Uji 40 koin paling likuid, data 15 menit, Jan 2022 - Sep 2026, hari dihitung 06:00 sampai 06:00 WIB.
 Hari serentak = ada saat BTC bergerak 2% dalam 30 menit atau 3% dalam 3 jam, atau 70% koin bergerak 3% (30 menit)
 atau 5% (3 jam) searah. Rata-rata 28% hari (2022-Jun 2024) dan 22% hari (Jul 2024-2026).
-Arah BTC per hari tidak bisa ditebak (hari ini searah kemarin hanya 46%), tapi altcoin ikut arah BTC di 69% hari
-dan 74% di hari serentak."""
+Arah BTC 24 jam ditebak tiap sesi oleh qse_tebak (selalu NAIK atau TURUN, uji maju 2019-2026 benar 53-54% semua hari,
+55-56% saat keyakinan KUAT), plus perkiraan rentang gerak 24 jam. Altcoin ikut arah BTC di 69% hari dan 74% di hari serentak."""
 import time
 import numpy as np
 
@@ -112,55 +112,45 @@ def short_tahan():
         return ""
 
 
-def baris_arah():
-    d = arah_hari()
-    if not d:
-        return ["🧭 <b>Arah hari ini</b>: data BTC belum terbaca."]
-    if d["naik"]:
-        return ["🧭 <b>Arah hari ini: CONDONG NAIK</b>",
-                *[f"• {a}" for a in d["alasan"]],
-                "Sejarah kondisi ini: BTC naik di 57% hari (hari biasa sekitar 49%), altcoin naik di 59% hari.",
-                "🛑 Sinyal SHORT baru ditahan hari ini. Uji 2021-2026: SHORT di hari seperti ini rugi (PF 0.94 dan 0.99), "
-                "LONG lebih bagus (PF 1.37 dan 1.21)."]
-    return ["🧭 <b>Arah hari ini: TIDAK BISA DITEBAK</b>",
-            "Tidak ada kondisi yang terbukti menebak arah hari ini, peluang naik atau turun sekitar 50%. "
-            "Ikuti sinyal robot apa adanya, LONG maupun SHORT."]
+def baris_arah(sesi="pagi"):
+    """Blok arah BTC 24 jam (qse_tebak) untuk sesi ini, plus penahan SHORT dari aturan pagi."""
+    rows = []
+    try:
+        import qse_tebak as TB
+        r = TB.tebak(TB.SESI_JAM.get(sesi) if sesi in TB.SESI_JAM else None)     # "cek": sesi terbaru
+    except Exception as ex:
+        print("[WARN] tebak arah", ex)
+        r = None
+    if r:
+        rows += TB.teks_arah(r, lengkap=(sesi in ("pagi", "cek")))
+    else:
+        rows.append("🧭 <b>Arah BTC 24 jam</b>: data BTC belum lengkap, dicoba lagi di info berikutnya.")
+    d = None
+    try:
+        d = arah_hari()
+    except Exception as ex:
+        print("[WARN] arah hari", ex)
+    if d and d.get("naik"):
+        rows.append(f"🛑 SHORT baru ditahan sampai 06:00 WIB berikutnya ({d['alasan'][0]}). Uji 2021-2026 cara keluar sekarang: "
+                    "SHORT di hari seperti ini PF 1.23 dan 0.93, SHORT di hari lain 1.60 dan 1.92.")
+    return rows
+
+
+def tebak_teks(sesi="pagi"):
+    """Blok perkiraan rentang gerak BTC 24 jam sesi ini, atau [] kalau data belum lengkap."""
+    try:
+        import qse_tebak as TB
+        r = TB.tebak(TB.SESI_JAM.get(sesi) if sesi in TB.SESI_JAM else None)
+        return TB.teks_rentang(r) if r else []
+    except Exception as ex:
+        print("[WARN] tebak rentang", ex)
+        return []
 
 
 SESI = {"pagi": ("🌅", "INFO PASAR PAGI", 18), "siang": ("☀️", "INFO PASAR SIANG", 12), "malam": ("🌙", "INFO PASAR MALAM", 12),
         "tengah": ("🌌", "INFO PASAR TENGAH MALAM", 6)}
-# Kondisi 24 jam terakhir dihitung ulang di jam sesi (aturan sama). Uji 2018-2021 / 2022-2026, BTC naik 24 jam berikutnya
-# saat kondisi terpenuhi: 00 WIB 54/55%, 06 WIB 57/57%, 12 WIB 56/51%, 18 WIB 53/57% (hari biasa 47-53%).
-# Hanya info terbaru. Penahan SHORT tetap pakai hitungan 06:00 (dihitung ulang tiap sesi menurunkan total profit).
-JAM_UTC = {"tengah": 17, "pagi": 23, "siang": 5, "malam": 11}
-AKURASI = {"tengah": "54 dan 55%", "pagi": "57 dan 57%", "siang": "56 dan 51%", "malam": "53 dan 57%"}
-
-
-def kondisi_sesi(sesi, now=None):
-    """Kondisi 4 aturan dari 24 jam terakhir yang berakhir di jam sesi ini. dict(naik, alasan) atau None."""
-    import bybit_fetch as B
-    import pandas as pd
-    now = now or time.time()
-    jh = JAM_UTC[sesi]
-    aw = int((now - jh * 3600) // 86400) * 86400 + jh * 3600
-    h = B._raw("BTCUSDT", "60", 24 * 150)
-    h = h[h.index < aw * 1000]
-    if len(h) < 24 * 60:
-        return None
-    t = pd.to_datetime(h.index, unit="ms", utc=True)
-    day = (t - pd.Timedelta(hours=jh)).floor("D")
-    D = pd.DataFrame({"c": h["close"].groupby(day).last().values, "hi": h["high"].groupby(day).max().values,
-                      "lo": h["low"].groupby(day).min().values})
-    c = D["c"]
-    dd = c.diff()
-    up = dd.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
-    dn = (-dd.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
-    nilai = {"r7": c.iloc[-1] / c.iloc[-8] - 1, "e20": c.iloc[-1] / c.ewm(span=20, adjust=False).mean().iloc[-1] - 1,
-             "rsi": float((100 - 100 / (1 + up / dn)).iloc[-1]),
-             "cp": (D["c"].iloc[-1] - D["lo"].iloc[-1]) / max(D["hi"].iloc[-1] - D["lo"].iloc[-1], 1e-9)}
-    alasan = [teks.replace("kemarin", "24 jam terakhir") for k, th, teks in ATURAN_NAIK
-              if (nilai[k] <= th if k in ("r7", "cp") else nilai[k] >= th)]
-    return dict(naik=bool(alasan), alasan=alasan)
+# Tiap sesi punya model arah 24 jam sendiri (qse_tebak, uji maju 2019-2026): 06 WIB benar 53.3%, 12 WIB 54.1%,
+# 18 WIB 52.9%, 00 WIB 53.0%. Saat keyakinan KUAT 55-56%. Penahan SHORT tetap pakai aturan 06:00.
 
 
 def ramal(sesi="pagi", gerak_t=0):
@@ -223,25 +213,19 @@ def ramal(sesi="pagi", gerak_t=0):
              f"• Rentang harian BTC 7 hari terakhir rata {r7:.1f}% ({tingkat})",
              "• Kemarin " + ("ada gerak serentak" if kemarin else "tidak ada gerak serentak" if kemarin is not None
                             else "tidak terbaca, dianggap tidak ada"), ""]
+    rg = tebak_teks(sesi)
+    if rg:
+        rows += rg + [""]
     try:
-        rows += baris_arah()
+        rows += baris_arah(sesi)
         if sesi != "pagi":
-            try:
-                ks = kondisi_sesi(sesi)
-                if ks:
-                    rows += [f"🔄 <b>Update 24 jam terakhir: {'CONDONG NAIK' if ks['naik'] else 'TIDAK BISA DITEBAK'}</b>"]
-                    rows += [f"• {a}" for a in ks["alasan"]]
-                    rows.append(f"Akurasi uji update jam ini: BTC naik {AKURASI[sesi]} kasus" if ks["naik"]
-                                else "Tidak ada kondisi yang terbukti, peluang naik atau turun sekitar 50%.")
-            except Exception as ex:
-                print("[WARN] kondisi sesi", ex)
-            rows.append("ℹ️ Penahan SHORT robot tetap pakai hitungan 06:00 (paling akurat, 57%). Update di atas info terbaru saja. "
+            rows.append("ℹ️ Arah di atas dihitung ulang jam ini. Penahan SHORT robot tetap pakai hitungan 06:00. "
                         "Posisi yang sudah jalan tetap ikuti SL dan TP.")
     except Exception as ex:
         print("[WARN] baris arah", ex)
     rows += ["Altcoin ikut arah harian BTC di 81% hari. Kalau BTC bergerak 3%+, 83-92% altcoin ikut searah."]
     try:
-        rows += [""] + kesimpulan_arah()
+        rows += [""] + kesimpulan_arah(sesi)
     except Exception as ex:
         print("[WARN] kesimpulan arah", ex)
     try:
@@ -279,9 +263,19 @@ def baris_btc_sinyal():
             pos = lambda e: f"{'di atas' if px > e else 'di bawah'} EMA{'50' if e == e50 else '200'} ({(px / e - 1) * 100:+.1f}%)"
             rows.append(f"{nm}: {pos(e50)}, {pos(e200)}")
         d = arah_hari()
-        arah = ("CONDONG NAIK (SHORT baru ditahan)" if d and d["naik"] else "tidak bisa ditebak, 50/50") if d else "belum terbaca"
-        teks = (f"₿ <b>BTC {px:,.0f}</b>  ·  " + "  ·  ".join(rows) + f"\n🧭 Arah hari ini: {arah}. "
-                "Posisi BTC lawan EMA di atas hanya info, di uji tidak mengubah hasil sinyal.")
+        arah, gerak = "belum terbaca", ""
+        try:
+            import qse_tebak as TB
+            r = TB.tebak()
+            if r:
+                arah = TB.ringkas(r)
+                gerak = "\n" + TB.baris_sinyal_gerak(r)
+        except Exception as ex:
+            print("[WARN] tebak kartu", ex)
+        if d and d.get("naik"):
+            arah += ", SHORT baru ditahan hari ini"
+        teks = (f"₿ <b>BTC {px:,.0f}</b>  ·  " + "  ·  ".join(rows) + f"\n🧭 Arah BTC 24 jam: {arah}. "
+                "Posisi BTC lawan EMA dan arah ini hanya info, di uji tidak mengubah hasil sinyal." + gerak)
         _BTC_BARIS[:] = [time.time(), teks]
         return teks
     except Exception as ex:
@@ -382,27 +376,38 @@ def dom_turun(jalur=None, arah="SHORT"):
         return False
 
 
-def kesimpulan_arah():
-    """Kesimpulan inti hari ini dari aturan yang lolos uji. LONG kalau arah pagi condong naik atau 80%+ koin di atas EMA50 1D.
-    Tidak ada aturan condong SHORT yang lolos uji, jadi selain itu NETRAL."""
+def kesimpulan_arah(sesi=None):
+    """Kesimpulan inti hari ini, selalu LONG atau SHORT. Dasar: tebakan arah BTC 24 jam sesi terbaru (qse_tebak) dan
+    lebar pasar (80%+ koin di atas EMA50 1D -> altcoin naik besok 57-58% hari, menang atas tebakan TURUN)."""
     rows = []
     try:
         lu = pasar_luas()
     except Exception as ex:
         print("[WARN] pasar luas", ex)
         lu = {}
-    d = None
+    r = None
     try:
-        d = arah_hari()
-    except Exception:
-        pass
+        import qse_tebak as TB
+        r = TB.tebak(TB.SESI_JAM.get(sesi) if sesi in TB.SESI_JAM else None)
+    except Exception as ex:
+        print("[WARN] tebak kesimpulan", ex)
     f = lambda x: f"{x * 100:.0f}%" if x is not None else "-"
     rows.append(f"🌐 Koin di atas EMA50: 1D {f(lu.get('d50'))}, 4J {f(lu.get('h50'))}  ·  di atas EMA200 1D {f(lu.get('d200'))} (40 koin teramai)")
-    naik = (d and d.get("naik")) or ((lu.get("d50") or 0) >= 0.8)
-    if naik:
-        alasan = ([d["alasan"][0]] if d and d.get("naik") else []) + (["80%+ koin di atas EMA50 1D"] if (lu.get("d50") or 0) >= 0.8 else [])
-        rows.append(f"🟢 <b>KESIMPULAN ARAH HARI INI: CONDONG LONG</b> ({', '.join(alasan)}). Uji: naik 57-58% hari.")
+    luas = (lu.get("d50") or 0) >= 0.8
+    if r is None and not luas:
+        rows.append("⚪ <b>KESIMPULAN ARAH HARI INI</b>: data BTC belum lengkap. Ikuti sinyal robot apa adanya.")
+        return rows
+    if luas and r and r["arah"] == "TURUN":
+        rows.append("🟢 <b>KESIMPULAN ARAH HARI INI: CONDONG LONG untuk altcoin</b>. Dasar: 80%+ koin di atas EMA50 1D, "
+                    f"altcoin naik besok di 57-58% hari. BTC sendiri {TB.dasar(r)[4:]}, tapi tebakan TURUN belum terbukti "
+                    "untuk altcoin.")
+    elif luas or r["arah"] == "NAIK":
+        alasan = ([TB.dasar(r)] if r and r["arah"] == "NAIK" else []) + \
+                 (["80%+ koin di atas EMA50 1D, altcoin naik besok di 57-58% hari"] if luas else [])
+        rows.append(f"🟢 <b>KESIMPULAN ARAH HARI INI: CONDONG LONG</b>. Dasar: {' dan '.join(alasan)}.")
     else:
-        rows.append("⚪ <b>KESIMPULAN ARAH HARI INI: NETRAL</b>. Tidak ada kondisi teruji, LONG dan SHORT sama peluangnya. "
-                    "Kondisi condong SHORT tidak ada yang lolos uji 10 tahun.")
+        rows.append(f"🔴 <b>KESIMPULAN ARAH HARI INI: CONDONG SHORT</b>. Dasar: {TB.dasar(r)}.")
+    if r and r["tingkat"] == "tipis" and not luas:
+        rows.append("Keyakinan tipis, anggap 50:50. Jangan tambah posisi hanya karena arah ini.")
+    rows.append("Entry tetap dari sinyal robot, LONG maupun SHORT. Arah ini untuk memilih prioritas dan disiplin SL.")
     return rows

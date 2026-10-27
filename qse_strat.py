@@ -228,6 +228,9 @@ def _catat_ledger(k, it, R):
 
 
 def rem(k):
+    import qse_porto as PO_r
+    if not PO_r.REM_LOT:          # rem mati sejak 27 Okt 2026, diganti batas 5 posisi per orang
+        return ""
     eq = peak = 0.0
     rugi = 0
     for c in sorted(lihat(k).get("closed", []), key=lambda c: c.get("selesai", 0)):
@@ -410,9 +413,11 @@ def batas_masuk(it, k):
         return None
 
 
-# Lama trade di uji 2021-2026 (jam, median): (yang kalah, yang menang)
-LAMA_JALUR = {"ema_short": (48, 124), "ichimoku": (44, 100), "mcginley": (52, 180), "msb_hpz": (36, 84), "orderblock": (108, 240),
-              "rsi_vol": (44, 112), "smc_choch": (52, 180), "snr_vol": (52, 180), "GZH": (48, 108)}
+# Lama trade di uji 2021-2026 dengan batas waktu 36 jam (27 Okt 2026, populasi sinyal live, riset/porto/stat_waktu.py):
+# (persen kena TP 20% dalam 36 jam, median jam sampai TP 20%, median lama trade yang sudah aman dalam jam)
+# Diperbarui dengan aturan jam ke-8 (riset/porto/stat_final.py).
+LAMA_JALUR = {"ema_short": (59, 8, 47), "ichimoku": (55, 7, 31), "mcginley": (62, 7, 39), "msb_hpz": (61, 6, 25),
+              "orderblock": (56, 8, 70), "rsi_vol": (57, 7, 32), "smc_choch": (60, 8, 32), "snr_vol": (64, 5, 26), "GZH": (43, 8, 84)}
 
 
 def _hari(j):
@@ -429,7 +434,8 @@ def batas_masuk_teks(it, k, fmt=None):
     out = [f"🎯 Entry valid {fmt(b[0], t)} sampai {fmt(b[1], t)}, berlaku sampai {jam} WIB. Lewat itu, lewati"]
     lm = LAMA_JALUR.get(k)
     if lm:
-        out.append(f"⏳ Lama trade (uji): kalau kalah biasanya selesai ±{_hari(lm[0])}, kalau menang ±{_hari(lm[1])}")
+        out.append(f"⏳ Uji 2021-2026: {lm[0]}% kena TP 20% dalam 36 jam, biasanya ±{lm[1]} jam setelah entry. "
+                   f"Yang sudah aman jalan ±{_hari(lm[2])}")
     return out
 
 
@@ -457,17 +463,68 @@ def tp_sebagian(entry, sl0, arah):
     return entry + TPS_R * risk if arah == "LONG" else entry - TPS_R * risk
 
 
-def tp_cepat_teks(it, fmt=None, k=None):
-    """Baris TP sebagian untuk semua kartu sinyal: 20% di +0.5R, lalu SL ke entry."""
+# Tangga TP lain diuji 27 Okt 2026 (mode seimbang, 2021-2026): 20% 0.5R + 25% 1R PF 1.49, + 25% 2R PF 1.54,
+# 20/25/25% di 0.5R/1R/2R PF 1.47, 25% 0.5R + 50% 2R PF 1.50, 20% tiap 0.5R/1R/2R/3R PF 1.48. Menang tetap 73%,
+# PF dan total semua di bawah 20% di 0.5R saja (PF 1.56). Jadi tetap dua level: 20% di +0.5R, sisa 80% aturan jalur.
+
+
+def rencana_tp(entry, sl, arah, tick, tp=None, jarak=None, fmt=None, uji=True, waktu=True):
+    """Baris tebal rencana keluar untuk sinyal jalur: TP 20% posisi di +0.5R lalu SL ke entry, sisa 80% ke TP jalur
+    atau SL berjalan, SL, dan batas waktu (waktu=False untuk kartu posisi yang sudah punya baris jam batasnya).
+    Semua dengan harga dan persen dari entry."""
+    fmt = fmt or TG.fp
+    risk = abs(entry - sl)
+    if not risk or not entry:
+        return []
+    pc = lambda x: abs(x - entry) / entry * 100
+    tps = tp_sebagian(entry, sl, arah)
+    rows = [f"💰 <b>TP {int(TPS_PORSI * 100)}% posisi: {fmt(tps, tick)} (+{pc(tps):.1f}%)</b>. Setelah kena, "
+            f"<b>pindahkan SL ke entry {fmt(entry, tick)}</b>"]
+    if tp:
+        rows.append(f"🏁 <b>TP {100 - int(TPS_PORSI * 100)}% sisa: {fmt(tp, tick)} (+{pc(tp):.1f}%, +{abs(tp - entry) / risk:.1f}R)</b>")
+    else:
+        rows.append(f"🏁 <b>Sisa {100 - int(TPS_PORSI * 100)}%: tanpa TP, ikut SL berjalan</b>"
+                    + (f" (Trailing Stop {fmt(jarak, tick)}, {jarak / entry * 100:.1f}%)" if jarak else ""))
     try:
-        fmt = fmt or TG.fp
+        import qse_modal as MD
+        jw = MD.waktu_jam()
+    except Exception:
+        jw = 36.0
+    uj = UJI_WAKTU.get(round(jw))
+    rows.append(f"🛑 <b>SL: {fmt(sl, tick)} (-{pc(sl):.1f}%)</b>"
+                + (f"  ·  uji 2021-2026: menang {uj[0]}%, kena SL penuh {uj[1]}%" if (uji and uj) else ""))
+    if waktu:
+        sl8 = entry - 0.5 * risk if arah == "LONG" else entry + 0.5 * risk
+        rows.append(f"🛡 <b>Jam ke-8 belum kena TP {int(TPS_PORSI * 100)}%</b>: SL naik ke {fmt(sl8, tick)} (-{pc(sl8):.1f}%, -0.5R). "
+                    f"Sudah rugi lebih dari itu, tutup market")
+    if jw > 0 and waktu:
+        rows.append(f"⏳ <b>Batas {jw:g} jam</b>: belum kena TP {int(TPS_PORSI * 100)}%, tutup market. Sudah kena, posisi aman "
+                    f"dan tidak makan slot")
+    if waktu:
+        rows.append(f"📲 Pasang di Bybit, tombol TP/SL: Partial Position, Proportion {int(TPS_PORSI * 100)}, TP Trigger Price "
+                    f"{fmt(tps, tick)}. Entire Position, SL Trigger Price {fmt(sl, tick)}"
+                    + (f", TP Trigger Price {fmt(tp, tick)}" if tp else "") + ". Lalu /entry supaya robot memantau")
+    return rows
+
+
+# Per trade semua sinyal live 2021-2026 (TP sebagian 20% di +0.5R, jam ke-8 SL ke -0.5R, batas 36 jam): menang 62%,
+# kena SL penuh 3%, PF 1.86. Tanpa jam ke-8: menang 68%, SL penuh 17%, PF 1.82. riset/porto/pf_slpenuh2.py
+UJI_WAKTU = {36: (62, 3)}
+
+
+def tp_cepat_teks(it, fmt=None, k=None, waktu=True):
+    """Rencana TP untuk semua kartu sinyal (nama lama dipertahankan): 20% di +0.5R lalu SL ke entry, sisa aturan jalur.
+    it: entry, sl atau sl0, arah, tick, tp (jalur ber-TP), dan jarak atau trail_atr+sl_atr (jalur trailing)."""
+    try:
         sl0 = it.get("sl0", it["sl"])
-        if not abs(it["entry"] - sl0):
+        risk = abs(it["entry"] - sl0)
+        if not risk:
             return []
-        t = it.get("tick", 0.0001)
-        tps = tp_sebagian(it["entry"], sl0, it.get("arah", "LONG"))
-        return [f"💰 TP sebagian: pasang TP {int(TPS_PORSI * 100)}% posisi di {fmt(tps, t)} (+0.5R). Setelah kena, pindahkan SL ke "
-                f"entry {fmt(it['entry'], t)}. Sisanya ikut SL dan TP kartu ini. Uji 2021-2026: menang 73%"]
+        jarak = it.get("jarak")
+        if not jarak and it.get("trail_atr") and it.get("sl_atr"):
+            jarak = it["trail_atr"] / it["sl_atr"] * (it.get("risk") or risk)
+        return rencana_tp(it["entry"], sl0, it.get("arah", "LONG"), it.get("tick", 0.0001), tp=it.get("tp"), jarak=jarak, fmt=fmt,
+                          waktu=waktu)
     except Exception:
         return []
 
@@ -616,9 +673,16 @@ def label_prioritas(p):
 
 
 def combo_teks(it):
-    """Baris COMBO (dan COMBO EMAS) untuk kartu semua jalur, plus label VOLUME PASAR TINGGI dan BTC.D TURUN."""
-    vt = ([f"🔊 <b>VOLUME PASAR TINGGI</b>: volume BTC 4J {it['vol_tinggi']:g}x rata 30 hari. Uji 2021-2026 sinyal di saat "
-           f"seperti ini PF 1.66 dan 1.86, harga bergerak cepat ke dua arah, biarkan SL bekerja"] if it.get("vol_tinggi") else [])
+    """Baris COMBO (dan COMBO EMAS) untuk kartu semua jalur, plus label VOLUME PASAR TINGGI dan BTC.D TURUN, dan info
+    token unlock >= 1% dalam 7 hari (qse_unlock, info saja di kartu, LONG baru sudah ditahan di qse_porto.izin)."""
+    try:
+        import qse_unlock as UL
+        ul = UL.teks(it.get("sym") or "", it.get("arah"))
+    except Exception:
+        ul = ""
+    vt = [ul] if ul else []
+    vt += ([f"🔊 <b>VOLUME PASAR TINGGI</b>: volume BTC 4J {it['vol_tinggi']:g}x rata 30 hari. Uji 2021-2026 sinyal di saat "
+            f"seperti ini PF 1.66 dan 1.86, harga bergerak cepat ke dua arah, biarkan SL bekerja"] if it.get("vol_tinggi") else [])
     vt += (["📉 <b>BTC.D TURUN</b>: altcoin sedang lebih kuat dari BTC (indeks alt/BTC di atas EMA 20 harian). Uji 2017-2026 "
             "SHORT di kondisi ini PF 1.57, 1.34, 1.68, biasanya 1.09, 1.18, 1.24"] if it.get("dom_turun") else [])
     if not it.get("combo"):
@@ -782,12 +846,8 @@ def jalankan(baru_ok=True):
                                   + (f"TP {TG.fp(it['tp'], t)} tersentuh." if st == "TP" else
                                      f"Kena SL di sekitar {TG.fp(it['sl'], t)}. Analisa volume menyusul." if st == "SL" else
                                      f"Sudah {it.get('maks_bar', MAKS_BAR)} candle 4J. Tutup sekarang di harga pasar."))
-            elif kabar and abs(it["sl"] - sl_lama) >= 0.25 * it["risk"]:
-                L = it["arah"] == "LONG"
-                kunci = ((it["sl"] - it["entry"]) if L else (it["entry"] - it["sl"])) / it["risk"]
-                out[k].append(f"🔁 <b>{STRAT[k]['nama'].upper()}  ·  {it['sym']} {it['arah']}  ·  GESER SL</b>\n"
-                              f"Ubah SL di Bybit ke <code>{TG.fp(it['sl'], t)}</code> (sebelumnya {TG.fp(sl_lama, t)})\n"
-                              f"Profit aman kalau harga balik: {kunci:+.2f}R  ·  hari ke-{it['bar'] // 6 + 1} dari 10")
+            # pesan GESER SL tidak lagi dari sini: dikirim per orang oleh pantau() (qse_saya._kabar_geser), dihitung dari
+            # entry dan SL masing-masing, tidak pernah mundur setelah TP sebagian memindah SL ke entry
 
         def simpan(dd, hasil=hasil):
             for key, (it, st, R, _) in hasil.items():
@@ -897,8 +957,9 @@ def jalankan(baru_ok=True):
             if arah == "SHORT":
                 import qse_pagi as PG
                 it["dom_turun"] = PG.dom_turun(k, arah)
-            if PO.senin_tolak(it.get("combo"), it.get("combo_emas")):
-                print(f"[STRAT {k}] {sym} {arah} dilewati: {PO.senin_tolak(it.get('combo'), it.get('combo_emas'))}")
+            tolak_senin = PO.senin_tolak(it.get("combo"), it.get("combo_emas"), it.get("combo_fix"), it.get("dom_turun"))
+            if tolak_senin:
+                print(f"[STRAT {k}] {sym} {arah} dilewati: {tolak_senin}")
                 continue
             if k == "mcginley":
                 # pullback: searah tren besar (EMA 200) tapi EMA 20 masih di sisi lawan EMA 50. Uji 2021-2026 McGinley
@@ -939,7 +1000,7 @@ def kartu(k, no, it, a):
     rm = rem(k) or PO.rem()
     if rm:
         lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
-    lot_b, cat_hari = PO.lot_hari(lot_b)
+    lot_b, cat_hari = PO.lot_hari(lot_b, it.get("dom_turun"))
     try:
         import qse_modal as MD
         lot = MD.baris_lot(it["entry"], it["sl"], SY.lot_angka(lot_b))
@@ -956,9 +1017,10 @@ def kartu(k, no, it, a):
         *(["🔁 <b>PULLBACK DALAM TREN BESAR</b>: searah EMA 200, tren pendek baru berbalik. "
            "Uji 2021-2026 McGinley pullback PF 1.43, McGinley biasa PF 1.18"] if it.get("pullback") else []),
         SY.GARIS,
-        (SY.blok_salin(it["entry"], it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah=it["arah"], rentang=batas_masuk(it, k)) if it.get("tp") else
-         SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tidak ada, pakai SL berjalan", sym=it["sym"], arah=it["arah"],
-                       rentang=batas_masuk(it, k))),
+        (SY.blok_salin(it["entry"], it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah=it["arah"], rentang=batas_masuk(it, k),
+                       sebagian=True) if it.get("tp") else
+         SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=it["sym"], arah=it["arah"],
+                       rentang=batas_masuk(it, k), sebagian=True)),
         *batas_masuk_teks(it, k),
         *tp_cepat_teks(it, k=k),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Tetap boleh entry, pakai lot setengah sampai pulih"] if rm else []),
@@ -968,14 +1030,17 @@ def kartu(k, no, it, a):
         "🛠 <b>Cara</b>",
         *([f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)}, TP {TG.fp(it['tp'], t)} ({cfg['tp_r']:g}R) untuk sisa posisi",
             f"2. Pasang juga TP sebagian 20% di +0.5R (lihat baris 💰). Setelah kena, SL ke entry. Selain itu jangan geser SL",
-            f"3. Kalau {it.get('maks_bar', MAKS_BAR) // 6} hari belum kena SL atau TP, tutup manual",
+            f"3. Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup market. Robot mengabari. Sudah aman tapi "
+            f"{it.get('maks_bar', MAKS_BAR) // 6} "
+            f"hari belum kena SL atau TP: tutup manual",
             "4. Catat dengan /entry supaya ada pengingat dan analisa volume kalau kena SL"] if it.get("tp") else
           [f"1. Masuk MARKET sekarang. SL di {TG.fp(it['sl'], t)} ({it['risk'] / it['entry'] * 100:.1f}%). Pasang TP sebagian 20% "
            f"di +0.5R saja (lihat baris 💰), setelah kena SL ke entry. Sisanya tanpa TP",
            "2. Pasang Trailing Stop Bybit, isi seperti blok di bawah, atau ikuti pesan GESER SL",
            *([f"   Setelah untung 2R ({TG.fp(it['entry'] + 2 * it['risk'] if L else it['entry'] - 2 * it['risk'], t)}), ganti jarak "
               f"Trailing Stop jadi 5% harga. Robot mengingatkan lewat SL TERBARU"] if it.get("trail_pct_2r") else []),
-           "3. Kalau 10 hari belum kena SL, tutup manual",
+           "3. Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup market. Robot mengabari. "
+           "Sudah aman tapi 10 hari belum kena SL: tutup manual",
            "4. Catat dengan /entry supaya pesan GESER SL dan analisa volume SL dikirim"]),
         *([SY.isi_trailing(jarak, it["sl"], t)] if not it.get("tp") else []),
         *([lot] if lot else []),

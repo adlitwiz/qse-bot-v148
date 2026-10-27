@@ -1152,6 +1152,20 @@ def sinyal():
     return [teks]
 
 
+def _rencana(tr, arah, t):
+    """Baris tebal rencana keluar: TP 20% di +0.5R lalu SL ke entry, sisa 80% ke TP atau trailing, SL. Harga dan persen."""
+    try:
+        import qse_strat as ST
+        rows = ST.rencana_tp(tr["entry"], tr["sl"], arah, t, tp=tr.get("tp"),
+                             jarak=(tr["x"] * tr["atr"] if tr.get("tipe") == "trail" else None), fmt=_fmt, uji=False)
+        if rows:
+            return rows
+    except Exception:
+        pass
+    return [f"💰 <b>TP 20% posisi: {_fmt(tr['entry'] + 0.5 * tr['s'] * tr['risk'], t)} (+0.5R)</b>. Setelah kena, "
+            f"<b>pindahkan SL ke entry {_fmt(tr['entry'], t)}</b>"]
+
+
 def _kartu(v, tr, SY, tick=None):
     L = tr["s"] == 1
     arah = "LONG" if L else "SHORT"
@@ -1160,9 +1174,10 @@ def _kartu(v, tr, SY, tick=None):
     lot = "0.5x" if v["status"] == "TERBUKTI LAB" else "0.25x"
     if SY:
         if tr.get("tp"):
-            blok = SY.blok_salin(tr["entry"], tr["sl"], tr["tp"], tr["tp"], "MARKET", t, sym=tr["sym"], arah=arah)
+            blok = SY.blok_salin(tr["entry"], tr["sl"], tr["tp"], tr["tp"], "MARKET", t, sym=tr["sym"], arah=arah, sebagian=True)
         else:
-            blok = SY.blok_salin(tr["entry"], tr["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai trailing", sym=tr["sym"], arah=arah)
+            blok = SY.blok_salin(tr["entry"], tr["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai trailing", sym=tr["sym"], arah=arah,
+                                 sebagian=True)
     else:
         blok = (f"<pre>{tr['sym']} {arah}\nEntry {tr['entry']:.6g} MARKET\nSL    {tr['sl']:.6g}"
                 + (f"\nTP    {tr['tp']:.6g}" if tr.get("tp") else "") + "</pre>")
@@ -1178,8 +1193,7 @@ def _kartu(v, tr, SY, tick=None):
             blok,
             f"🎯 Entry valid sampai {jam} WIB, selama harga masih di dalam Range.",
             f"⏳ Biasanya selesai dalam {m.get('lama', 0):g} hari, paling lama {tr['H'] * 4 // 24} hari.",
-            f"💰 TP sebagian: pasang TP 20% posisi di {_fmt(tr['entry'] + 0.5 * tr['s'] * tr['risk'], t)} (+0.5R). Setelah kena, "
-            f"pindahkan SL ke entry {_fmt(tr['entry'], t)}. Sama dengan aturan semua sinyal robot.",
+            *_rencana(tr, arah, t),
             "✅ Cara pakai: tekan lama blok di atas untuk salin, kirim /entry lalu tempel isinya. "
             + ("Pasang SL dan TP di Bybit, lalu biarkan sampai kena." if tr.get("tp") else
                "Pasang SL di Bybit, lalu isi Trailing Stop seperti di bawah.")]

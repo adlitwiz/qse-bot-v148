@@ -163,6 +163,9 @@ def _catat_ledger(it, R):
 
 
 def rem():
+    import qse_porto as PO_r
+    if not PO_r.REM_LOT:          # rem mati sejak 27 Okt 2026, diganti batas 5 posisi per orang
+        return ""
     eq = peak = 0.0
     rugi = 0
     for c in sorted(lihat().get("closed", []), key=lambda c: c.get("selesai", 0)):
@@ -296,8 +299,9 @@ def _jalankan(baru_ok=True):
         except Exception as ex:
             print("[WARN] combo orderblock", ex)
         import qse_porto as PO_s
-        if PO_s.senin_tolak(it.get("combo"), it.get("combo_emas")):
-            print(f"[ORDERBLOCK] {sym} dilewati: {PO_s.senin_tolak(it.get('combo'), it.get('combo_emas'))}")
+        tolak_senin = PO_s.senin_tolak(it.get("combo"), it.get("combo_emas"), it.get("combo_fix"))
+        if tolak_senin:
+            print(f"[ORDERBLOCK] {sym} dilewati: {tolak_senin}")
             continue
         baru.append(it)
         PO.pesan(sym, "LONG")
@@ -315,6 +319,15 @@ def _tpc(it):
     try:
         import qse_strat as ST
         return ST.batas_masuk_teks(dict(it, arah="LONG"), "orderblock") + ST.tp_cepat_teks(dict(it, arah="LONG"), k="orderblock")
+    except Exception:
+        return []
+
+
+def _tpc_rencana(it):
+    """Rencana TP tebal saja (TP 20% di +0.5R lalu SL ke entry, sisa 80% ke TP 4R, SL), untuk daftar koin unggulan."""
+    try:
+        import qse_strat as ST
+        return ST.tp_cepat_teks(dict(it, arah="LONG"), k="orderblock")
     except Exception:
         return []
 
@@ -349,7 +362,8 @@ def kartu(no, it, sg):
         *_combo_teks(it),
         *([cat_hari] if cat_hari else []),
         SY.GARIS,
-        SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG"),
+        SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG",
+                      sebagian=True),
         *_tpc(it),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Tetap boleh entry, pakai lot setengah sampai pulih"] if rm else []),
         "💡 <b>Kenapa</b>",
@@ -359,8 +373,10 @@ def kartu(no, it, sg):
         f"• Bukti: {BT_PENDEK}",
         "🛠 <b>Cara</b>",
         f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)} ({pc:.1f}%), tepat di bawah order block",
-        f"2. TP {TG.fp(it['tp'], t)} (4R). Jangan geser SL",
-        "3. Kalau 10 hari belum kena SL atau TP, tutup manual. Hampir separuh trade selesai dengan cara ini",
+        f"2. TP {TG.fp(it['tp'], t)} (4R) untuk sisa posisi. TP sebagian 20% di +0.5R (baris 💰), setelah kena SL ke entry",
+        "3. Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup market. Robot mengabari. "
+        "Sudah aman tapi 10 hari belum kena SL atau TP: "
+        "tutup manual",
         "4. Catat dengan /entry supaya robot mengingatkan dan menganalisa volume kalau kena SL",
         "❓ <b>Kenapa tidak tunggu retest order block</b>",
         "Di uji 6 tahun, limit di order block PF di bawah 1. Order block yang dibentuk volume besar jarang dites ulang, "
@@ -540,7 +556,8 @@ def baris_unggulan(harga=None, jam=5):
         t = it.get("tick", 0.0001)
         out.append(f"🟢 <b>{TG.e(it['sym'])} LONG</b>  ·  Order Block + Volume  ·  {ik} {tk}  ·  lot {lot}  ·  "
                    f"sinyal {time.strftime('%d/%m %H:%M', time.gmtime(it['t'] + 7 * 3600))} WIB\n"
-                   + SY.blok_salin(px, it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah="LONG"))
+                   + SY.blok_salin(px, it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah="LONG", sebagian=True)
+                   + "".join("\n" + z for z in _tpc_rencana(dict(it, entry=px, sl0=it["sl"]))))
     return out
 
 

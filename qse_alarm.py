@@ -234,19 +234,23 @@ def _pesan_gzh(a, cl):
     ST._ubah("GZH", lambda dd: dd["open"].update({f"{a['sym']}|{int(now)}": it}))
     PO.pesan(a["sym"], arah)
     rm_p = PO.rem()
+    j3 = None
     try:
         a14 = ST._atr(df["high"].values.astype(float), df["low"].values.astype(float), df["close"].values.astype(float))[-1]
-        jarak = TG.fp(3 * a14, t)
-        isi = "\n" + SY.isi_trailing(3 * a14, a["sl"], t)
+        j3 = 3 * a14
+        jarak = TG.fp(j3, t)
+        isi = "\n" + SY.isi_trailing(j3, a["sl"], t)
     except Exception:
         jarak, isi = "3 ATR", ""
     return (f"{'🟢' if L else '🔴'} <b>GZH TERKONFIRMASI  ·  {a['sym']} {arah}</b>\n"
             f"{SY.layak('saran GZH', arah)}\n"
             + (f"🛡 Rem portofolio aktif, lot setengah: {TG.e(rm_p)}\n" if rm_p else "")
-            + SY.blok_salin(cl, a["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=a["sym"], arah=arah) + "\n"
+            + SY.blok_salin(cl, a["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=a["sym"], arah=arah,
+                            sebagian=True) + "\n"
             f"Masuk MARKET sekarang. Pasang Trailing Stop Bybit Retracement {jarak}, atau ikuti pesan GESER SL. "
-            f"10 hari belum kena, tutup manual."
-            + "".join("\n" + z for z in ST.tp_cepat_teks(dict(entry=cl, sl=a["sl"], arah=arah, tick=t), fmt=TG.fp)) + isi)
+            f"Jam ke-8 belum kena TP 20%, SL naik ke -0.5R. 36 jam belum kena, tutup market. Sudah aman tapi 10 hari belum kena, "
+            f"tutup manual."
+            + "".join("\n" + z for z in ST.tp_cepat_teks(dict(entry=cl, sl=a["sl"], arah=arah, tick=t, jarak=j3), fmt=TG.fp)) + isi)
 
 
 def _cek_tutup(d0):

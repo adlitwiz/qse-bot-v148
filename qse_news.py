@@ -566,11 +566,20 @@ def kabar(mundur=1, maju=10):
         ev = []
     for e in ev:
         sisa = (e["ts"] / 1000 - now) / 3600
-        rows.append(f"{BR.jam_wib(e['ts'])} | {TG.e(e['judul'])} | "
+        siaga = any(k in e["judul"].upper() for k in ("CPI", "FOMC", "FEDERAL FUNDS"))
+        rows.append(f"{BR.dampak(e['judul'], 'USD')} {BR.jam_wib(e['ts'])} | {TG.e(e['judul'])} | "
                     + (f"{sisa:.1f} jam lagi" if sisa > 0 else "sudah rilis")
-                    + ". Robot menahan sinyal baru 3 jam sebelumnya")
+                    + (". Robot kirim SIAGA 1 jam sebelum" if siaga else ""))
     if not ev:
         rows.append("Tidak ada berita besar USD di rentang ini.")
+    rows.append("Sinyal jalur tetap jalan saat berita (uji 2021-2026: sinyal dekat FOMC, ECB, BoJ, earnings tidak lebih jelek).")
+    try:
+        k7 = [e for e in BR.kalender_semua(7) if e["tanda"] != "⚪" and e["ts"] / 1000 > now + maju * 3600][:10]
+        if k7:
+            rows.append("\n<b>7 hari ke depan</b> (lengkap di pesan KALENDER BERITA tiap Senin 06:10 WIB)")
+            rows += [f"{e['tanda']} {BR.jam_wib(e['ts'])} | {TG.e(e['teks'])}" for e in k7]
+    except Exception as ex:
+        print("[WARN] kalender 7 hari", ex)
     rows.append(f"\n<b>Berita kripto {mundur} jam terakhir</b>")
     try:
         import qse_saya as SY

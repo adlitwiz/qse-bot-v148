@@ -168,6 +168,12 @@ def _tugas_berkala():
                 btc_b = PG.baris_btc_sinyal()
             except Exception:
                 btc_b = ""
+            try:
+                import qse_modal as MD
+                slot_b = MD.baris_slot() if kumpul else []      # sisa slot 5 posisi dan risiko SL tiap orang
+            except Exception as ex:
+                print("[WARN] slot posisi", ex)
+                slot_b = []
             for no, (pr, slot, nama, m) in enumerate(kumpul, 1):
                 lb = ST.label_nama_teks(m)
                 ids = TG.send([f"📌 <b>QSE v148 | DETAIL SINYAL BARU {nama}</b>\n"
@@ -175,7 +181,8 @@ def _tugas_berkala():
                                +
                                f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  "
                                f"dikirim urut prioritas, urutan lengkap ada di pesan 🎯 SINYAL 4 JAM\n"
-                               f"{SY.baris_jadwal(telat_menit=3)}\n" + (btc_b + "\n" if btc_b else "") + m])
+                               f"{SY.baris_jadwal(telat_menit=3)}\n" + (btc_b + "\n" if btc_b else "")
+                               + ("\n".join(slot_b) + "\n" if slot_b and no == 1 else "") + m])
                 kirim.append((slot, ids))
             terbaik = {}
             for slot, ids in kirim:
@@ -215,6 +222,30 @@ def _tugas_berkala():
                      "Kalau ada yang jauh di bawah uji setelah 100 trade, saya uji ulang dengan data terbaru.\n\n" + CT.teks()])
         except Exception as ex:
             print("[WARN] laporan bulanan", ex)
+        try:
+            import qse_berita as BR
+            jb = BR.jadwal_bulan()          # jadwal resmi FOMC, CPI, NFP, ECB, BoJ, BoC 1 bulan ke depan
+            if jb:
+                TG.send([jb + "\n\n" + BR.LEGENDA])
+        except Exception as ex:
+            print("[WARN] jadwal bulanan", ex)
+    # kalender berita 7 hari: Senin 06:10 WIB (Minggu 23:10 UTC), sesudah ForexFactory berganti minggu.
+    # Isi: berita berdampak tinggi, bank sentral, earnings saham besar, token unlock, dengan tanda dampak hasil uji.
+    if g.tm_wday == 6 and (g.tm_hour, g.tm_min) >= (23, 10) and st.get("kal_minggu", 0) < int(now // 86400):
+        _st({"kal_minggu": int(now // 86400)})
+        try:
+            import qse_berita as BR
+            TG.send([BR.teks_kalender_minggu()])
+        except Exception as ex:
+            print("[WARN] kalender minggu", ex)
+    # jadwal token unlock (DefiLlama): disegarkan tiap 7 hari di thread sendiri, dicek tiap jam
+    if now - st.get("unlock_cek", 0) >= 3600:
+        _st({"unlock_cek": now})
+        try:
+            import qse_unlock as UL
+            UL.segarkan_latar()
+        except Exception as ex:
+            print("[WARN] segarkan unlock", ex)
     hari = int(now // 86400) * 86400
     # pengingat DCA spot BTC: Senin 08:00 WIB (Senin 01:00 UTC), Rp100.000 per minggu. Uji 2018-2026: beli rutin
     # mingguan +416%, mengalahkan semua aturan menunggu waktu beli. Hari dan jam beli tidak berpengaruh (beda < 1%),
@@ -270,6 +301,11 @@ def _tugas_berkala():
         # 07:15 WIB: kabari posisi jalan yang koinnya diperkirakan unlock pasokan dalam 3 hari (thread sendiri, CoinGecko pelan)
         _st({"unlock_hari": hari})
         threading.Thread(target=_cek_unlock, daemon=True).start()
+    if (time.gmtime(now).tm_wday == 6 and now - hari >= 22.5 * 3600 and st.get("latih_hari", 0) < hari):
+        # Senin 05:30 WIB (Minggu 22:30 UTC), sebelum sesi 06:00 WIB: latih ulang otomatis model arah BTC (qse_latih).
+        # Model baru dipakai hanya kalau lolos penjaga kualitas. Thread sendiri supaya pemantauan tidak tertahan.
+        _st({"latih_hari": hari})
+        threading.Thread(target=_latih_arah, daemon=True).start()
     if now - hari >= 300 and st.get("arah_hari", 0) < hari and now - hari <= 6 * 3600:
         # 07:05 WIB, candle harian baru tutup: kirim arah pasar otomatis (BTC, ETH, posisi kamu, berita hari ini)
         _st({"arah_hari": hari})
@@ -296,27 +332,61 @@ def _tugas_berkala():
 
 MAIN = {"p": None, "t": 0.0, "lapor": 0.0}
 LOG_MAIN = os.path.join(STATE_DIR, "main.log")
+def _latih_arah():
+    try:
+        import qse_latih as LT
+        LT.jalankan(kirim=True)
+    except Exception as ex:
+        print("[WARN] latih arah", ex)
+
+
+def _posisi_semua():
+    """Posisi jalan semua orang di grup, masing-masing diberi nama pemiliknya."""
+    out = []
+    for u in SY.daftar_pengguna():
+        try:
+            nm = SY.nama_pengguna(u)
+            out += [dict(v, oleh=nm) for v in SY._baca(SY._path_uid(u))["open"].values() if v.get("status") in ("TERISI", "TP1")]
+        except Exception as ex:
+            print("[WARN] posisi semua", u, ex)
+    return out
+
+
 def _cek_unlock():
-    """Info: posisi jalan yang koinnya diperkirakan unlock pasokan dalam 3 hari (pola lonjakan pasokan beredar CoinGecko)."""
+    """Info 07:15 WIB: posisi jalan (semua orang) yang koinnya unlock dalam 3 hari. Jadwal resmi DefiLlama dulu (qse_unlock,
+    teruji), perkiraan dari lonjakan pasokan beredar CoinGecko hanya untuk koin yang tidak punya jadwal."""
     try:
         import qse_fundamental as FD
-        pos = [v for v in SY.lihat()["open"].values() if v.get("status") in ("TERISI", "TP1")]
-        rows, now = [], time.time()
+        import qse_unlock as UL
+        pos = _posisi_semua()
+        jadwal_r, kira, now = [], [], time.time()
         for s in sorted({v["sym"] for v in pos if v["sym"] != "BTCUSDT"})[:12]:
+            siapa = ", ".join(sorted({f"{v.get('oleh', '')} {v['arah']}".strip() for v in pos if v["sym"] == s}))
+            u = UL.dekat(s, hari=3, min_pct=0.5, now=now)
+            if u:
+                jadwal_r.append(f"🔓 <b>{s}: unlock {u[0]['pct']:.1f}% pasokan {UL._jam(u[0]['t'])}</b>. Posisi: {siapa}.")
+                continue
+            if UL._ev().get(s):
+                continue          # punya jadwal resmi tapi tidak ada unlock dekat
             try:
                 tk = FD.tokenomik(s)
             except Exception as ex:
                 print("[WARN] tokenomik", s, ex)
                 continue
-            u = tk.get("unlock_ts")
-            if u and -86400 <= u - now <= 3 * 86400:
-                siapa = ", ".join(sorted({f"{v.get('oleh', '')} {v['arah']}".strip() for v in pos if v["sym"] == s}))
-                rows.append(f"🔓 {s}: perkiraan unlock +{tk['unlock_pct']:g}% pasokan sekitar {FD._tgl(u)} sampai "
-                            f"{FD._tgl(u + 2 * 86400)}. Posisi: {siapa}.")
+            t_u = tk.get("unlock_ts")
+            if t_u and -86400 <= t_u - now <= 3 * 86400:
+                kira.append(f"🔓 {s}: perkiraan unlock +{tk['unlock_pct']:g}% pasokan sekitar {FD._tgl(t_u)} sampai "
+                            f"{FD._tgl(t_u + 2 * 86400)}. Posisi: {siapa}.")
             time.sleep(15)
-        if rows:
-            TG.send(["🔓 <b>QSE v148 | PERKIRAAN UNLOCK TOKEN</b>\nDari pola lonjakan pasokan beredar 1 tahun (CoinGecko), bukan jadwal "
-                     "resmi. Info saja, belum diuji ke sinyal robot. Untuk LONG, pastikan SL terpasang.\n\n" + "\n".join(rows)])
+        if jadwal_r or kira:
+            bag = ["🔓 <b>QSE v148 | UNLOCK TOKEN 3 HARI KE DEPAN</b>"]
+            if jadwal_r:
+                bag.append("Jadwal resmi (DefiLlama). Uji 2021-2026: 7 hari sebelum unlock 1% atau lebih, koin rata-rata -3% lawan "
+                           "BTC dan LONG di saat itu PF 0.28. Posisi jalan: ikuti SL, jangan tambah LONG.\n" + "\n".join(jadwal_r))
+            if kira:
+                bag.append("Perkiraan dari pola lonjakan pasokan beredar 1 tahun (CoinGecko), bukan jadwal resmi. Info saja. "
+                           "Untuk LONG, pastikan SL terpasang.\n" + "\n".join(kira))
+            TG.send(["\n\n".join(bag)])
     except Exception as ex:
         print("[WARN] cek unlock", ex)
 
