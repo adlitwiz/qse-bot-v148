@@ -981,6 +981,8 @@ def nilai(sym, arah, entry=None):
         st = MD.status()
         if st["rem"]:
             merah.append(st["alasan"])
+        elif MD.cek_arah(st, arah):
+            merah.append(MD.cek_arah(st, arah))
     except Exception:
         pass
     # Rapor koin (A/B/C/D) tidak dipakai lagi: uji 30 ribu trade jalur terbukti 2021-2026, rapor D PF 1.27, A 1.17, B 1.26, C 1.20.
@@ -1703,6 +1705,8 @@ def entry(args):
                         f"robot menyuruh tutup market.")
         if st0 and st0.get("rem"):
             rows.insert(1, f"⛔ <b>{st0['alasan']}</b>. Trade tetap dicatat, tapi aturan uji menyarankan tidak entry dulu.")
+        elif st0 and MD.cek_arah(st0, arah):
+            rows.insert(1, f"⛔ <b>{MD.cek_arah(st0, arah)}</b>. Trade tetap dicatat, tapi aturan uji menyarankan tidak entry dulu.")
     except Exception as ex:
         print("[WARN] batas waktu entry", ex)
     if isi_ts is not None and not baru_isi:
@@ -4201,6 +4205,13 @@ def sinyal_jalur(jam=False):
     except Exception:
         btc_up = None
     n_otak = 0
+    penuh, n_penuh = set(), 0
+    if uid_aktif() is not None:
+        try:
+            import qse_modal as MD
+            penuh = set(MD.status().get("penuh_arah") or [])          # posisi berisiko searah kamu sudah maks
+        except Exception as ex:
+            print("[WARN] batas searah", ex)
     kartu = []
     dipakai = []          # sinyal yang sudah kamu pakai dan keluar rugi atau impas: tidak ditawarkan lagi
     for k, nama, items in sumber:
@@ -4226,6 +4237,9 @@ def sinyal_jalur(jam=False):
             if it.get("otak_saring"):
                 n_otak += 1
                 continue          # disaring otak robot: dicatat, tidak ditawarkan
+            if it["arah"] in penuh:
+                n_penuh += 1
+                continue          # posisi berisiko searah kamu sudah maks
             if masih and not baru:
                 masih = not sl_tersentuh(it, it.get("sl0", sl))          # SL awal robot sudah tersentuh sejak sinyal: tidak valid
             if not (baru or masih):
@@ -4305,6 +4319,9 @@ def sinyal_jalur(jam=False):
     if dipakai and not jam:
         blok_tunggu += ("\n\n⛔ Disembunyikan karena sudah kamu pakai dan keluar rugi atau impas (tidak ditawarkan lagi): "
                         + ", ".join(dipakai) + ". Catatan orang lain di grup tidak ikut.")
+    if n_penuh and not jam:
+        blok_tunggu += (f"\n\n⛔ {n_penuh} sinyal {'/'.join(sorted(penuh))} disembunyikan: posisi berisiko searah kamu sudah maks 4. "
+                        "Tunggu satu posisi aman atau selesai.")
     if n_otak and not jam:
         blok_tunggu += (f"\n\n🧠 {n_otak} sinyal disaring otak robot (peluang untung paling rendah atau cocok celah live). "
                         "Tetap dicatat robot untuk penilaian mingguan.")

@@ -52,6 +52,9 @@ RISIKO_MAKS_PROFIL = 5.0                                      # persen modal per
 RISK_PCT = 0.25          # persen modal per 1R (saran risiko per trade, lot 1x)
 MAKS_POSISI = 5          # posisi berisiko per orang
 MAKS_AMAN = 2            # posisi aman tambahan (SL sudah di entry atau untung)
+MAKS_SEARAH = 4          # posisi berisiko searah (LONG atau SHORT) per orang. Uji walk-forward 2023-2026 dengan otak + rem harian
+                         # (riset/upgrade/hasil_g10c.txt): sinyal NILAI 8 ke atas DD 56R ke 45R, total +250R ke +270R, PF 1.30 ke 1.33,
+                         # DD per tahun turun atau sama. Semua sinyal netral (DD 43 ke 42R, total +264 ke +266R). Maks 3: total turun.
 RISIKO_BUKA = 5.0        # R, rugi kalau semua SL kena
 REM_HARIAN = 3.0         # R
 WAKTU_JAM = 36.0         # batas waktu posisi yang belum kena TP 20%
@@ -176,7 +179,8 @@ def lihat():
 def teks_aturan():
     """Satu baris aturan otomatis, dipakai di pesan sinyal."""
     return (f"⏳ <b>Aturan otomatis</b>: jam ke-8 belum kena TP 20%, SL naik ke -0.5R. {WAKTU_JAM:g} jam belum kena, tutup. "
-            f"3 rugi beruntun, jeda entry 24 jam. Posisi yang SL-nya sudah di entry tidak makan slot (maks {MAKS_AMAN})")
+            f"3 rugi beruntun, jeda entry 24 jam. Maks {MAKS_SEARAH} posisi berisiko searah. "
+            f"Posisi yang SL-nya sudah di entry tidak makan slot (maks {MAKS_AMAN})")
 
 
 FORMAT_MODAL = ("Format: /modal 155 (modal dolar), /modal 155 1 5 (modal, risiko persen per trade, leverage), "
@@ -288,6 +292,7 @@ def status(uid=None):
     buka = [it for it in data["open"].values() if it.get("status") in ("TERISI", "TP1", "MENUNGGU")]
     risiko, daftar, lewat = 0.0, [], []
     n_risk = n_aman = 0
+    n_arah = {"LONG": 0, "SHORT": 0}
     for it in buka:
         L = it["arah"] == "LONG"
         sl = it["entry"] if (it["status"] == "TP1" and not it.get("sl_manual")) else it["sl"]
@@ -299,6 +304,7 @@ def status(uid=None):
             n_aman += 1
         else:
             n_risk += 1
+            n_arah[it["arah"]] = n_arah.get(it["arah"], 0) + 1
         x = dict(sym=it["sym"], arah=it["arah"], status=it["status"], aman=aman, sisa_jam=None, lewat_jam=0.0, batas="",
                  pct=abs(it["entry"] - sl) / it["entry"] * 100 if it["entry"] else 0.0)
         try:
@@ -335,7 +341,16 @@ def status(uid=None):
     return dict(hari_ini=hari, n_posisi=n_risk, n_aman=n_aman, n_total=len(buka), maks=MAKS_POSISI, maks_aman=MAKS_AMAN,
                 sisa=max(0, min(MAKS_POSISI - n_risk, maks_total - len(buka))),
                 risiko=risiko, risiko_pct=pmodal(risiko, u), risiko_maks=RISIKO_BUKA, daftar=daftar, lewat=lewat, uid=u,
-                rem=bool(alasan), alasan=alasan, jeda=jd)
+                rem=bool(alasan), alasan=alasan, jeda=jd, n_arah=n_arah,
+                penuh_arah=[a for a in ("LONG", "SHORT") if n_arah.get(a, 0) >= MAKS_SEARAH])
+
+
+def cek_arah(st, arah):
+    """Alasan tahan kalau posisi berisiko searah sudah MAKS_SEARAH, kosong kalau boleh."""
+    if st and arah in (st.get("penuh_arah") or []):
+        return (f"BATAS SEARAH: sudah {st['n_arah'][arah]} posisi {arah} berisiko (maks {MAKS_SEARAH} searah). "
+                f"Tunggu satu {arah} aman atau selesai, sinyal {'SHORT' if arah == 'LONG' else 'LONG'} tetap boleh")
+    return ""
 
 
 def status_semua():
@@ -386,6 +401,8 @@ def baris_slot():
                         + (f"  ·  {rk}" if rk else ""))
         else:
             rows.append(f"👤 <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko</b>{aman}, sisa slot {st['sisa']}"
+                        + "".join(f"  ·  ⛔ <b>{a} penuh ({st['n_arah'][a]}/{MAKS_SEARAH} searah), hanya "
+                                  f"{'SHORT' if a == 'LONG' else 'LONG'}</b>" for a in st.get("penuh_arah") or [])
                         + (f"  ·  {rk}" if rk else ""))
         for x in st.get("lewat", []):
             rows.append(f"⏳ <b>{nm}: {x['sym']} {x['arah']} lewat batas waktu ({x['lewat_jam']:.0f} jam belum kena TP 20%). "
