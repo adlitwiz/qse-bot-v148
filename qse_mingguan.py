@@ -189,7 +189,7 @@ def bagian_orang(now, hari=HARI):
     return rows
 
 
-def teks(now=None, hari=HARI):
+def teks(now=None, hari=HARI, simpan=False):
     now = now or time.time()
     rows = [f"📅 <b>QSE v148 | LAPORAN MINGGUAN</b> ({_tgl(now - hari * 86400)} sampai {_tgl(now)})",
             "Hasil live lawan uji 2021-2026. Satu minggu itu sampel kecil, jangan ubah aturan dari satu minggu saja."]
@@ -199,4 +199,9 @@ def teks(now=None, hari=HARI):
         except Exception as ex:
             print("[WARN] mingguan", fn.__name__, ex)
             rows += ["", f"⚠️ Bagian {fn.__name__.replace('bagian_', '')} gagal dibuat: {html.escape(str(ex))[:80]}"]
+    try:
+        import qse_otak as OT
+        rows += ["", OT.evaluasi(simpan=simpan)]          # otak robot: penjaga penyaring dan celah live, dinilai tiap minggu
+    except Exception as ex:
+        print("[WARN] otak mingguan", ex)
     return "\n".join(rows)

@@ -4196,6 +4196,11 @@ def sinyal_jalur(jam=False):
         pegang = {v["sym"] for v in _load()["open"].values() if v["status"] in ("TERISI", "TP1")}
     now = time.time()
     tutup = int(now // 14400) * 14400
+    try:
+        btc_up = ST.btc_naik()          # BTC 4J di atas EMA 50: sinyal searah BTC ditaruh paling atas
+    except Exception:
+        btc_up = None
+    n_otak = 0
     kartu = []
     dipakai = []          # sinyal yang sudah kamu pakai dan keluar rugi atau impas: tidak ditawarkan lagi
     for k, nama, items in sumber:
@@ -4218,6 +4223,11 @@ def sinyal_jalur(jam=False):
                 baru = abs(d) <= 0.5 and ((px > sl) if L else (px < sl))       # harga sudah lari: tidak ditampilkan
             masih = (k in telat_ok and umur <= ST.umur_maks(k) and d is not None and abs(d) <= 0.5 and ((px > sl) if L else (px < sl))
                      and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
+            if it.get("otak_saring"):
+                n_otak += 1
+                continue          # disaring otak robot: dicatat, tidak ditawarkan
+            if masih and not baru:
+                masih = not sl_tersentuh(it, it.get("sl0", sl))          # SL awal robot sudah tersentuh sejak sinyal: tidak valid
             if not (baru or masih):
                 continue
             if it.get("tp"):
@@ -4243,11 +4253,16 @@ def sinyal_jalur(jam=False):
                 ket += "  ·  🔊 volume pasar tinggi"
             if it.get("dom_turun"):
                 ket += "  ·  📉 BTC.D turun"
+            searah = btc_up is not None and (btc_up == L)
+            if btc_up is not None:
+                ket += "  ·  🧭 searah BTC" if searah else "  ·  ↔️ lawan arah BTC"
+            if it.get("otak") is not None:
+                ket += f"  ·  🧠 peluang {it['otak'] * 100:.0f}%"
             e_val = px or it["entry"]
             blok = blok_salin(e_val, sl, it.get("tp"), it.get("tp"), "MARKET", t, catatan_tp=("" if it.get("tp") else tp),
                               sym=it["sym"], arah=it["arah"], rentang=ST.batas_masuk(it, k), sebagian=True)
             rencana = ST.tp_cepat_teks(dict(it, entry=e_val, sl=sl, sl0=sl), k=k)
-            kartu.append((ST.prioritas(k, it), f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
+            kartu.append((ST.prioritas(k, it), searah, f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
                          + blok + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + rencana)
                          + "".join("\n" + z for z in (baris_sudah_pakai(it["sym"], it["arah"], it.get("t")) if uid_aktif() is None else []))
                          + "".join(f"\nℹ️ <b>{TG_e(str(nama_pengguna(u)))}</b> sudah memegang {it['sym']}, sinyal ini untuk yang lain"
@@ -4281,7 +4296,7 @@ def sinyal_jalur(jam=False):
                       "jadi tidak ditampilkan. Order STOP baru terisi kalau harga MENEMBUS entry.")
     blok_tunggu = ("\n\n⏳ <b>ORDER MENUNGGU TERISI</b> (Tembus Trendline, pasang order ini di Bybit, bukan MARKET)\n\n"
                    + "\n\n".join(tunggu)) if tunggu else ""
-    kartu.sort(key=lambda z: z[0], reverse=True)          # prioritas: label terbukti dulu, lalu PF jalur
+    kartu.sort(key=lambda z: (z[1], z[0]), reverse=True)          # searah BTC dulu, lalu label terbukti, lalu PF jalur
     n_sem = len([1 for z in kartu if not ST.lolos_mode(z[0])])
     kartu = [z for z in kartu if ST.lolos_mode(z[0])]
     if n_sem and not jam:
@@ -4290,8 +4305,11 @@ def sinyal_jalur(jam=False):
     if dipakai and not jam:
         blok_tunggu += ("\n\n⛔ Disembunyikan karena sudah kamu pakai dan keluar rugi atau impas (tidak ditawarkan lagi): "
                         + ", ".join(dipakai) + ". Catatan orang lain di grup tidak ikut.")
+    if n_otak and not jam:
+        blok_tunggu += (f"\n\n🧠 {n_otak} sinyal disaring otak robot (peluang untung paling rendah atau cocok celah live). "
+                        "Tetap dicatat robot untuk penilaian mingguan.")
     kartu = [f"{ST.medali(i)} <b>PRIORITAS {i}</b>  ·  {ST.label_prioritas(p)}  ·  PF jalur {p[1]:.2f}\n{x}"
-             for i, (p, x) in enumerate(kartu, 1)]
+             for i, (p, _, x) in enumerate(kartu, 1)]
     try:
         import qse_pagi as PG
         _bb = PG.baris_btc_sinyal() if kartu else ""
@@ -4300,8 +4318,9 @@ def sinyal_jalur(jam=False):
     if jam:          # dipakai cek per jam: hanya kartu yang masih valid, format sama dan bisa disalin (maks 5, pesan tidak terpotong)
         return "\n\n".join(([_bb] if _bb else []) + kartu[:5]) + (f"\n\n+{len(kartu) - 5} sinyal valid lain, ketik /sinyal4j" if len(kartu) > 5 else "")
     if not kartu:
-        return (kepala + "\nBelum ada sinyal MARKET jalur terbukti yang bisa diikuti di harga sekarang. Sinyal baru dikirim tiap "
-                "candle 4J tutup (03, 07, 11, 15, 19, 23 WIB lewat 5 menit)." + blok_tunggu)
+        return (kepala + "\nSemua jalur sudah dicek di harga sekarang: belum ada sinyal yang masih valid (SL belum tersentuh, harga "
+                "dalam 0.5R dari entry robot, belum lewat batas waktu). Robot tidak memaksa sinyal: entry di luar aturan ini belum "
+                "teruji. Sinyal baru dikirim tiap candle 4J tutup (03, 07, 11, 15, 19, 23 WIB lewat 5 menit)." + blok_tunggu)
     return (kepala + "\nHanya sinyal yang masih valid di harga sekarang (dalam 0.5R dari entry robot dan belum lewat batas waktu), "
             "urut dari prioritas 1.\n\n" + "\n\n".join(([_bb] if _bb else []) + kartu) + blok_tunggu)
 
@@ -4343,6 +4362,26 @@ def siaga_berita():
         else:
             rows.append(f"⏸️ <b>{it['sym']} {it['arah']}</b> " + (f"rugi {fl['r']:+.2f}R" if fl else "") + ". Tahan, biarkan SL bekerja.")
     return rows
+
+
+def sl_tersentuh(it, sl):
+    """True kalau harga sudah menyentuh SL sejak sinyal terbit (candle 1 jam Bybit, termasuk candle yang sedang jalan).
+    Ledger jalur hanya membaca candle 4J yang sudah tutup, jadi sumbu yang menyentuh SL di candle berjalan belum tercatat.
+    Sinyal seperti itu sudah selesai untuk robot (uji entry telat hanya memakai sinyal yang belum kena SL). Gagal ambil data = False."""
+    try:
+        t0 = int(it.get("t", 0) * 1000)
+        if not t0 or not sl:
+            return False
+        jam = int((time.time() * 1000 - t0) / 3600000) + 3
+        import bybit_fetch as _B
+        df = _B._raw(it["sym"], "60", max(5, min(jam, 300)))
+        df = df[df.index + 3600000 > t0]
+        if not len(df):
+            return False
+        return bool((df["low"].min() <= sl) if it.get("arah", "LONG") == "LONG" else (df["high"].max() >= sl))
+    except Exception as ex:
+        print("[WARN] cek SL tersentuh", it.get("sym"), ex)
+        return False
 
 
 @per_orang

@@ -970,10 +970,13 @@ def jalankan(baru_ok=True):
                     it["pullback"] = bool((cc[-1] > e200 and e20 < e50) if L else (cc[-1] < e200 and e20 > e50))
                 except Exception as ex:
                     print("[WARN] pullback", ex)
+            import qse_otak as OT
+            OT.tandai(it, k, df)          # otak robot: peluang rendah atau celah live = tetap dicatat, tidak dikirim
             baru.append(it)
             dipakai.add(sym)
-            PO.pesan(sym, arah)
-            out[k].append(kartu(k, len(baru), it, a))
+            if not OT.tersaring(it):
+                PO.pesan(sym, arah)
+                out[k].append(kartu(k, len(baru), it, a))
 
         def simpan_baru(dd, baru=baru):
             for it in baru:

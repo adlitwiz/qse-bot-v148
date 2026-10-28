@@ -2018,6 +2018,12 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
         if it["sym"] in pegang or not (baru or masih):
             lewat += 1
             continue
+        if it.get("otak_saring"):
+            lewat += 1          # disaring otak robot (peluang rendah atau celah live): dicatat, tidak ditawarkan
+            continue
+        if not baru and SY.sl_tersentuh(it, sl0):
+            lewat += 1          # SL robot sudah tersentuh sejak sinyal: tidak valid lagi walau harga kembali dekat entry
+            continue
         jam = dt.datetime.fromtimestamp(it.get("t", 0), WIB).strftime("%d/%m %H:%M")
         jr = 0
         if it.get("tp"):
@@ -2052,7 +2058,7 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
         rows.append(f"{GARIS}\n{'🟢' if L else '🔴'} <b>{TG.e(it['sym'])} {'LONG' if L else 'SHORT'}</b>  ·  MARKET  ·  {ket}"
                     + f"\n{blok}" + (f"\nSL sudah digeser dari {TG.fp(sl0, t)}" if sl_now != sl0 else "")
                     + "".join("\n" + z for z in _tpc_main(it, kunci, entry=e_val, sl=sl_now)))
-        lv = dict(e=e_val, sl=sl_now, tp=it.get("tp"), jr=jr or None, t=t)
+        lv = dict(e=e_val, sl=sl_now, tp=it.get("tp"), jr=jr or None, t=t, blok=blok, sudah=SY.baris_sudah_pakai(it["sym"], "LONG" if L else "SHORT", it.get("t")))
         ring.append((it["sym"], "LONG" if L else "SHORT", "baru" if baru else "masih dekat entry", it, rows[-1], lv))
     return (("\n" + "\n".join(rows)) if rows else ""), ring, lewat
 
@@ -2309,9 +2315,10 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             rows.append(f"{ST_m.medali(no_)} <b>{no_}. {TG.e(sym)} {arah}</b>  ·  "
                         + (f"<b>{ST_m.kelas(pr[0]).split(' (')[0]}</b>  ·  " if ST_m.kelas(pr[0]) else "") + f"{TG.e(nama)}  ·  "
                         f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  lot {lot}")
-            lvl = _baris_level(lv)
+            lvl = lv.get("blok") or _baris_level(lv)          # blok sama dengan kartu: tekan lama untuk salin, tempel setelah /entry
             if lvl:
                 rows.append(lvl)
+            rows += lv.get("sudah") or []
         for jl, r, x, _, _ in ikut:
             ok, tk, ik, lot = SY.boleh_ikut(jl, x["arah"], x.get("skor"))
             rows.append(f"{IKON.get(x['arah'], '')} {TG.e(r['symbol'])} {x['arah']}  ·  {SY.NAMA_JALUR.get(jl, jl)}  ·  "

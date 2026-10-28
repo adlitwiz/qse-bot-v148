@@ -245,7 +245,7 @@ def _tugas_berkala():
         _st({"lap_mg": nomor_mg})
         try:
             import qse_mingguan as MG
-            TG.send([MG.teks()])
+            TG.send([MG.teks(simpan=True)])          # versi terjadwal yang boleh menyalakan atau mematikan penyaring otak
         except Exception as ex:
             print("[WARN] laporan mingguan", ex)
     # jadwal token unlock (DefiLlama): disegarkan tiap 7 hari di thread sendiri, dicek tiap jam

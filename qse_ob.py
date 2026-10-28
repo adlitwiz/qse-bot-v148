@@ -303,9 +303,12 @@ def _jalankan(baru_ok=True):
         if tolak_senin:
             print(f"[ORDERBLOCK] {sym} dilewati: {tolak_senin}")
             continue
+        import qse_otak as OT
+        OT.tandai(it, "orderblock", df)          # otak robot: peluang rendah = tetap dicatat, tidak dikirim
         baru.append(it)
-        PO.pesan(sym, "LONG")
-        out.append(kartu(len(baru), it, sg))
+        if not OT.tersaring(it):
+            PO.pesan(sym, "LONG")
+            out.append(kartu(len(baru), it, sg))
 
     def simpan_baru(dd):
         for it in baru:

@@ -347,7 +347,11 @@ def _jalankan(baru_ok=True):
         if tolak_senin:
             print(f"[ICHIMOKU] {sym} dilewati: {tolak_senin}")
             continue
+        import qse_otak as OT
+        OT.tandai(it, "ichimoku", df)          # otak robot: peluang rendah = tetap dicatat, tidak dikirim
         baru.append(it)
+        if OT.tersaring(it):
+            continue
         PO.pesan(sym, arah)
         try:
             import qse_modal as MD
