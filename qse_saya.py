@@ -2106,22 +2106,71 @@ def jeda_info(closed, now_ms=None):
     now_ms = now_ms or int(time.time() * 1000)
     cl = sorted((c for c in closed if c.get("why") in ("SL", "BE", "TP2", "TUTUP") and c.get("closed_ts")),
                 key=lambda c: c["closed_ts"])
-    n, sampai = 0, None
+    n, sampai, run = 0, None, []
     for c in cl:
         t = c["closed_ts"]
         if sampai is not None and t >= sampai:
-            n, sampai = 0, None
+            n, sampai, run = 0, None, []
         n = n + 1 if (c.get("result_r") or 0) <= 0 else 0
+        run = (run + [c]) if n else []
         if sampai is None and n >= JEDA_K:
             sampai = int(t + JEDA_JAM * JAM)
+    # trade yang dihitung (rugi beruntun terakhir), supaya penyebab jeda bisa dicek satu per satu
+    dihitung = [dict(sym=c.get("sym", "?"), arah=c.get("arah", ""), why=c.get("why", ""), r=float(c.get("result_r") or 0),
+                     ts=c["closed_ts"]) for c in run[-JEDA_K:]]
     if sampai is not None and now_ms >= sampai:
-        return dict(aktif=False, sampai=sampai, beruntun=0)
-    return dict(aktif=sampai is not None, sampai=sampai, beruntun=n)
+        return dict(aktif=False, sampai=sampai, beruntun=0, dihitung=[])
+    return dict(aktif=sampai is not None, sampai=sampai, beruntun=n, dihitung=dihitung)
+
+
+def teks_dihitung(jd):
+    """'USELESSUSDT SHORT SL -0.50R (28/10 05:00 WIB), ...' untuk trade yang dihitung dalam rugi beruntun."""
+    return ", ".join(f"{x['sym']} {x['arah']} {x['why']} {x['r']:+.2f}R ({_jam_wib(x['ts'])})" for x in jd.get("dihitung", []))
+
+
+def pernah_dipakai(sym, arah, t_sinyal, uid=None):
+    """Trade SATU orang di koin dan arah ini yang dibuka setelah sinyal terbit (t_sinyal detik) dan sudah keluar dengan
+    hasil di bawah +0.3R (SL, tutup, atau BE). Dipakai supaya sinyal yang sudah kena SL kamu tidak tampil lagi sebagai
+    'bisa diikuti' dan supaya tidak ada entry ulang di sinyal yang sama. Return dict(why, result_r, closed_ts) atau None.
+    uid None = pengirim aktif. Catatan orang lain tidak ikut dihitung."""
+    if not t_sinyal:
+        return None
+    try:
+        d = _baca(_path_uid(uid)) if uid is not None else _load()
+    except Exception:
+        return None
+    batas = (float(t_sinyal) - 900) * 1000
+    hasil = None
+    for c in d.get("closed", []):
+        if c.get("sym") != sym or c.get("arah") != arah or c.get("why") not in ("SL", "BE", "TUTUP", "TP2"):
+            continue
+        if (c.get("fill_ts") or c.get("created_ts") or 0) < batas or c.get("result_r") is None:
+            continue
+        if float(c["result_r"]) >= 0.3:
+            continue
+        if hasil is None or c.get("closed_ts", 0) > hasil["closed_ts"]:
+            hasil = dict(why=c["why"], result_r=float(c["result_r"]), closed_ts=c.get("closed_ts", 0))
+    return hasil
+
+
+def baris_sudah_pakai(sym, arah, t_sinyal):
+    """Per orang yang sudah memakai sinyal ini lalu keluar rugi atau impas. Untuk pesan grup, nama diambil dari catatan."""
+    import html
+    rows = []
+    for u in daftar_pengguna():
+        h = pernah_dipakai(sym, arah, t_sinyal, uid=u)
+        if h:
+            ket = {"SL": "kena SL", "BE": "keluar impas", "TUTUP": "kamu tutup", "TP2": "selesai"}.get(h["why"], h["why"])
+            rows.append(f"⛔ <b>{html.escape(str(nama_pengguna(u)))}</b>: sinyal ini sudah kamu pakai, {ket} {h['result_r']:+.2f}R "
+                        f"({_jam_wib(h['closed_ts'])}). Jangan entry ulang dari sinyal yang sama")
+    return rows
 
 
 def teks_jeda(jd):
     return (f"⏸️ <b>JEDA ENTRY {JEDA_JAM} JAM</b>: {jd['beruntun']} trade terakhir rugi berturut-turut.\n"
-            f"👉 <b>Jangan buka posisi baru sampai {_jam_wib(jd['sampai'])}</b>. Posisi yang masih jalan tetap ikut SL dan TP.\n"
+            + (f"Dihitung dari catatan kamu sendiri: {teks_dihitung(jd)}. Catatan orang lain tidak ikut dihitung.\n"
+               if jd.get("dihitung") else "")
+            + f"👉 <b>Jangan buka posisi baru sampai {_jam_wib(jd['sampai'])}</b>. Posisi yang masih jalan tetap ikut SL dan TP.\n"
             "Uji 2021-2026 (satu orang): jeda ini memangkas drawdown dari 27R ke 17R, total profit sama.")
 
 
@@ -2304,6 +2353,69 @@ def _jalan(it, rows, iv):
     return ev
 
 
+INGAT_SL_MENIT = (20, 60, 180)          # pengingat pindah SL setelah TP 20% kena: 20 menit, 1 jam, 3 jam. Berhenti setelah /slok
+
+
+def sl_dikonfirmasi(it):
+    """True kalau SL di Bybit sudah di entry atau untung: kamu kirim /slok KOIN, atau /modify KOIN sl entry (SL manual
+    di entry atau di sisi untung)."""
+    if it.get("sl_ok"):
+        return True
+    if not it.get("sl_manual"):
+        return False
+    e, sl = it["entry"], it["sl"]
+    return (sl <= e + (it.get("tick") or 1e-8) * 0.5) if it["arah"] == "SHORT" else (sl >= e - (it.get("tick") or 1e-8) * 0.5)
+
+
+def perlu_ingat_sl(it):
+    """TP 20% sudah kena, posisi masih jalan, tapi belum ada tanda SL di Bybit sudah dipindah ke entry."""
+    return bool(it.get("tps_ts") and it["status"] in ("TERISI", "TP1") and not sl_dikonfirmasi(it))
+
+
+def _ingat_sl(it, now):
+    """Pengingat berulang (maks 3) supaya SL di Bybit benar-benar dipindah ke entry setelah TP 20% kena. Bybit tidak
+    memindahkan SL sendiri. Lupa memindah mengubah hasil kalau harga balik: +0.1R jadi -0.7R."""
+    if not perlu_ingat_sl(it):
+        return None
+    n = int(it.get("ingat_sl", 0))
+    if n >= len(INGAT_SL_MENIT):
+        return None
+    ts = it.get("tps_ts") or now
+    if not isinstance(ts, (int, float)) or ts <= 0:
+        return None
+    if now < ts + INGAT_SL_MENIT[n] * 60000:
+        return None
+    import qse_strat as ST
+    it["ingat_sl"] = n + 1
+    tk, kd = it["tick"], it["sym"].replace("USDT", "")
+    e = it["entry"]
+    rugi = ST.TPS_PORSI * ST.TPS_R - (1 - ST.TPS_PORSI)
+    mnt = int((now - ts) / 60000)
+    return (f"🔔 <b>PENGINGAT SL  ·  {it['sym']} {it['arah']}</b>  (ke-{n + 1} dari {len(INGAT_SL_MENIT)})\n"
+            f"TP {int(ST.TPS_PORSI * 100)}% sudah kena {mnt} menit lalu. Bybit tidak memindah SL sendiri.\n"
+            f"👉 <b>Pastikan SL di Bybit sudah di entry {fp(e, tk)}</b>: TP/SL, Entire Position, SL Trigger Price {fp(e, tk)}, Confirm.\n"
+            f"Kalau lupa dan harga balik, hasilnya {rugi:+.1f}R, bukan +{ST.TPS_PORSI * ST.TPS_R:.1f}R. "
+            f"Sudah diubah? Kirim /slok {kd} supaya pengingat berhenti.")
+
+
+def slok(args):
+    """/slok KOIN: SL di Bybit sudah dipindah ke entry setelah TP 20% kena. Pengingat berhenti."""
+    if not args:
+        return "Format: /slok AUSDT. Artinya SL di Bybit sudah kamu pindah ke entry, pengingat berhenti."
+    sym = args[0] if args[0].endswith("USDT") else args[0] + "USDT"
+
+    def f(d):
+        n = 0
+        for it in d["open"].values():
+            if it["sym"] == sym and it.get("tps_ts"):
+                it["sl_ok"] = True
+                n += 1
+        return n
+    n = ubah(f)
+    return (f"✅ {sym}: dicatat SL di Bybit sudah di entry. Pengingat berhenti." if n else
+            f"Tidak ada posisi {sym} kamu yang TP 20%-nya sudah kena. Pengingat hanya jalan setelah TP 20% kena.")
+
+
 @per_orang
 def pantau():
     """Cek semua trade kamu dengan candle 1 menit. Aman dipanggil tiap menit. Return daftar pesan."""
@@ -2383,6 +2495,12 @@ def pantau():
                     pesan.append(f"💰 <b>TP SEBAGIAN KENA  ·  {it['sym']} {it['arah']}</b>\n↳ {txt}. Entry {fp(it['entry'], it['tick'])}")
                     continue
                 pesan.append(f"{ik.get(e, '•')} <b>{it['sym']} {it['arah']}</b>\n↳ {txt} | entry {fp(it['entry'], it['tick'])}")
+            try:
+                ing = _ingat_sl(it, now)
+                if ing:
+                    pesan.append(ing)
+            except Exception as ex:
+                print("[WARN] ingat SL", ex)
             if it["status"] == "SELESAI":
                 d["closed"].append(d["open"].pop(k))
         for g in _gabung_semua(d):          # LIMIT yang baru terisi atau catatan ganda lama: jadikan satu posisi
@@ -2588,7 +2706,7 @@ def ringkas_rapi(judul, closed, why_ok=("SL", "BE", "TP2", "TUTUP")):
         up = sum(c["result_r"] for c in cl if c["result_r"] > 0)
         dn = sum(c["result_r"] for c in cl if c["result_r"] < 0)
         teks = f"{'🟩' if net > 0 else '🟥' if net < 0 else '⬜'} <b>{nama.capitalize()}</b>: {n} trade  ·  WR {w / n * 100 if n else 0:.0f}%  ·  {net:+.2f}R"
-        teks += (f"\n     {'PROFIT' if net >= 0 else 'RUGI'} {pm(net):+.2f}% modal"
+        teks += (f"\n     {'PROFIT' if net >= 0 else 'RUGI'} {pm(net):+.2f}% modal{MD.usd_r(net)}"
                  f"\n     untung +{up:.2f}R (+{pm(up):.2f}%)  ·  rugi -{abs(dn):.2f}R (-{pm(abs(dn)):.2f}%)")
         rows.append(teks)
     return "\n".join(rows)
@@ -2677,11 +2795,23 @@ def _pmodal(R):
         return ""
 
 
-def _rm(R):
-    """'+0.90R = +0.23% modal' (netral, 1R = 0.25% modal)."""
+def _risk_teks():
+    """'0.25% modal, berlaku untuk modal berapa pun' (netral) atau '1% modal = $1.55' kalau profil dolar sudah diisi."""
     try:
         import qse_modal as MD
-        return f"{R:+.2f}R = {MD.pmodal(R):+.2f}% modal"
+        p = MD.profil()
+        if p:
+            return f"{p['risiko']:g}% modal = {MD._usd(p['modal'] * p['risiko'] / 100)}"
+        return f"{MD.RISK_PCT:g}% modal, berlaku untuk modal berapa pun"
+    except Exception:
+        return "0.25% modal"
+
+
+def _rm(R):
+    """'+0.90R = +0.90% modal (+$1.40)' di risiko profil orang itu, atau netral 0.25% per R tanpa dolar."""
+    try:
+        import qse_modal as MD
+        return MD.teks_r(R)
     except Exception:
         return f"{R:+.2f}R"
 
@@ -2796,6 +2926,10 @@ def isi_bybit(it, jp=None, sl_now=None):
         rows.append(f"🔁 <b>SL terbaru {f(sl_now)}</b> (awal {f(sl0)}, {_alasan_sl(it, sl_now)}). Samakan di Bybit")
     if it.get("tps_ts"):
         rows.append(f"✅ TP {int(ST.TPS_PORSI * 100)}% sudah kena, Partial Position tidak perlu lagi")
+        if it["status"] in ("TERISI", "TP1"):
+            kd_ = it["sym"].replace("USDT", "")
+            rows.append("✅ SL di Bybit sudah dikonfirmasi di entry" if sl_dikonfirmasi(it) else
+                        f"⚠️ <b>SL di Bybit belum dikonfirmasi di entry {f(it['entry'])}</b>. Ubah di Bybit, lalu kirim /slok {kd_}")
     elif it["status"] == "TP1" and not it.get("ikut"):
         rows.append("✅ TP1 sudah kena, sisa posisi ikut TP2")
     return rows
@@ -3062,7 +3196,7 @@ def status_saya(harga=None):
     blok.append(wr_jalur(d["closed"]))
     if op:
         blok.append("ℹ️ <b>Cara baca</b>: persen dan R di tabel = hasil kalau harga sampai level itu, + untung dan - rugi "
-                    "(SHORT sudah dibalik). 1R = 0.25% modal, berlaku untuk modal berapa pun. ⏱ jarak dari harga sekarang "
+                    f"(SHORT sudah dibalik). 1R = {_risk_teks()}. ⏱ jarak dari harga sekarang "
                     "dan perkiraan waktu.")
     return "\n\n".join(blok)
 
@@ -4051,13 +4185,26 @@ def sinyal_jalur(jam=False):
     for k, cfg in ST.STRAT.items():
         sumber.append((k, cfg["nama"], ST.lihat(k)["open"].values()))
     telat_ok = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
-    pegang = {v["sym"] for v in _load()["open"].values() if v["status"] in ("TERISI", "TP1")}
+    # Pesan grup (tanpa pengirim): koin disembunyikan hanya kalau SEMUA orang sudah memegangnya. Kalau hanya sebagian, sinyal
+    # tetap tampil dan tiap orang yang memegang diberi baris sendiri. Perintah dari satu orang: hanya miliknya.
+    pegang_per = {}
+    if uid_aktif() is None:
+        for u in daftar_pengguna():
+            pegang_per[u] = {v["sym"] for v in _baca(_path_uid(u))["open"].values() if v["status"] in ("TERISI", "TP1")}
+        pegang = set.intersection(*pegang_per.values()) if pegang_per else set()
+    else:
+        pegang = {v["sym"] for v in _load()["open"].values() if v["status"] in ("TERISI", "TP1")}
     now = time.time()
     tutup = int(now // 14400) * 14400
     kartu = []
+    dipakai = []          # sinyal yang sudah kamu pakai dan keluar rugi atau impas: tidak ditawarkan lagi
     for k, nama, items in sumber:
         for it in items:
             if it["sym"] in pegang:
+                continue
+            ph = pernah_dipakai(it["sym"], it["arah"], it.get("t"), uid=uid_aktif()) if uid_aktif() is not None else None
+            if ph:
+                dipakai.append(f"{it['sym']} {it['arah']} ({ph['why']} {ph['result_r']:+.2f}R)")
                 continue
             L = it["arah"] == "LONG"
             t = it.get("tick") or 1e-8
@@ -4101,7 +4248,10 @@ def sinyal_jalur(jam=False):
                               sym=it["sym"], arah=it["arah"], rentang=ST.batas_masuk(it, k), sebagian=True)
             rencana = ST.tp_cepat_teks(dict(it, entry=e_val, sl=sl, sl0=sl), k=k)
             kartu.append((ST.prioritas(k, it), f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama}  ·  MARKET  ·  {ket}\n"
-                         + blok + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + rencana)))
+                         + blok + "".join("\n" + z for z in ST.batas_masuk_teks(it, k) + rencana)
+                         + "".join("\n" + z for z in (baris_sudah_pakai(it["sym"], it["arah"], it.get("t")) if uid_aktif() is None else []))
+                         + "".join(f"\nℹ️ <b>{TG_e(str(nama_pengguna(u)))}</b> sudah memegang {it['sym']}, sinyal ini untuk yang lain"
+                                   for u, ss in pegang_per.items() if it["sym"] in ss)))
     kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
     # order Tembus Trendline yang masih menunggu (STOP atau LIMIT, berlaku 24 jam): ikut ditampilkan supaya sama dengan cek per jam
     tunggu = []
@@ -4137,6 +4287,9 @@ def sinyal_jalur(jam=False):
     if n_sem and not jam:
         blok_tunggu += (f"\n\nℹ️ {n_sem} sinyal dengan nilai di bawah "
                         "8 (skor label di bawah 3) disembunyikan otomatis, karena hasil ujinya jauh lebih rendah.")
+    if dipakai and not jam:
+        blok_tunggu += ("\n\n⛔ Disembunyikan karena sudah kamu pakai dan keluar rugi atau impas (tidak ditawarkan lagi): "
+                        + ", ".join(dipakai) + ". Catatan orang lain di grup tidak ikut.")
     kartu = [f"{ST.medali(i)} <b>PRIORITAS {i}</b>  ·  {ST.label_prioritas(p)}  ·  PF jalur {p[1]:.2f}\n{x}"
              for i, (p, x) in enumerate(kartu, 1)]
     try:
@@ -4189,6 +4342,19 @@ def siaga_berita():
             rows.append(f"✅ <b>{it['sym']} {it['arah']}</b> untung {fl['r']:+.2f}R. TUTUP sekarang dengan MARKET, lalu /tutup {kd} HARGA")
         else:
             rows.append(f"⏸️ <b>{it['sym']} {it['arah']}</b> " + (f"rugi {fl['r']:+.2f}R" if fl else "") + ". Tahan, biarkan SL bekerja.")
+    return rows
+
+
+@per_orang
+def posisi_berita():
+    """Baris posisi jalan untuk pengingat berita bertahap: pair, arah, untung rugi sekarang (R)."""
+    rows = []
+    for it in _load()["open"].values():
+        if it["status"] not in ("TERISI", "TP1"):
+            continue
+        px = harga_live(it["sym"])
+        fl = floating(it, px) if px else None
+        rows.append(f"💼 {it['sym']} {it['arah']} " + (f"{fl['r']:+.2f}R" if fl else "harga belum ada"))
     return rows
 
 

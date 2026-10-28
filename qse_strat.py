@@ -990,6 +990,15 @@ def jalankan(baru_ok=True):
 _CEK = {}
 
 
+def _sudah_pakai(it):
+    """Baris per orang yang sudah memakai sinyal ini lalu keluar rugi atau impas (catatan tiap orang terpisah)."""
+    try:
+        import qse_saya as SY
+        return SY.baris_sudah_pakai(it["sym"], it["arah"], it.get("t"))
+    except Exception:
+        return []
+
+
 def kartu(k, no, it, a):
     import qse_saya as SY
     cfg = STRAT[k]
@@ -1010,7 +1019,7 @@ def kartu(k, no, it, a):
     return "\n".join([
         SY.GARIS,
         f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {it['arah']}</b>  ·  {cfg['nama']} 4J",
-        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
+        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (ukuran posisi tiap orang di baris 💼)",
         *combo_teks(it),
         *([cat_hari] if cat_hari else []),
         *mutu_teks(it),
@@ -1022,6 +1031,7 @@ def kartu(k, no, it, a):
          SY.blok_salin(it["entry"], it["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=it["sym"], arah=it["arah"],
                        rentang=batas_masuk(it, k), sebagian=True)),
         *batas_masuk_teks(it, k),
+        *_sudah_pakai(it),
         *tp_cepat_teks(it, k=k),
         *([f"🛡 <b>Rem drawdown aktif</b>: {rm}. Tetap boleh entry, pakai lot setengah sampai pulih"] if rm else []),
         "💡 <b>Kenapa</b>",

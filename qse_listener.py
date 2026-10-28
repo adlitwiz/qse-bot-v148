@@ -238,6 +238,16 @@ def _tugas_berkala():
             TG.send([BR.teks_kalender_minggu()])
         except Exception as ex:
             print("[WARN] kalender minggu", ex)
+    # laporan mingguan hasil live lawan uji: Senin 06:20 WIB (Minggu 23:20 UTC). Jendela kirim 6.5 jam supaya bot yang mati
+    # sebentar tetap mengirim begitu hidup lagi. Satu kali per minggu lewat nomor minggu yang berganti di Minggu 23:20 UTC.
+    nomor_mg = int((now + 40 * 60 + 3 * 86400) // (7 * 86400))
+    if (now + 40 * 60 + 3 * 86400) % (7 * 86400) < 6.5 * 3600 and st.get("lap_mg", 0) < nomor_mg:
+        _st({"lap_mg": nomor_mg})
+        try:
+            import qse_mingguan as MG
+            TG.send([MG.teks()])
+        except Exception as ex:
+            print("[WARN] laporan mingguan", ex)
     # jadwal token unlock (DefiLlama): disegarkan tiap 7 hari di thread sendiri, dicek tiap jam
     if now - st.get("unlock_cek", 0) >= 3600:
         _st({"unlock_cek": now})
@@ -314,6 +324,19 @@ def _tugas_berkala():
             TG.send(["🧭 <b>QSE v148 | ARAH PASAR HARIAN</b>\n\n" + AR.harian()])
         except Exception as ex:
             print("[WARN] arah harian", ex)
+    for kv, detik in (("viral_siang", 6 * 3600), ("viral_malam", 13 * 3600)):
+        # 13:00 dan 20:00 WIB: berita kripto paling ramai dan berdampak, hanya yang belum pernah dikirim. Tanpa perintah.
+        if detik <= now - hari <= detik + 3 * 3600 and st.get(kv, 0) < hari:
+            _st({kv: hari})
+            try:
+                import qse_news as NW
+                kunci = []
+                tv = NW.viral(jam=14, maks=4, sudah=set(st.get("viral_kirim", [])), skor_min=NW.VIRAL_MIN, kunci_out=kunci)
+                if tv:
+                    _st({"viral_kirim": (list(st.get("viral_kirim", [])) + kunci)[-60:]})
+                    TG.send([tv])
+            except Exception as ex:
+                print("[WARN] viral otomatis", ex)
     _jaga_main(now)
     try:
         _jadwal_lab(now)
@@ -671,6 +694,13 @@ def _tugas_menit():
             TG.send(["📅 <b>QSE v148 | SIAGA BERITA BESAR</b>\n\n" + "\n\n".join(sb)])
     except Exception as ex:
         print("[WARN] siaga berita", ex)
+    try:
+        import qse_berita as BR
+        ag = BR.pesan_agenda(SY.posisi_berita)          # pengingat H-24 dan H-6, perubahan jadwal: otomatis, tanpa perintah
+        if ag:
+            TG.send(ag)
+    except Exception as ex:
+        print("[WARN] agenda berita", ex)
     try:
         pesan = SY.peringatan_dini()
         if pesan:

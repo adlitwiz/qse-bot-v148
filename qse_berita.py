@@ -318,6 +318,140 @@ def pengingat(now_ms=None):
     return out
 
 
+# ---------------- 1c. pengingat bertahap dan perubahan jadwal (otomatis, tidak dadakan) ----------------
+# 🔴 FOMC dan CPI: H-24 dan H-6 (H-1 sudah ada: pengingat 75 menit dan SIAGA CPI/FOMC untuk posisi jalan). 🟠 dan ⚪ hanya H-1.
+TAHAP = {"🔴": (24 * JAM, 6 * JAM)}
+JENDELA_TAHAP = 40 * 60000           # pengingat dikirim sampai 40 menit setelah waktunya, supaya bot yang mati sebentar tetap mengirim
+LIPAT = (("FOMC", "FOMC 2.6x"), ("FEDERAL FUNDS", "FOMC 2.6x"), ("CPI", "CPI 2.4x"))          # gerak BTC di jam rilis, uji 2021-2026
+UTC = dt.timezone.utc
+
+
+def _jam_utc(ms):
+    return dt.datetime.fromtimestamp(ms / 1000, UTC).strftime("%d/%m %H:%M UTC")
+
+
+def _hitung_mundur(sisa_ms):
+    m = max(0, int(sisa_ms / 60000))
+    return f"{m // 60} jam {m % 60} menit lagi" if m >= 60 else f"{m} menit lagi"
+
+
+def _angka(e):
+    """Perkiraan dan nilai sebelumnya dari ForexFactory kalau ada. Return teks atau ''."""
+    for x in _load().get("kal_semua", []):
+        if x.get("negara") == "USD" and x["ts"] == e["ts"] and x["judul"] == e["judul"] and x.get("perkiraan") and x.get("sebelum"):
+            return f"Perkiraan {x['perkiraan']}, sebelumnya {x['sebelum']}"
+    return ""
+
+
+def _sumber(e):
+    """Nama sumber tanggal: ForexFactory (nfs.faireconomy.media) dan atau jadwal resmi (federalreserve.gov, bls.gov)."""
+    c = _load()
+    s = []
+    if any(f["ts"] == e["ts"] and f["judul"] == e["judul"] for f in c.get("kal", [])):
+        s.append("ForexFactory")
+    j = [x for x in jadwal(e["ts"] - 3 * JAM, e["ts"] + 3 * JAM, "USD") if _sama(x, e)]
+    if j:
+        s.append({"FOMC": "federalreserve.gov", "CPI": "bls.gov", "NFP": "bls.gov"}.get(j[0]["kode"], "jadwal resmi"))
+    return " + ".join(s) if s else "belum terverifikasi"
+
+
+def teks_tahap(e, jam, now_ms=None, posisi=None):
+    """Pesan pengingat H-jam. Waktu WIB dan UTC, hitung mundur, angka, sumber, posisi terbuka. Tanpa tebakan arah harga."""
+    now_ms = now_ms or int(time.time() * 1000)
+    w = dt.datetime.fromtimestamp(e["ts"] / 1000, WIB)
+    nm = nama_berita(e["judul"], "USD")
+    u = e["judul"].upper()
+    lipat = next((t for k, t in LIPAT if k in u), "")
+    c = _load()
+    diambil = c.get("kal_ts")
+    rows = [f"📅 <b>PENGINGAT BERITA H-{jam} JAM</b>",
+            f"{dampak(e['judul'], 'USD')} <b>{nm}</b>",
+            f"Mulai: {HARI_ID[w.weekday()]} {w.strftime('%d/%m %H:%M')} WIB ({_jam_utc(e['ts'])}), {_hitung_mundur(e['ts'] - now_ms)}"]
+    ang = _angka(e)
+    if ang:
+        rows.append(ang)
+    rows.append("Sumber: " + _sumber(e) + (f", data diambil {dt.datetime.fromtimestamp(diambil / 1000, WIB).strftime('%H:%M')} WIB" if diambil else ""))
+    rows.append("Gerak BTC biasanya lebih besar sekitar rilis" + (f" ({lipat} di jam pertama, uji 2021-2026)" if lipat else "")
+                + ". Ini jadwal, bukan tebakan arah.")
+    if posisi:
+        rows.append("Posisi jalan sekarang:")
+        rows += list(posisi)
+        rows.append("SL di Bybit tetap melindungi. Robot kirim SIAGA 1 jam sebelum rilis.")
+    else:
+        rows.append("Tidak ada posisi jalan.")
+    return "\n".join(rows)
+
+
+def tahap_jatuh_tempo(now_ms=None):
+    """Pengingat bertahap yang waktunya sudah tiba dan belum dikirim. Tiap (berita, tahap) hanya sekali. Return list dict(e, jam)."""
+    now_ms = now_ms or int(time.time() * 1000)
+    c = _load()
+    sudah = set(c.get("tahap", []))
+    out = []
+    for e in kalender():
+        sisa = e["ts"] - now_ms
+        for h in TAHAP.get(dampak(e["judul"], "USD"), ()):
+            kunci = f"{e['ts']}|{e['judul']}|H{h // JAM}"
+            if h - JENDELA_TAHAP < sisa <= h and kunci not in sudah:
+                out.append(dict(e=e, jam=h // JAM, kunci=kunci))
+    if out:
+        c["tahap"] = (list(sudah) + [x["kunci"] for x in out])[-300:]
+        _save(c)
+    return out
+
+
+def cek_ubah(now_ms=None):
+    """Deteksi jadwal berubah: berita 🔴 atau 🟠 berikutnya (per jenis) pindah waktu. Harus terlihat dua kali berturut-turut,
+    selisih 20 menit atau lebih, supaya data sumber yang goyah tidak memicu pesan. Return list dict(nama, lama, baru)."""
+    now_ms = now_ms or int(time.time() * 1000)
+    c = _load()
+    snap, tunda = c.get("snap", {}), c.get("snap_tunda", {})
+    nxt = {}
+    for e in kalender():
+        if e["ts"] > now_ms and dampak(e["judul"], "USD") in ("🔴", "🟠"):
+            nxt.setdefault(nama_berita(e["judul"], "USD"), e)
+    out = []
+    for k, e in nxt.items():
+        lama = snap.get(k)
+        if lama is None or lama <= now_ms or lama == e["ts"]:
+            snap[k] = e["ts"]
+            tunda.pop(k, None)
+            continue
+        t = tunda.get(k)
+        if t and t["ts"] == e["ts"]:
+            if now_ms - t["t"] >= 20 * 60000:
+                if abs(e["ts"] - lama) <= 14 * 86400000:
+                    out.append(dict(nama=k, lama=lama, baru=e["ts"], e=e))
+                snap[k] = e["ts"]
+                tunda.pop(k, None)
+        else:
+            tunda[k] = dict(ts=e["ts"], t=now_ms)
+    c["snap"], c["snap_tunda"] = snap, tunda
+    _save(c)
+    return out
+
+
+def pesan_agenda(posisi_fn=None, now_ms=None):
+    """Semua pesan agenda yang jatuh tempo sekarang (perubahan jadwal dan pengingat bertahap). Dipanggil tiap menit oleh listener."""
+    now_ms = now_ms or int(time.time() * 1000)
+    out = []
+    for u in cek_ubah(now_ms):
+        out.append(f"🔄 <b>JADWAL BERITA BERUBAH</b>\n{dampak(u['e']['judul'], 'USD')} {u['nama']}\n"
+                   f"Sebelumnya: {jam_wib(u['lama'])} ({_jam_utc(u['lama'])})\n"
+                   f"Sekarang: {jam_wib(u['baru'])} ({_jam_utc(u['baru'])})\n"
+                   f"Sumber: {_sumber(u['e'])}. Pengingat otomatis ikut jadwal baru.")
+    due = tahap_jatuh_tempo(now_ms)
+    pos = None
+    if due and posisi_fn:
+        try:
+            pos = posisi_fn()
+        except Exception as ex:
+            print("[WARN] posisi pengingat berita", ex)
+    for x in due:
+        out.append(teks_tahap(x["e"], x["jam"], now_ms, pos))
+    return out
+
+
 # ---------------- 2. pengumuman Bybit ----------------
 def delisting():
     """Simbol yang diumumkan delisting oleh Bybit dalam 45 hari terakhir."""

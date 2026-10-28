@@ -1,8 +1,11 @@
 """QSE v148 - BATAS POSISI DAN RISIKO, per orang di grup (Rifqi dan Adli punya batas sendiri dari entry masing-masing).
 
-NETRAL (27 Okt 2026, permintaan user): tanpa pengaturan dan tanpa isi modal. Aturan dikunci ke hasil uji terbaik. Semua
-angka dalam R dan persen modal di risiko standar 0.25% per trade (1R = 0.25% modal), jadi berlaku untuk modal berapa pun.
-Ukuran posisi juga dalam persen modal: nilai posisi = 0.25% / jarak SL%. /modal hanya menampilkan kondisi, argumen diabaikan.
+NETRAL (27 Okt 2026, permintaan user): aturan dikunci ke hasil uji terbaik. Semua angka dalam R dan persen modal di risiko
+standar 0.25% per trade (1R = 0.25% modal), jadi berlaku untuk modal berapa pun.
+PROFIL DOLAR (28 Okt 2026, permintaan user): tiap orang boleh mengisi modal, risiko, dan leverage lewat /modal 155 1 5
+(modal $155, risiko 1% per trade, leverage 5x). Kalau sudah diisi, kartu sinyal menampilkan ukuran posisi dalam dolar:
+posisi = modal x risiko% / jarak SL%, margin = posisi / leverage. Persen modal di semua pesan memakai risiko orang itu.
+Orang yang belum mengisi tetap memakai tampilan netral 0.25%. Bawaan pemilik: modal 155, risiko 1%, leverage 5x.
 File modal.json lama tidak dibaca lagi.
 
 Aturan tetap:
@@ -34,8 +37,18 @@ Slot berisiko terkunci rata-rata 17 jam (maks 36 jam) lawan 60 jam. Catatan juju
 rata-rata -0.25R, kalau ditahan -0.13R. Untungnya datang dari slot yang dipakai sinyal baru. WR turun karena 1 dari 5 trade
 ditutup waktu dengan rugi kecil. Varian SL ke entry di jam 36 untuk yang sedang untung: +407R tapi WR 62%, tidak dipakai.
 Filter SL maks 9% tidak konsisten (SL 9-10% PF 0.81 lalu 1.26), batas 10% tetap."""
+import json
+import os
 import time
 
+try:
+    from config import STATE_DIR
+except Exception:                                  # pragma: no cover
+    STATE_DIR = os.path.expanduser("~/qse_state")
+
+PROFIL_FILE = os.path.join(STATE_DIR, "profil.json")
+PROFIL_PEMILIK = dict(modal=155.0, risiko=1.0, lev=5)        # bawaan pemilik catatan, ubah dengan /modal
+RISIKO_MAKS_PROFIL = 5.0                                      # persen modal per trade, batas atas yang diterima /modal
 RISK_PCT = 0.25          # persen modal per 1R (saran risiko per trade, lot 1x)
 MAKS_POSISI = 5          # posisi berisiko per orang
 MAKS_AMAN = 2            # posisi aman tambahan (SL sudah di entry atau untung)
@@ -45,14 +58,109 @@ WAKTU_JAM = 36.0         # batas waktu posisi yang belum kena TP 20%
 JAM = 3600 * 1000
 
 
-def pmodal(R):
-    """R ke persen modal di risiko standar 0.25% per trade."""
-    return R * RISK_PCT
+def _kunci(uid=None):
+    """Kunci profil: uid pengirim (atau pemilik catatan kalau tidak ada pengirim aktif)."""
+    try:
+        import qse_saya as SY
+        u = SY.uid_aktif() if uid is None else uid
+        pem = str(SY._peng().get("pemilik") or "")
+        u = str(u) if u not in (None, "") else pem
+        return u, pem
+    except Exception:
+        return ("" if uid is None else str(uid)), ""
 
 
-def teks_pmodal(R):
-    """' (+0.13% modal)' untuk ditempel setelah angka R."""
-    return f" ({R * RISK_PCT:+.2f}% modal)"
+def _baca_profil():
+    try:
+        with open(PROFIL_FILE) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _simpan_profil(d):
+    os.makedirs(os.path.dirname(PROFIL_FILE) or ".", exist_ok=True)
+    with open(PROFIL_FILE + ".tmp", "w") as f:
+        json.dump(d, f)
+    os.replace(PROFIL_FILE + ".tmp", PROFIL_FILE)
+
+
+def profil(uid=None):
+    """Profil dolar satu orang: dict(modal, risiko, lev) atau None kalau belum mengisi (tampilan netral).
+    Pemilik catatan punya bawaan PROFIL_PEMILIK sampai dia mengubahnya."""
+    u, pem = _kunci(uid)
+    p = _baca_profil().get(u)
+    if p is None and u == pem:
+        p = dict(PROFIL_PEMILIK)
+    if not p or not p.get("modal") or p["modal"] <= 0:
+        return None
+    return dict(modal=float(p["modal"]), risiko=float(p.get("risiko") or 1.0), lev=int(p.get("lev") or 5))
+
+
+def risk_pct(uid=None):
+    """Persen modal per 1R untuk orang ini: risiko profilnya, atau 0.25% netral."""
+    p = profil(uid)
+    return p["risiko"] if p else RISK_PCT
+
+
+def _usd(x):
+    return f"${x:,.2f}" if abs(x) < 10 else f"${x:,.1f}"
+
+
+def pmodal(R, uid=None):
+    """R ke persen modal di risiko orang itu (netral 0.25% kalau belum mengisi profil)."""
+    return R * risk_pct(uid)
+
+
+def teks_pmodal(R, uid=None):
+    """' (+0.13% modal)' untuk ditempel setelah angka R. Tambah dolar kalau profil sudah diisi."""
+    p = profil(uid)
+    if not p:
+        return f" ({R * RISK_PCT:+.2f}% modal)"
+    usd = R * p["modal"] * p["risiko"] / 100
+    return f" ({R * p['risiko']:+.2f}% modal, {_usd_s(usd)})"
+
+
+def _usd_s(usd):
+    """'+$1.55' atau '-$1.55'. Nol tanpa tanda."""
+    if abs(usd) < 0.005:
+        return _usd(0.0)
+    return ("+" if usd > 0 else "-") + _usd(abs(usd))
+
+
+def usd_r(R, uid=None):
+    """' (+$1.55)' untuk ditempel setelah persen modal. Kosong kalau orang itu belum mengisi profil."""
+    p = profil(uid)
+    if not p:
+        return ""
+    return f" ({_usd_s(R * p['modal'] * p['risiko'] / 100)})"
+
+
+def teks_r(R, uid=None):
+    """'+0.90R = +0.90% modal (+$1.40)'. Tanpa dolar kalau profil belum diisi (netral 0.25% per R)."""
+    return f"{R:+.2f}R = {pmodal(R, uid):+.2f}% modal{usd_r(R, uid)}"
+
+
+def atur_profil(uid, modal=None, risiko=None, lev=None):
+    """Simpan profil. Return (profil, pesan_error)."""
+    if modal is not None and not (1 <= modal <= 100_000_000):
+        return None, "Modal harus antara 1 dan 100000000 dolar. Contoh: /modal 155"
+    if risiko is not None and not (0.05 <= risiko <= RISIKO_MAKS_PROFIL):
+        return None, f"Risiko per trade harus antara 0.05 dan {RISIKO_MAKS_PROFIL:g} persen modal. Contoh: /modal risiko 1"
+    if lev is not None and not (1 <= lev <= 100):
+        return None, "Leverage harus antara 1 dan 100. Contoh: /modal lev 5"
+    u, _ = _kunci(uid)
+    d = _baca_profil()
+    lama = profil(uid) or dict(PROFIL_PEMILIK, modal=0.0)
+    baru = dict(modal=modal if modal is not None else lama["modal"],
+                risiko=risiko if risiko is not None else lama["risiko"],
+                lev=int(lev) if lev is not None else lama["lev"])
+    if baru["modal"] <= 0:
+        return None, "Isi modal dulu. Contoh: /modal 155"
+    d[u] = baru
+    _simpan_profil(d)
+    return baru, ""
 
 
 def waktu_jam():
@@ -71,20 +179,81 @@ def teks_aturan():
             f"3 rugi beruntun, jeda entry 24 jam. Posisi yang SL-nya sudah di entry tidak makan slot (maks {MAKS_AMAN})")
 
 
+FORMAT_MODAL = ("Format: /modal 155 (modal dolar), /modal 155 1 5 (modal, risiko persen per trade, leverage), "
+                "/modal risiko 0.5, /modal lev 10")
+
+
+def _num(s):
+    s = str(s).upper().replace("$", "").replace(",", ".").strip()
+    if s.endswith(("X", "%")):
+        s = s[:-1]
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _proses_args(args):
+    """/modal 155, /modal 155 1 5, /modal risiko 0.5, /modal lev 10. Return teks balasan."""
+    toks = [str(a).upper() for a in args]
+    kv = {}
+    bebas = []
+    i = 0
+    while i < len(toks):
+        k = {"MODAL": "modal", "RISIKO": "risiko", "RISK": "risiko", "LEV": "lev", "LEVERAGE": "lev"}.get(toks[i])
+        if k and i + 1 < len(toks):
+            v = _num(toks[i + 1])
+            if v is None:
+                return f"Angka tidak dikenali: {toks[i + 1]}. {FORMAT_MODAL}"
+            kv[k] = v
+            i += 2
+            continue
+        v = _num(toks[i])
+        if v is None:
+            return f"Tidak dikenali: {toks[i]}. {FORMAT_MODAL}"
+        bebas.append(v)
+        i += 1
+    for k in ("modal", "risiko", "lev"):
+        if k not in kv and bebas:
+            kv[k] = bebas.pop(0)
+    if bebas:
+        return f"Terlalu banyak angka. {FORMAT_MODAL}"
+    baru, err = atur_profil(None, kv.get("modal"), kv.get("risiko"), kv.get("lev"))
+    if err:
+        return err
+    nilai = baru["modal"] * baru["risiko"] / 100 / 0.03
+    return (f"✅ Profil tersimpan: modal {_usd(baru['modal'])}, risiko {baru['risiko']:g}% per trade "
+            f"(1R = {_usd(baru['modal'] * baru['risiko'] / 100)}), leverage {baru['lev']}x.\n"
+            f"Contoh SL 3% dari entry: posisi {_usd(nilai)}, margin {_usd(nilai / baru['lev'])}, "
+            f"rugi kalau SL kena {_usd(baru['modal'] * baru['risiko'] / 100)}. Kartu sinyal berikutnya memakai angka ini.")
+
+
+def baris_profil(uid=None):
+    p = profil(uid)
+    if not p:
+        return "👤 Modal belum diisi. Kirim /modal 155 supaya ukuran posisi tampil dalam dolar"
+    return (f"👤 <b>Profil kamu</b>: modal {_usd(p['modal'])}, risiko {p['risiko']:g}% per trade "
+            f"(1R = {_usd(p['modal'] * p['risiko'] / 100)}), leverage {p['lev']}x. Ubah: /modal 200 1 5")
+
+
 def perintah(args=None):
-    """/modal: aturan tetap dan kondisi kamu sekarang. Tidak ada pengaturan."""
+    """/modal: kondisi kamu sekarang. /modal 155 1 5 mengisi modal, risiko, dan leverage kamu (dolar)."""
+    if args:
+        return _proses_args(args)
     st = status()
-    rows = ["<b>Batas posisi dan risiko</b> (netral, sama untuk semua orang, dihitung dari entry masing-masing)",
-            f"1R = risiko {RISK_PCT:g}% modal per trade (lot 1x). Maksimal {MAKS_POSISI} posisi berisiko + {MAKS_AMAN} posisi aman. "
-            f"Rugi kalau semua SL kena maksimal {RISIKO_BUKA:g}R = {pmodal(RISIKO_BUKA):.2f}% modal. "
-            f"Rem harian -{REM_HARIAN:g}R = -{pmodal(REM_HARIAN):.2f}% modal",
+    rp = risk_pct(st.get("uid"))
+    rows = ["<b>Batas posisi dan risiko</b> (aturan sama untuk semua orang, dihitung dari entry masing-masing)",
+            baris_profil(st.get("uid")),
+            f"1R = risiko {rp:g}% modal per trade (lot 1x). Maksimal {MAKS_POSISI} posisi berisiko + {MAKS_AMAN} posisi aman. "
+            f"Rugi kalau semua SL kena maksimal {RISIKO_BUKA:g}R = {pmodal(RISIKO_BUKA, st.get('uid')):.2f}% modal. "
+            f"Rem harian -{REM_HARIAN:g}R = -{pmodal(REM_HARIAN, st.get('uid')):.2f}% modal",
             f"🛡 <b>Jam ke-8</b>: belum kena TP 20%, SL naik ke -0.5R. Sudah rugi lebih dari itu, tutup market",
             f"⏳ <b>Batas waktu {WAKTU_JAM:g} jam</b>: posisi yang belum kena TP 20% sejak terisi, tutup market. "
             f"Posisi aman (SL sudah di entry) tidak makan slot berisiko",
             "⏸️ <b>Jeda</b>: 3 trade rugi berturut-turut, berhenti entry baru 24 jam",
             "",
             "<b>Kondisi kamu sekarang</b>",
-            f"Hasil hari ini {st['hari_ini']:+.2f}R{teks_pmodal(st['hari_ini'])} | posisi berisiko {st['n_posisi']}/{st['maks']} | "
+            f"Hasil hari ini {st['hari_ini']:+.2f}R{teks_pmodal(st['hari_ini'], st.get('uid'))} | posisi berisiko {st['n_posisi']}/{st['maks']} | "
             f"aman {st['n_aman']}/{st['maks_aman']} | kalau semua SL kena rugi {st['risiko']:.2f}R = {st['risiko_pct']:.2f}% modal",
             *[_baris_daftar(x) for x in st["daftar"]],
             ("⛔ " + st["alasan"]) if st["rem"] else f"✅ Boleh entry, sisa slot {st['sisa']}"]
@@ -151,19 +320,21 @@ def status(uid=None):
         jd = dict(aktif=False, sampai=None, beruntun=0)
     alasan = ""
     if hari <= -REM_HARIAN:
-        alasan = f"REM HARIAN: hasil hari ini {hari:+.2f}R ({pmodal(hari):+.2f}% modal), sebaiknya berhenti trading sampai besok"
+        alasan = f"REM HARIAN: hasil hari ini {hari:+.2f}R ({pmodal(hari, u):+.2f}% modal), sebaiknya berhenti trading sampai besok"
     elif jd["aktif"]:
-        alasan = f"JEDA: {jd['beruntun']} rugi beruntun, entry baru lagi {SY._jam_wib(jd['sampai'])}"
+        dh = SY.teks_dihitung(jd)
+        alasan = (f"JEDA: {jd['beruntun']} rugi beruntun" + (f" ({dh}, hanya catatan kamu)" if dh else "")
+                  + f", entry baru lagi {SY._jam_wib(jd['sampai'])}")
     elif n_risk >= MAKS_POSISI:
         alasan = (f"BATAS POSISI: sudah {n_risk} posisi berisiko atau order terbuka (maks {MAKS_POSISI} per orang). "
                   f"Posisi yang SL-nya sudah di entry tidak dihitung")
     elif len(buka) >= maks_total:
         alasan = f"BATAS TOTAL: sudah {len(buka)} posisi (maks {MAKS_POSISI} berisiko + {MAKS_AMAN} aman)"
     elif risiko >= RISIKO_BUKA:
-        alasan = f"BATAS RISIKO: kalau semua SL kena rugi {risiko:.1f}R = {pmodal(risiko):.2f}% modal (maks {RISIKO_BUKA:g}R)"
+        alasan = f"BATAS RISIKO: kalau semua SL kena rugi {risiko:.1f}R = {pmodal(risiko, u):.2f}% modal (maks {RISIKO_BUKA:g}R)"
     return dict(hari_ini=hari, n_posisi=n_risk, n_aman=n_aman, n_total=len(buka), maks=MAKS_POSISI, maks_aman=MAKS_AMAN,
                 sisa=max(0, min(MAKS_POSISI - n_risk, maks_total - len(buka))),
-                risiko=risiko, risiko_pct=pmodal(risiko), risiko_maks=RISIKO_BUKA, daftar=daftar, lewat=lewat,
+                risiko=risiko, risiko_pct=pmodal(risiko, u), risiko_maks=RISIKO_BUKA, daftar=daftar, lewat=lewat, uid=u,
                 rem=bool(alasan), alasan=alasan, jeda=jd)
 
 
@@ -185,8 +356,11 @@ def _teks_risiko(st):
         return ""
     if st["risiko"] <= 0:
         return "SL semua sudah di entry atau untung, rugi 0R"
-    return (f"kalau semua SL kena rugi {st['risiko']:.1f}R = {st['risiko_pct']:.2f}% modal, batas {st['risiko_maks']:g}R = "
-            f"{pmodal(st['risiko_maks']):.2f}%")
+    u = st.get("uid")
+    p = profil(u)
+    usd = (lambda R: f" ({_usd(R * p['modal'] * p['risiko'] / 100)})") if p else (lambda R: "")
+    return (f"kalau semua SL kena rugi {st['risiko']:.1f}R = {st['risiko_pct']:.2f}% modal{usd(st['risiko'])}, batas "
+            f"{st['risiko_maks']:g}R = {pmodal(st['risiko_maks'], u):.2f}%{usd(st['risiko_maks'])}")
 
 
 def baris_slot():
@@ -202,6 +376,12 @@ def baris_slot():
             why = st["alasan"].split(":")[0].lower()
             if st["alasan"].startswith("JEDA"):
                 why = f"jeda {st['jeda']['beruntun']} rugi beruntun sampai {st['alasan'].split('entry baru lagi ')[-1]}"
+                try:
+                    import qse_saya as SY_j
+                    dh = SY_j.teks_dihitung(st["jeda"])
+                    why += f" (dihitung: {html.escape(dh)})" if dh else ""
+                except Exception:
+                    pass
             rows.append(f"⛔ <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko{aman}: {why}, jangan entry baru dulu</b>"
                         + (f"  ·  {rk}" if rk else ""))
         else:
@@ -215,15 +395,51 @@ def baris_slot():
     return rows
 
 
-def baris_lot(entry, sl, kali=1.0, lev=None):
-    """Ukuran posisi netral, berlaku untuk modal berapa pun: nilai posisi (persen modal) = risiko% / jarak SL%.
-    Contoh SL 4% dari entry, lot 1x: risiko 0.25% modal, nilai posisi 6.25% modal."""
-    if entry <= 0 or abs(entry - sl) <= 0:
-        return ""
-    sl_pct = abs(entry - sl) / entry * 100
+def _baris_lot_netral(sl_pct, kali, lev):
     risiko = RISK_PCT * kali
     nilai = risiko / sl_pct * 100
     teks = f"💼 Ukuran: <b>nilai posisi {nilai:.1f}% modal</b> (risiko {risiko:g}% modal, SL {sl_pct:.1f}% dari entry)"
     if lev:
         teks += f", margin {nilai / lev:.2f}% modal di {lev}x"
     return teks
+
+
+def _baris_lot_dolar(nama, p, sl_pct, kali, lev):
+    """Satu orang yang sudah isi modal: posisi, margin, dan rugi kalau SL kena, dalam dolar.
+    posisi = modal x risiko% x lot / jarak SL%, margin = posisi / leverage."""
+    risiko = p["risiko"] * kali
+    rugi = p["modal"] * risiko / 100
+    posisi = rugi / (sl_pct / 100)
+    lv = int(lev) if lev else p["lev"]
+    margin = posisi / lv
+    teks = (f"💼 <b>{nama}: posisi {_usd(posisi)}</b>, margin {_usd(margin)} di {lv}x, rugi kalau SL kena {_usd(rugi)} "
+            f"({risiko:g}% modal, SL {sl_pct:.1f}% dari entry)")
+    if margin > p["modal"]:
+        teks += f". ⚠️ Margin melebihi modal {_usd(p['modal'])}, kecilkan risiko atau naikkan leverage"
+    return teks
+
+
+def baris_lot(entry, sl, kali=1.0, lev=None):
+    """Ukuran posisi. Orang yang sudah isi /modal dapat angka dolar (posisi, margin, rugi kalau SL kena), sisanya tampilan
+    netral dalam persen modal. Dipanggil oleh pengirim perintah: hanya barisnya. Dipanggil robot (pesan grup): satu baris
+    per orang. Contoh SL 4%, risiko 1%, modal 155: rugi 1.55, posisi 38.8."""
+    if entry <= 0 or abs(entry - sl) <= 0:
+        return ""
+    sl_pct = abs(entry - sl) / entry * 100
+    try:
+        import html
+        import qse_saya as SY
+        aktif = SY.uid_aktif()
+        orang = [aktif] if aktif is not None else SY.daftar_pengguna()
+        baris, netral = [], False
+        for u in orang:
+            p = profil(u)
+            if p:
+                baris.append(_baris_lot_dolar(html.escape(str(SY.nama_pengguna(u))), p, sl_pct, kali, lev))
+            else:
+                netral = True
+        if netral or not baris:
+            baris.append(_baris_lot_netral(sl_pct, kali, lev))
+        return "\n".join(baris)
+    except Exception:
+        return _baris_lot_netral(sl_pct, kali, lev)

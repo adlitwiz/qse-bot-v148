@@ -15,7 +15,7 @@ NAMA = {"momentum": "Momentum 15/30 menit", "news_searah": "News searah engine",
         "ichimoku": "Ichimoku tren 4J (trailing)",
         "orderblock": "Order Block + Volume 4J", "gzh": "GZH SHORT, TP 2R penuh",
         "ema_short": "EMA Cross 20/50 SHORT 4J (trailing)", "rsi_vol": "RSI 50 + Volume 4J (trailing)",
-        "mcginley": "McGinley 34 + Volume 4J (TP 3R)",
+        "mcginley": "McGinley 34 + Volume 4J (TP 4R)",
         "GZH": "GZH Golden Zone 4J (trailing)", "snr_vol": "SnR Pantul + Volume 4J (TP 3R)",
         "msb_hpz": "MSB LuxAlgo HPZ 4J (trailing)", "smc_choch": "SMC CHoCH 4J (TP 3R)"}
 BIAYA = 0.08

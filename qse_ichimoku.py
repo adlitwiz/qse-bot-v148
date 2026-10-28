@@ -370,7 +370,7 @@ def _jalankan(baru_ok=True):
         out.append("\n".join([
             SY.GARIS,
             f"{'🟢' if L else '🔴'} <b>{len(baru)}. {sym} {arah}</b>  ·  Ichimoku 4J",
-            f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (saran risiko 0.25% modal per trade)",
+            f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (ukuran posisi tiap orang di baris 💼)",
             *ST_combo(it),
             *([cat_hari] if cat_hari else []),
             SY.GARIS,

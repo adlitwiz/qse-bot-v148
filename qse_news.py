@@ -622,7 +622,14 @@ def _kata(judul):
     return {w for w in re.findall(r"[a-z0-9]{3,}", judul.lower()) if w not in STOP}
 
 
-def viral(jam=24, maks=6):
+VIRAL_MIN = 7.0          # skor minimal kiriman otomatis: dua sumber atau lebih, atau Reddit, atau jenis berita berdampak
+
+
+def _kunci_viral(b):
+    return re.sub(r"\W+", "", b["judul"].lower())[:60]
+
+
+def viral(jam=24, maks=6, sudah=None, skor_min=0.0, kunci_out=None):
     """Perintah /viral: berita kripto paling ramai dan paling berdampak dalam `jam` jam terakhir.
     Ramai = dibahas banyak sumber (judul mirip digabung) dan masuk Reddit hot. Dampak = jenis berita yang
     punya sejarah gerak BTC besar, atau kata kunci kuat. Arah dan koin yang terkena ikut ditulis."""
@@ -638,7 +645,7 @@ def viral(jam=24, maks=6):
             if b["pub"] and b["pub"] >= now - jam * 3600:
                 semua.append(dict(b, kata=_kata(b["judul"])))
     if not semua:
-        return "Belum ada berita kripto yang bisa diambil. Coba lagi beberapa menit lagi."
+        return None if sudah is not None else "Belum ada berita kripto yang bisa diambil. Coba lagi beberapa menit lagi."
     klaster = []
     for b in sorted(semua, key=lambda b: b["pub"]):
         for k in klaster:
@@ -667,6 +674,12 @@ def viral(jam=24, maks=6):
         rows.append(dict(skor=skor, utama=utama, sumber=sumber, reddit=reddit, kat=kat, arah=a, kuat=kuat,
                          koin=_koin(teks, simbol), umur=umur, n=len(isi)))
     rows.sort(key=lambda z: -z["skor"])
+    if sudah is not None:          # mode otomatis: buang yang sudah pernah dikirim atau skornya rendah, tidak ada sisa berarti tidak kirim
+        rows = [z for z in rows if z["skor"] >= skor_min and _kunci_viral(z["utama"]) not in sudah]
+        if not rows:
+            return None
+    if kunci_out is not None:
+        kunci_out += [_kunci_viral(z["utama"]) for z in rows[:maks]]
     out = [f"🔥 <b>BERITA VIRAL DAN BERDAMPAK</b>  ·  {jam} jam terakhir",
            f"Dari {len(semua)} berita di {len({b['sumber'] for b in semua})} sumber, diurut dari yang paling ramai dan berdampak."]
     for i, z in enumerate(rows[:maks], 1):
@@ -686,8 +699,8 @@ def viral(jam=24, maks=6):
         elif z["kuat"]:
             baris.append(f"📚 Belum ada sejarah jenis berita ini, kekuatan kata kunci {z['kuat'].lower()}")
         out.append("\n".join(baris))
-    out.append(SY.GARIS + "\nBerita yang benar-benar menggerakkan harga tetap dikirim otomatis lewat NEWS PENTING. "
-               "Kalender berita besar USD: /kabar")
+    out.append(SY.GARIS + "\nDikirim otomatis 13:00 dan 20:00 WIB. Berita yang menggerakkan harga masuk NEWS PENTING, "
+               "jadwal berita besar dikirim H-24 dan H-6 jam sebelum rilis.")
     return "\n".join(out)
 
 
