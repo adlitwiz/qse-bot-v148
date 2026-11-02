@@ -241,3 +241,31 @@ BANTUAN = ("Perintah QSE Bot:\n"
            "/batal KOIN = hapus order koin itu dari catatan, contoh /batal DOT\n"
            "/status = daftar order terbuka dan hasil live\n"
            "/bantuan = daftar perintah ini")
+
+
+def kirim_foto(png, caption="", token=None, chat_id=None):
+    """Kirim satu gambar PNG dengan caption HTML (maks 1024 karakter terlihat). Return message_id atau None."""
+    token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id or not png:
+        return None
+    for k in range(3):
+        try:
+            r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+                              files={"photo": ("sinyal.png", png, "image/png")}, timeout=30)
+            if r.status_code == 200:
+                return r.json().get("result", {}).get("message_id")
+            if r.status_code == 429:
+                time.sleep(int(r.json().get("parameters", {}).get("retry_after", 5)) + 1)
+                continue
+            print("[WARN] Telegram foto", r.status_code, r.text[:200])
+            return None
+        except Exception as ex:
+            print("[WARN] Telegram foto", ex)
+            time.sleep(3)
+    return None
+
+
+def panjang_terlihat(s):
+    import re as _re
+    return len(html.unescape(_re.sub(r"<[^>]+>", "", s)))

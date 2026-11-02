@@ -299,3 +299,100 @@ def baris_kartu(m, pr=None):
     if lb:
         rows.append(lb)
     return rows
+
+
+def kartu_ringkas(m, pr=None, nama=""):
+    """v149: kartu sinyal ringkas dan rapi dari kartu jalur lengkap. Urutan: judul, label, blok salin, bukti, BTC, level, cara masuk,
+    alasan, aturan keluar, lot. Gagal mengurai = None (pengirim memakai kartu lengkap)."""
+    import re
+    x = re.search(r"<b>\d+\. ([A-Z0-9]+USDT) (LONG|SHORT)</b>\s*·\s*([^\n]+)", m or "")
+    pre = re.search(r"<pre>.*?</pre>", m or "", re.S)
+    if not x or not pre:
+        return None
+    sym, arah, jalur_nm = x.group(1), x.group(2), re.sub(r"<[^>]+>", "", x.group(3)).strip()
+    nilai = int(pr[0]) if pr else 0
+    for batas, skor, nm, rr, pf, wr in SKOR:
+        if nilai >= batas:
+            break
+    baris = m.split("\n")
+    ambil = lambda awal: [b for b in baris if b.startswith(awal)]
+    L = arah == "LONG"
+    rows = [f"{'🟢' if L else '🔴'} <b>{sym} {arah}</b>  ·  {jalur_nm}"]
+    if nilai >= 8:
+        rows.append("🏆 <b>SINYAL PRIORITAS UTAMA</b>")
+    rows.append(f"💯 Skor <b>{skor}/100</b>  ·  {nm}  ·  uji 2023-2026 PF {pf}, WR {wr}")
+    rows.append("━━━━━━━━━━━━━━━━━━")
+    rows.append(pre.group(0))
+    rows += ambil("🎯 Entry valid")
+    rows.append("━━━━━━━━━━━━━━━━━━")
+    ki = _cari_it(sym, arah)
+    pr_k = (ki[1].get("profil") if ki else None) or {}
+    if pr_k:
+        rows.append(f"📊 Koin ini di jalur ini: 2024-2026 {pr_k['n24']} sinyal, WR {pr_k['wr24']:.0f}%, PF {pr_k['pf24']:.2f} "
+                    f"(sejak listing {pr_k['n']} sinyal, PF {pr_k['pf']:.2f})")
+    try:
+        p = peta()
+        arah_btc = {1: "naik", -1: "turun", 0: "datar"}
+        cocok = "searah" if p["fokus"] == arah else ("netral" if p["fokus"] == "TAHAN" else "lawan arah, boleh, lot normal")
+        rows.append(f"🧭 BTC fokus <b>{p['fokus']}</b> ({cocok})  ·  1J {arah_btc[p['s1']]}, 4J {arah_btc[p['s4']]}, 1D {arah_btc[p['sD']]}")
+    except Exception:
+        pass
+    try:
+        import bybit_fetch as B
+        import telegram_notify as TG
+        ms = int(time.time() * 1000)
+        d4 = B._raw(sym, "240", 160)
+        d4 = d4[d4.index + 14400000 <= ms]
+        sup, res = snr(*(d4[k].values.astype(float) for k in ("high", "low", "close")))
+        if time.time() - _CACHE.get("tick_t", 0) > 3600:
+            try:
+                _CACHE.update(tick=B.get_symbols(), tick_t=time.time())
+            except Exception:
+                pass
+        t = (_CACHE.get("tick") or {}).get(sym, 1e-8)
+        f = lambda v: "-" if v is None else TG.fp(v, t)
+        rows.append(f"🧱 Support 4J <b>{f(sup)}</b>  ·  Resistance 4J <b>{f(res)}</b>")
+    except Exception as ex:
+        print("[WARN] snr ringkas", ex)
+    rows.append("⏱ TF 4J  ·  <b>ikuti arus, masuk MARKET sekarang</b> (uji: menunggu koreksi lebih jelek)")
+    label = []
+    for kata in ("COMBO RAJA", "COMBO FIX PROFIT", "COMBO EMAS", "MUTU TINGGI", "PULLBACK", "VOLUME PASAR TINGGI", "BTC.D TURUN"):
+        if kata in m:
+            label.append(kata.title())
+    g = re.search(r"COMBO (\d+)</b>: juga ([^.]+?) searah", m)
+    if g:
+        label.append(f"combo dengan {g.group(2)}")
+    kenapa = []
+    if "💡 <b>Kenapa</b>" in baris:
+        for b in baris[baris.index("💡 <b>Kenapa</b>") + 1:]:
+            if not b.startswith("• ") or b.startswith("• Bukti"):
+                break
+            kenapa.append(b[2:].split(":")[0])
+    if kenapa or label:
+        rows.append("💡 " + "  ·  ".join(kenapa + label))
+    tp_ = ambil("💰 ") + ambil("🏁 ")
+    rows.append("🛠 " + ("  ·  ".join(re.sub(r"<[^>]+>", "", z)[2:] for z in tp_) + ". " if tp_ else "")
+                + "Jam ke-12 belum kena TP 20% dan harga melawan: SL ke -0.5R. 30 jam belum aman: tutup. /entry supaya robot memantau")
+    for awal in ("⛔", "🛡 <b>Rem", "🔓", "📅", "↔️ Lawan", "💼"):
+        rows += [b for b in baris if b.startswith(awal) and b not in rows]
+    return "\n".join(rows)
+
+
+def caption_sinyal(rk, maks=1000):
+    """Potong kartu ringkas jadi caption gambar (maks karakter terlihat). Baris yang dibuang dulu: alasan, cara, TF, bukti koin."""
+    import telegram_notify as TG
+    rows = rk.split("\n")
+    for awal in ("💡", "⏱", "🛠", "📊", "🧱", "━━"):
+        if TG.panjang_terlihat("\n".join(rows)) <= maks:
+            break
+        rows = [r for r in rows if not r.startswith(awal)]
+    t = "\n".join(rows)
+    return t if TG.panjang_terlihat(t) <= maks else None
+
+
+def level_dari_kartu(rk):
+    """Harga entry, SL, TP sebagian, TP dari blok salin."""
+    import re
+    g = lambda pola: (lambda x: float(x.group(1).replace(",", "")) if x else None)(re.search(pola, rk))
+    return dict(entry=g(r"Entry\s+([\d.,]+)"), sl=g(r"\nSL\s+([\d.,]+)"), tps=g(r"Sebagian\s+([\d.,]+)"), tp=g(r"\nTP\s+([\d.,]+)"),
+                sup=g(r"Support 4J <b>([\d.,]+)"), res=g(r"Resistance 4J <b>([\d.,]+)"))

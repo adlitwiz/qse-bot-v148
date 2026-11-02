@@ -4086,7 +4086,7 @@ def _st_txt(nama, b, tf=""):
 def backtest_teks(r):
     """Backtest semua teknik di koin ini, supaya tidak ada koin tanpa data uji."""
     rows = ["<b>Backtest semua teknik di koin ini</b>"]
-    rows.append(f"Robot v148 (pelacak 5 saran, sama dengan DASBOR): {r['trd']} trade | WR {r['wr']:.0f}% | "
+    rows.append(f"Robot DASBOR v148 (pelacak 5 saran, sama dengan DASBOR): {r['trd']} trade | WR {r['wr']:.0f}% | "
                 f"PF {r['pf']:.2f} | {r['net_r']:+.1f}R"
                 + (", koin ini masih baru jadi pelacak belum sempat entry" if r["trd"] == 0 else ""))
     pt = r.get("pola_top") or r.get("pola_kecil") or []

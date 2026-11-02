@@ -194,6 +194,31 @@ def _tugas_berkala():
             for no, (pr, slot, nama, m) in enumerate(kumpul, 1):
                 lb = ST.label_nama_teks(m)
                 try:
+                    rk = BM.kartu_ringkas(m, pr, nama) if BM else None          # v149: kartu ringkas dan rapi
+                except Exception as ex:
+                    print("[WARN] kartu ringkas", ex)
+                    rk = None
+                if rk:
+                    # v149: satu sinyal = satu gelembung (gambar chart + kartu ringkas di caption kalau muat), lalu disematkan
+                    if no == 1:
+                        jd = SY.baris_jadwal(telat_menit=3)
+                        TG.send([f"📋 <b>QSE v149 | {len(kumpul)} SINYAL BARU</b>\n{jd}"
+                                 + ("\n" + peta_btc if peta_btc else "") + ("\n\n" + "\n".join(slot_b) if slot_b else "")])
+                    mid = None
+                    try:
+                        import qse_gambar as GB
+                        lv = BM.level_dari_kartu(rk)
+                        cap = BM.caption_sinyal(f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk)
+                        png = GB.chart_sinyal(*__import__("re").search(r"<b>([A-Z0-9]+USDT) (LONG|SHORT)</b>", rk).groups(),
+                                              lv["entry"], lv["sl"], lv["tps"], lv["tp"], lv["sup"], lv["res"]) if cap else None
+                        if png:
+                            mid = TG.kirim_foto(png, cap)
+                    except Exception as ex:
+                        print("[WARN] gambar sinyal", ex)
+                    ids = [mid] if mid else TG.send([f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk])
+                    _pin_sinyal(ids)
+                    continue
+                try:
                     tambah = BM.baris_kartu(m, pr) if BM else []          # v149: TF, kategori, S/R, komando BTC, skor, rekam jejak
                 except Exception as ex:
                     print("[WARN] baris kartu", ex)
@@ -620,6 +645,26 @@ def _pin_ichi(ids, slot="pin_ichi"):
         if lama and lama != ids[0]:
             TG.unpin(lama)
         _st({slot: ids[0], slot + "_t": time.time()})
+
+
+def _pin_sinyal(ids, umur_jam=12, maks=12):
+    """v149: tiap gelembung sinyal disematkan sendiri, jadi daftar pin = sinyal yang bisa dipilih. Pin sinyal lebih dari 12 jam
+    (lewat masa entry kebanyakan jalur) dilepas, maksimal 12 pin sinyal."""
+    if not ids or not ids[0]:
+        return
+    now = time.time()
+    daftar = [x for x in (_st().get("pin_sinyal") or []) if x and x[0]]
+    tetap = []
+    for mid, t in daftar:
+        if now - t > umur_jam * 3600:
+            TG.unpin(mid)
+        else:
+            tetap.append([mid, t])
+    while len(tetap) >= maks:
+        TG.unpin(tetap.pop(0)[0])
+    if TG.pin(ids[0]) is None:
+        tetap.append([ids[0], now])
+    _st({"pin_sinyal": tetap})
 
 
 def _pin_dini(ids):
