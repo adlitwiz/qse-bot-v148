@@ -13,8 +13,9 @@ Aturan tetap:
 - posisi aman (SL sudah di entry atau di sisi untung) tidak makan slot berisiko, maksimal 2 posisi aman tambahan
 - rugi kalau semua SL kena maksimal 5R = 1.25% modal. Posisi aman tidak menambah risiko
 - rem harian -3R = -0.75% modal
-- jam ke-8 belum kena TP 20%: rugi 0.5R atau lebih tutup, kalau belum SL naik ke -0.5R (qse_saya.aturan_jam8)
-- batas waktu 36 jam: posisi yang belum kena TP 20% sejak terisi ditutup market
+- v149: jam ke-12 belum kena TP 20%: rugi 0.5R atau lebih tutup, harga melawan SL naik ke -0.5R, searah SL tetap (qse_saya.aturan_jam8)
+- v149: batas waktu 30 jam: posisi yang belum kena TP 20% sejak terisi ditutup market. Maks 4 posisi jalan per orang
+- (angka di bawah ini riwayat uji aturan v148)
 - 3 rugi beruntun (urut waktu tutup): jeda entry baru 24 jam (qse_saya.jeda_info)
   Uji jam ke-8 + jeda (riset/porto/pf_final.py): +392R PF 1.75 DD 17R, SL penuh 4.3%, SL penuh beruntun 5, kerugian beruntun
   terbesar -7.1R. Tanpa keduanya +393R PF 1.63 DD 34R, SL penuh 19.4%, SL penuh beruntun 10, kerugian beruntun -10.8R.
@@ -145,7 +146,7 @@ def usd_r(R, uid=None):
 
 def teks_r(R, uid=None):
     """'+0.90R = +0.90% modal (+$1.40)'. Tanpa dolar kalau profil belum diisi (netral 0.25% per R)."""
-    return f"{R:+.2f}R = {pmodal(R, uid):+.2f}% modal{usd_r(R, uid)}"
+    return f"{pmodal(R, uid):+.2f}% modal{usd_r(R, uid)}"
 
 
 def atur_profil(uid, modal=None, risiko=None, lev=None):
@@ -181,9 +182,10 @@ def lihat():
 
 def teks_aturan():
     """Satu baris aturan otomatis, dipakai di pesan sinyal."""
-    return (f"⏳ <b>Aturan otomatis</b>: jam ke-12 belum kena TP 20% dan harga melawan, SL naik ke -0.5R (searah: SL tetap). {WAKTU_JAM:g} jam belum kena, tutup. "
+    return (f"⏳ <b>Aturan otomatis</b>: jam ke-12 belum kena TP 20% dan harga melawan, SL naik ke separuh jarak SL (searah: SL tetap). {WAKTU_JAM:g} jam belum kena, tutup. "
             f"3 rugi beruntun, jeda entry 24 jam. Maks {MAKS_SEARAH} posisi berisiko searah. "
-            f"Posisi yang SL-nya sudah di entry tidak makan slot (maks {MAKS_AMAN})")
+            + (f"Maks {MAKS_POSISI} posisi jalan per orang, termasuk yang sudah aman" if not MAKS_AMAN else
+               f"Posisi yang SL-nya sudah di entry tidak makan slot (maks {MAKS_AMAN})"))
 
 
 FORMAT_MODAL = ("Format: /modal 155 (modal dolar), /modal 155 1 5 (modal, risiko persen per trade, leverage), "
@@ -251,10 +253,12 @@ def perintah(args=None):
     rp = risk_pct(st.get("uid"))
     rows = ["<b>Batas posisi dan risiko</b> (aturan sama untuk semua orang, dihitung dari entry masing-masing)",
             baris_profil(st.get("uid")),
-            f"1R = risiko {rp:g}% modal per trade (lot 1x). Maksimal {MAKS_POSISI} posisi berisiko + {MAKS_AMAN} posisi aman. "
+            f"1R = risiko {rp:g}% modal per trade (lot 1x). "
+            + (f"Maksimal {MAKS_POSISI} posisi jalan, termasuk yang sudah aman. " if not MAKS_AMAN else
+               f"Maksimal {MAKS_POSISI} posisi berisiko + {MAKS_AMAN} posisi aman. ") +
             f"Rugi kalau semua SL kena maksimal {RISIKO_BUKA:g}R = {pmodal(RISIKO_BUKA, st.get('uid')):.2f}% modal. "
             f"Rem harian -{REM_HARIAN:g}R = -{pmodal(REM_HARIAN, st.get('uid')):.2f}% modal",
-            f"🛡 <b>Jam ke-12</b>: belum kena TP 20% dan harga melawan, SL naik ke -0.5R. Sudah rugi lebih dari itu, tutup market. Harga searah: SL tetap",
+            f"🛡 <b>Jam ke-12</b>: belum kena TP 20% dan harga melawan, SL naik ke separuh jarak SL. Sudah rugi lebih dari itu, tutup market. Harga searah: SL tetap",
             f"⏳ <b>Batas waktu {WAKTU_JAM:g} jam</b>: posisi yang belum kena TP 20% sejak terisi, tutup market. "
             f"Posisi aman (SL sudah di entry) tidak makan slot berisiko",
             "⏸️ <b>Jeda</b>: 3 trade rugi berturut-turut, berhenti entry baru 24 jam",
@@ -338,7 +342,8 @@ def status(uid=None):
         alasan = (f"BATAS POSISI: sudah {n_risk} posisi berisiko atau order terbuka (maks {MAKS_POSISI} per orang). "
                   f"Posisi yang SL-nya sudah di entry tidak dihitung")
     elif len(buka) >= maks_total:
-        alasan = f"BATAS TOTAL: sudah {len(buka)} posisi (maks {MAKS_POSISI} berisiko + {MAKS_AMAN} aman)"
+        alasan = (f"BATAS POSISI: sudah {len(buka)} posisi jalan (maks {MAKS_POSISI}). Sinyal berikutnya dikirim saat satu selesai"
+                  if not MAKS_AMAN else f"BATAS TOTAL: sudah {len(buka)} posisi (maks {MAKS_POSISI} berisiko + {MAKS_AMAN} aman)")
     elif risiko >= RISIKO_BUKA:
         alasan = f"BATAS RISIKO: kalau semua SL kena rugi {risiko:.1f}R = {pmodal(risiko, u):.2f}% modal (maks {RISIKO_BUKA:g}R)"
     return dict(hari_ini=hari, n_posisi=n_risk, n_aman=n_aman, n_total=len(buka), maks=MAKS_POSISI, maks_aman=MAKS_AMAN,
@@ -400,10 +405,12 @@ def baris_slot():
                     why += f" (dihitung: {html.escape(dh)})" if dh else ""
                 except Exception:
                     pass
-            rows.append(f"⛔ <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko{aman}: {why}, jangan entry baru dulu</b>"
+            rows.append((f"⛔ <b>{nm} {st['n_total']}/{st['maks']} posisi jalan: {why}, jangan entry baru dulu</b>" if not MAKS_AMAN else
+                         f"⛔ <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko{aman}: {why}, jangan entry baru dulu</b>")
                         + (f"  ·  {rk}" if rk else ""))
         else:
-            rows.append(f"👤 <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko</b>{aman}, sisa slot {st['sisa']}"
+            rows.append((f"👤 <b>{nm} {st['n_total']}/{st['maks']} posisi jalan</b>, sisa slot {st['sisa']}" if not MAKS_AMAN else
+                         f"👤 <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko</b>{aman}, sisa slot {st['sisa']}")
                         + "".join(f"  ·  ⛔ <b>{a} penuh ({st['n_arah'][a]}/{MAKS_SEARAH} searah), hanya "
                                   f"{'SHORT' if a == 'LONG' else 'LONG'}</b>" for a in st.get("penuh_arah") or [])
                         + (f"  ·  {rk}" if rk else ""))

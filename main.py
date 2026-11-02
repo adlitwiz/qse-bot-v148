@@ -1175,7 +1175,7 @@ def _blok_posisi_analisa(it, r):
             sb = ""
         return (f"{IKON.get(it['arah'], '')} <b>{TG.e(it['sym'])} {it['arah']}</b>  ·  "
                 + (f"👤 {TG.e(it['oleh'])}  ·  " if it.get("oleh") else "")
-                + (f"{fl['pct']:+.2f}%  ·  {fl['r']:+.2f}R" if fl else "posisi jalan") + "\n"
+                + (f"{fl['pct']:+.2f}% dari entry" if fl else "posisi jalan") + "\n"
                 f"✅ Ikut aturan jalur: <b>SL {TG.fp(it['sl'], t)}</b>, "
                 + (f"<b>TP {TG.fp(tpj, t)}</b> penuh" if tpj else "Trailing Stop jalur") + ". Tahan sampai salah satu kena, "
                 "robot mengabari kalau jalur keluar (TUTUP SEKARANG)." + (f"\n{sb}" if sb else ""))
@@ -1186,7 +1186,7 @@ def _blok_posisi_analisa(it, r):
     if it.get("oleh"):
         head += f" | 👤 {TG.e(it['oleh'])}"
     if fl:
-        head += f" | {fl['pct']:+.2f}% | {fl['r']:+.2f}R"
+        head += f" | {fl['pct']:+.2f}% dari entry"
     sesuai = an["vonis"] == "MASIH SESUAI ANALISA"
     kenapa = an["plus"] if sesuai else ([an["harga"]] if an["harga"] else []) + an["minus"]
     rows = [head.replace(" | ", "  ·  "), f"{ik} <b>{an['vonis']}</b>", "💡 <b>Kenapa</b>"]
@@ -1279,13 +1279,7 @@ def _kartu_jam(results, b1, led):
     try:
         c = b1["close"].values
         ch1, ch3 = (c[-1] / c[-2] - 1) * 100, (c[-1] / c[-4] - 1) * 100
-        try:
-            import qse_strat as ST
-            bt = ST.btc_ema50_teks()          # satu patokan arah BTC yang sama di semua pesan
-        except Exception:
-            bt = ""
-        bt = bt or TG.e(next((r["btc"] for r in results), ""))
-        rows.append(f"₿ {bt} | 1 jam {ch1:+.2f}% | 3 jam {ch3:+.2f}%")
+        rows.append(f"₿ BTC {c[-1]:,.0f}  ·  1 jam {ch1:+.2f}%  ·  3 jam {ch3:+.2f}%")          # v149: peta BTC satu baris di bawah
     except Exception:
         pass
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
@@ -1297,7 +1291,7 @@ def _kartu_jam(results, b1, led):
             fl = SY.floating(it, px) if px else None
             grup.setdefault(it.get("oleh") or "", []).append(
                 f"{'🟩' if fl and fl['r'] >= 0 else '🟥' if fl else '⬜'} {it['sym']} {it['arah']} "
-                + (f"{fl['pct']:+.1f}% ({fl['r']:+.2f}R)" if fl else "-"))
+                + (f"{fl['pct']:+.1f}%" if fl else "-"))
         for nm, bag in grup.items():
             rows.append(f"👤 <b>Posisi {TG.e(nm) if nm else 'kamu'}</b> ({len(bag)})\n" + "\n".join(bag))
         rows.append("↳ Diam, biarkan SL dan TP jalur bekerja. Gerak BTC 1 jam bukan alasan keluar.")
@@ -1706,9 +1700,9 @@ def _jam(ms):
 def _tabel(s, t, sym=None, arah=None):
     risk = max(abs(s["entry"] - s["sl"]), t)
     pc = lambda v: abs(v - s["entry"]) / s["entry"] * 100 if s["entry"] else 0
-    rows = [("Entry", s["entry"], s["order"]), ("SL", s["sl"], "-1.00R  -%.1f%%" % pc(s["sl"])),
-            ("TP1", s["tp1"], "%+.2fR  +%.1f%%" % (abs(s["tp1"] - s["entry"]) / risk, pc(s["tp1"]))),
-            ("TP2", s["tp2"], "%+.2fR  +%.1f%%" % (abs(s["tp2"] - s["entry"]) / risk, pc(s["tp2"])))]
+    rows = [("Entry", s["entry"], s["order"]), ("SL", s["sl"], "rugi %.1f%%" % pc(s["sl"])),
+            ("TP1", s["tp1"], "untung %.1f%%" % pc(s["tp1"])),
+            ("TP2", s["tp2"], "untung %.1f%%" % pc(s["tp2"]))]
     px = [TG.fp(v, t) for _, v, _ in rows]
     w = max(len(p) for p in px)
     w2 = max(len(x) for _, _, x in rows)
@@ -1828,7 +1822,7 @@ def _kartu(no, r, x, jalur, status="", led=None, kenapa=None, cara=None, catatan
             c1 = (f"Pasang {x['order']} di harga entry, batal sendiri "
                   f"{_jam(it['exp_ts']) if it and it.get('exp_ts') else 'kalau 24 jam tidak terisi'}")
         cara = [c1, "Harga sampai TP1: tutup separuh posisi, pindahkan SL ke harga entry", "Sisanya biarkan jalan ke TP2",
-                "Jam ke-12 belum kena TP1 dan harga melawan: SL naik ke -0.5R (searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari kalau trade dicatat "
+                "Jam ke-12 belum kena TP1 dan harga melawan: SL naik ke separuh jarak SL (searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari kalau trade dicatat "
                 "dengan /entry"]
     rows.append("🛠 <b>Cara</b>\n" + "\n".join(f"{i}. {z}" for i, z in enumerate(cara, 1)))
     slp = abs(x["entry"] - x["sl"]) / x["entry"] if x["entry"] > 0 else 1
@@ -2035,7 +2029,7 @@ def _baru_candle(items, tutup_ms, kunci="", harga=None, pegang=()):
         e_val = it["entry"] if baru or not px else px
         combo = it.get("combo") or []
         ket = ("🆕 sinyal candle ini" if baru else
-               f"sinyal {jam} WIB, harga masih dekat entry robot {TG.fp(it['entry'], t)} ({d:+.2f}R)")
+               f"sinyal {jam} WIB, harga masih dekat entry robot {TG.fp(it['entry'], t)} ({d * risk / it['entry'] * 100:+.2f}%)")
         if it.get("combo_raja"):
             ket += "\n👑 COMBO RAJA: 6 jalur atau lebih searah (uji PF 3.35, WR 57%, sekitar 2 kali sebulan)"
         if it.get("combo_fix"):

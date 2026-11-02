@@ -176,8 +176,8 @@ def teks(p=None, singkat=False):
     p = p or peta()
     fk = {"LONG": "🟢 <b>FOKUS LONG</b>", "SHORT": "🔴 <b>FOKUS SHORT</b>", "TAHAN": "⏸ <b>TAHAN, DUA ARAH SELEKTIF</b>"}[p["fokus"]]
     if singkat:
-        return (f"🧭 Komando BTC {fk} (skor {p['skor']:+d}) · 1J {_IK[p['s1']]} · 4J {_IK[p['s4']]} · 1D {_IK[p['sD']]} · "
-                f"S {_f(p['sup4'])} / R {_f(p['res4'])}")
+        return (f"🧭 Peta BTC {p['px']:,.0f}  ·  {fk} (skor {p['skor']:+d})  ·  1J {_IK[p['s1']]} · 4J {_IK[p['s4']]} · 1D {_IK[p['sD']]}  ·  "
+                f"support {_f(p['sup4'])} / resistance {_f(p['res4'])}. Peta kondisi, bukan ramalan harga")
     la = ", ".join(f"{x:,.0f}{' (kembar)' if k else ''}" for x, k in p["liq_atas"]) or "-"
     lb = ", ".join(f"{x:,.0f}{' (kembar)' if k else ''}" for x, k in p["liq_bawah"]) or "-"
     vol = "beli dominan" if p["vol"] > 0.2 else "jual dominan" if p["vol"] < -0.2 else "seimbang"
@@ -336,7 +336,7 @@ def kartu_ringkas(m, pr=None, nama=""):
     try:
         p = peta()
         arah_btc = {1: "naik", -1: "turun", 0: "datar"}
-        cocok = ("searah, uji rata +0.10R" if p["fokus"] == arah else ("netral" if p["fokus"] == "TAHAN" else "lawan arah, uji rata hanya +0.02R"))
+        cocok = ("searah, lebih bagus" if p["fokus"] == arah else ("netral" if p["fokus"] == "TAHAN" else "lawan arah, hasil uji hampir impas"))
         rows.append(f"🧭 BTC fokus <b>{p['fokus']}</b> ({cocok})  ·  1J {arah_btc[p['s1']]}, 4J {arah_btc[p['s4']]}, 1D {arah_btc[p['sD']]}")
     except Exception:
         pass
@@ -373,9 +373,14 @@ def kartu_ringkas(m, pr=None, nama=""):
             kenapa.append(b[2:].split(":")[0])
     if kenapa or label:
         rows.append("💡 " + "  ·  ".join(kenapa + label))
-    tp_ = ambil("💰 ") + ambil("🏁 ")
-    rows.append("🛠 " + ("  ·  ".join(re.sub(r"<[^>]+>", "", z)[2:] for z in tp_) + ". " if tp_ else "")
-                + "Jam ke-12 belum kena TP 20% dan harga melawan: SL ke -0.5R. 30 jam belum aman: tutup. /entry supaya robot memantau")
+    try:
+        import qse_saya as SY
+        lv = level_dari_kartu(m)
+        it_ = ki[1] if ki else {}
+        trail = None if lv["tp"] else (it_.get("trail_atr", 3.0) / it_.get("sl_atr", 2.0) * abs(lv["entry"] - lv["sl"]) if lv["entry"] and lv["sl"] else None)
+        rows.append(SY.cara_pasang(sym, arah, lv["entry"], lv["sl"], it_.get("tick"), tp=lv["tp"], trail=trail, ringkas=True))
+    except Exception as ex:
+        print("[WARN] langkah ringkas", ex)
     for awal in ("⛔", "🛡 <b>Rem", "🔓", "📅", "↔️ Lawan", "💼"):
         rows += [b for b in baris if b.startswith(awal) and b not in rows]
     return "\n".join(rows)
@@ -385,7 +390,7 @@ def caption_sinyal(rk, maks=1000):
     """Potong kartu ringkas jadi caption gambar (maks karakter terlihat). Baris yang dibuang dulu: alasan, cara, TF, bukti koin."""
     import telegram_notify as TG
     rows = rk.split("\n")
-    for awal in ("💡", "⏱", "🛠", "📊", "🧱", "━━"):
+    for awal in ("💡", "⏱", "📲", "📊", "🧱", "━━"):
         if TG.panjang_terlihat("\n".join(rows)) <= maks:
             break
         rows = [r for r in rows if not r.startswith(awal)]
@@ -393,9 +398,24 @@ def caption_sinyal(rk, maks=1000):
     return t if TG.panjang_terlihat(t) <= maks else None
 
 
+def cara_dari_kartu(rk):
+    """Langkah lengkap pasang di Bybit untuk satu kartu (gelembung kedua di bawah gambar)."""
+    import re
+    import qse_saya as SY
+    x = re.search(r"<b>([A-Z0-9]+USDT) (LONG|SHORT)</b>", rk or "")
+    if not x:
+        return None
+    sym, arah = x.groups()
+    lv = level_dari_kartu(rk)
+    ki = _cari_it(sym, arah)
+    it_ = ki[1] if ki else {}
+    trail = None if lv["tp"] else it_.get("trail_atr", 3.0) / it_.get("sl_atr", 2.0) * abs(lv["entry"] - lv["sl"])
+    return f"<b>{sym} {arah}</b>\n" + SY.cara_pasang(sym, arah, lv["entry"], lv["sl"], it_.get("tick"), tp=lv["tp"], trail=trail)
+
+
 def level_dari_kartu(rk):
     """Harga entry, SL, TP sebagian, TP dari blok salin."""
     import re
     g = lambda pola: (lambda x: float(x.group(1).replace(",", "")) if x else None)(re.search(pola, rk))
-    return dict(entry=g(r"Entry\s+([\d.,]+)"), sl=g(r"\nSL\s+([\d.,]+)"), tps=g(r"Sebagian\s+([\d.,]+)"), tp=g(r"\nTP\s+([\d.,]+)"),
+    return dict(entry=g(r"Entry\s+([\d.,]+)"), sl=g(r"\nSL\s+([\d.,]+)"), tps=g(r"(?:Sebagian|TPawal)\s+([\d.,]+)"), tp=g(r"\nTP\s+([\d.,]+)"),
                 sup=g(r"Support 4J <b>([\d.,]+)"), res=g(r"Resistance 4J <b>([\d.,]+)"))

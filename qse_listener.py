@@ -217,6 +217,12 @@ def _tugas_berkala():
                         print("[WARN] gambar sinyal", ex)
                     ids = [mid] if mid else TG.send([f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk])
                     _pin_sinyal(ids)
+                    try:
+                        cr = BM.cara_dari_kartu(rk)          # v149: langkah pasang lengkap tepat di bawah gambar sinyal
+                        if cr:
+                            TG.send([cr])
+                    except Exception as ex:
+                        print("[WARN] cara pasang", ex)
                     continue
                 try:
                     tambah = BM.baris_kartu(m, pr) if BM else []          # v149: TF, kategori, S/R, komando BTC, skor, rekam jejak

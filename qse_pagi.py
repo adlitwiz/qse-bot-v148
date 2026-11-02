@@ -273,11 +273,14 @@ def baris_btc_sinyal():
                 gerak = "\n" + TB.baris_sinyal_gerak(r)
         except Exception as ex:
             print("[WARN] tebak kartu", ex)
-        ket = "Posisi BTC lawan EMA dan arah ini hanya info, di uji tidak mengubah hasil sinyal."
-        if d and d.get("naik"):
-            arah = "CONDONG NAIK, aturan teruji aktif sejak 06:00 WIB (uji: BTC naik 55-58% hari seperti ini), SHORT baru ditahan hari ini"
-            ket = "Posisi BTC lawan EMA hanya info."
-        teks = (f"₿ <b>BTC {px:,.0f}</b>  ·  " + "  ·  ".join(rows) + f"\n🧭 Arah BTC 24 jam: {arah}. " + ket + gerak)
+        try:
+            import qse_btcmap as BM
+            peta = BM.teks(singkat=True)          # v149: peta komando BTC satu baris (kondisi, bukan ramalan harga)
+        except Exception:
+            peta = f"₿ <b>BTC {px:,.0f}</b>  ·  " + "  ·  ".join(rows)
+        aturan = ("\n⛔ Hari ini BTC CONDONG NAIK (aturan teruji sejak 06:00 WIB, BTC naik 55-58% hari seperti ini): SHORT baru ditahan"
+                  if d and d.get("naik") else "")
+        teks = peta + aturan + gerak
         _BTC_BARIS[:] = [time.time(), teks]
         return teks
     except Exception as ex:

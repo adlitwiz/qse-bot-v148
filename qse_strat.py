@@ -456,12 +456,7 @@ def batas_masuk_teks(it, k, fmt=None):
     fmt = fmt or TG.fp
     t = it.get("tick", 0.0001)
     jam = time.strftime("%d/%m %H:%M", time.gmtime(b[2] + 7 * 3600))
-    out = [f"🎯 Entry valid {fmt(b[0], t)} sampai {fmt(b[1], t)}, berlaku sampai {jam} WIB. Lewat itu, lewati"]
-    lm = LAMA_JALUR.get(k)
-    if lm:
-        out.append(f"⏳ Uji 2021-2026: {lm[0]}% kena TP 20% dalam 36 jam (aturan lama), biasanya ±{lm[1]} jam setelah entry. "
-                   f"Yang sudah aman jalan ±{_hari(lm[2])}")
-    return out
+    return [f"🎯 Entry valid {fmt(b[0], t)} sampai {fmt(b[1], t)}, berlaku sampai {jam} WIB. Harga di luar itu atau lewat jam itu, lewati"]
 
 
 # Uji 2021-2026 (dev 2021-23 / uji 2024-26): dari trade yang sudah +2R, berapa persen selesai di +2R atau lebih.
@@ -506,7 +501,7 @@ def rencana_tp(entry, sl, arah, tick, tp=None, jarak=None, fmt=None, uji=True, w
     rows = [f"💰 <b>TP {int(TPS_PORSI * 100)}% posisi: {fmt(tps, tick)} (+{pc(tps):.1f}%)</b>. Setelah kena, "
             f"<b>pindahkan SL ke entry {fmt(entry, tick)}</b>"]
     if tp:
-        rows.append(f"🏁 <b>TP {100 - int(TPS_PORSI * 100)}% sisa: {fmt(tp, tick)} (+{pc(tp):.1f}%, +{abs(tp - entry) / risk:.1f}R)</b>")
+        rows.append(f"🏁 <b>TP {100 - int(TPS_PORSI * 100)}% sisa: {fmt(tp, tick)} (untung {pc(tp):.1f}%)</b>")
     else:
         rows.append(f"🏁 <b>Sisa {100 - int(TPS_PORSI * 100)}%: tanpa TP, ikut SL berjalan</b>"
                     + (f" (Trailing Stop {fmt(jarak, tick)}, {jarak / entry * 100:.1f}%)" if jarak else ""))
@@ -520,7 +515,7 @@ def rencana_tp(entry, sl, arah, tick, tp=None, jarak=None, fmt=None, uji=True, w
                 + (f"  ·  uji 2021-2026: menang {uj[0]}%, kena SL penuh {uj[1]}%" if (uji and uj) else ""))
     if waktu:
         sl8 = entry - 0.5 * risk if arah == "LONG" else entry + 0.5 * risk
-        rows.append(f"🛡 <b>Jam ke-12 belum kena TP {int(TPS_PORSI * 100)}% dan harga melawan</b>: SL naik ke {fmt(sl8, tick)} (-{pc(sl8):.1f}%, -0.5R). "
+        rows.append(f"🛡 <b>Jam ke-12 belum kena TP {int(TPS_PORSI * 100)}% dan harga melawan</b>: SL naik ke {fmt(sl8, tick)} (rugi {pc(sl8):.1f}%, separuh SL). "
                     f"Sudah rugi lebih dari itu, tutup market. Harga searah: SL tetap")
     if jw > 0 and waktu:
         rows.append(f"⏳ <b>Batas {jw:g} jam</b>: belum kena TP {int(TPS_PORSI * 100)}%, tutup market. Sudah kena, posisi aman "
@@ -869,7 +864,7 @@ def jalankan(baru_ok=True):
             if st in ("SL", "WAKTU", "TP"):
                 _catat_ledger(k, it, R)
                 if kabar:
-                    out[k].append(f"{'✅' if R > 0 else '🛑'} <b>{STRAT[k]['nama'].upper()} SELESAI  ·  {it['sym']} {it['arah']}  ·  {R:+.2f}R</b>\n"
+                    out[k].append(f"{'✅' if R > 0 else '🛑'} <b>{STRAT[k]['nama'].upper()} SELESAI  ·  {it['sym']} {it['arah']}  ·  {'untung' if R > 0 else 'rugi'} {abs(R) * it['risk'] / it['entry'] * 100:.2f}%</b>\n"
                                   + (f"TP {TG.fp(it['tp'], t)} tersentuh." if st == "TP" else
                                      f"Kena SL di sekitar {TG.fp(it['sl'], t)}. Analisa volume menyusul." if st == "SL" else
                                      f"Sudah {it.get('maks_bar', MAKS_BAR)} candle 4J. Tutup sekarang di harga pasar."))
@@ -1068,18 +1063,18 @@ def kartu(k, no, it, a):
         *[f"• {z}" for z in cfg["kenapa"]],
         f"• Bukti: {cfg['bt']}",
         "🛠 <b>Cara</b>",
-        *([f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)}, TP {TG.fp(it['tp'], t)} ({cfg['tp_r']:g}R) untuk sisa posisi",
-            f"2. Pasang juga TP sebagian 20% di +0.5R (lihat baris 💰). Setelah kena, SL ke entry. Selain itu jangan geser SL",
-            f"3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. Sudah aman tapi "
+        *([f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)}, TP {TG.fp(it['tp'], t)} (untung {abs(it['tp'] - it['entry']) / it['entry'] * 100:.1f}%) untuk sisa posisi",
+            f"2. Pasang juga TP sebagian: tutup 20% posisi di harga baris 💰. Setelah kena, SL ke entry. Selain itu jangan geser SL",
+            f"3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke separuh jarak SL (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. Sudah aman tapi "
             f"{it.get('maks_bar', MAKS_BAR) // 6} "
             f"hari belum kena SL atau TP: tutup manual",
             "4. Catat dengan /entry supaya ada pengingat dan analisa volume kalau kena SL"] if it.get("tp") else
           [f"1. Masuk MARKET sekarang. SL di {TG.fp(it['sl'], t)} ({it['risk'] / it['entry'] * 100:.1f}%). Pasang TP sebagian 20% "
-           f"di +0.5R saja (lihat baris 💰), setelah kena SL ke entry. Sisanya tanpa TP",
+           f"di harga baris 💰, setelah kena SL ke entry. Sisanya tanpa TP",
            "2. Pasang Trailing Stop Bybit, isi seperti blok di bawah, atau ikuti pesan GESER SL",
-           *([f"   Setelah untung 2R ({TG.fp(it['entry'] + 2 * it['risk'] if L else it['entry'] - 2 * it['risk'], t)}), ganti jarak "
+           *([f"   Setelah harga sampai ({TG.fp(it['entry'] + 2 * it['risk'] if L else it['entry'] - 2 * it['risk'], t)}), ganti jarak "
               f"Trailing Stop jadi 5% harga. Robot mengingatkan lewat SL TERBARU"] if it.get("trail_pct_2r") else []),
-           "3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "
+           "3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke separuh jarak SL (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "
            "Sudah aman tapi 10 hari belum kena SL: tutup manual",
            "4. Catat dengan /entry supaya pesan GESER SL dan analisa volume SL dikirim"]),
         *([SY.isi_trailing(jarak, it["sl"], t)] if not it.get("tp") else []),
@@ -1110,7 +1105,7 @@ def teks():
             L = it["arah"] == "LONG"
             g = ((it["close"] - it["entry"]) if L else (it["entry"] - it["close"])) / it["risk"]
             rows.append(f"{'🟢' if L else '🔴'} {it['sym']} {it['arah']} | entry {TG.fp(it['entry'], it['tick'])} | "
-                        f"SL {TG.fp(it['sl'], it['tick'])} | {g:+.2f}R | candle {it['bar']}/{MAKS_BAR}")
+                        f"SL {TG.fp(it['sl'], it['tick'])} | {g * it['risk'] / it['entry'] * 100:+.2f}% | candle {it['bar']}/{MAKS_BAR}")
         rs = [x["R"] for x in d["closed"] if x.get("R") is not None]
         if rs:
             w = sum(x for x in rs if x > 0)

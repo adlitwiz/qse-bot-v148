@@ -229,6 +229,8 @@ def _nama_uji(sym):
     for p in ("10000", "1000", "1M"):
         if sym.startswith(p):
             out.append(sym[len(p):])
+        if sym.endswith(p + "USDT"):                          # Bybit SHIB1000USDT
+            out.append(sym[:-len(p + "USDT")] + "USDT")
     return out
 
 

@@ -3,8 +3,8 @@ Dikirim listener Senin 06:20 WIB dan bisa dipanggil kapan saja dengan /mingguan.
 Tiga bagian:
 1. ROBOT: sinyal jalur terbukti yang selesai 7 hari terakhir (catatan robot sendiri, aturan jalur murni, sudah biaya 0.15% harga),
    dibanding rata-rata per trade jalur itu di uji (qse_catat.EXP_UJI).
-2. TIAP ORANG: trade yang dicatat bot dengan aturan keluar final (TP 20% di +0.5R, jam ke-8, jeda). R dikurangi biaya 0.15% harga
-   seperti di uji, lalu dibanding uji portofolio satu orang: WR 60%, PF 1.75, rata +0.17R, SL penuh 4.3%
+2. TIAP ORANG: trade yang dicatat bot dengan aturan keluar v149 (TP 20% di +0.5R, jam ke-12 dinamis, 30 jam, jeda). R dikurangi biaya 0.15% harga
+   seperti di uji, lalu dibanding uji portofolio satu orang v149: WR 61.7%, PF 1.35, rata +0.09R, SL penuh 12.7%
    (riset/porto/hasil_pf_final.txt, baris jam 8 SL -0.5R + jeda 3 kalah 24 jam).
 3. HARGA ISI: harga entry kamu lawan harga sinyal robot, dalam R dan persen harga.
 Satu minggu itu sampel kecil. Penilaian 'di bawah uji' atau 'sesuai uji' baru keluar setelah 100 trade."""
@@ -14,9 +14,11 @@ import time
 
 HARI = 7
 MIN_NILAI = 100
-UJI = dict(wr=60.2, pf=1.75, rata=0.17, slp=4.3)
-ATURAN_BARU = calendar.timegm((2026, 10, 27, 0, 0, 0)) * 1000         # TP 20% dan jam ke-8 mulai dipakai, trade lama aturan lain
-JENDELA_SINYAL = 36 * 3600                                            # isi dihitung milik sinyal kalau terjadi dalam 36 jam sesudahnya
+# v149: pembanding = uji 383 koin Binance sejak listing, 150 koin likuid, NILAI 8+, satu orang maks 4 posisi, 2023-2026
+# (riset/upgrade/hasil_rapor2_383koin.txt): 1.719 trade, WR 61.7%, PF 1.35, rata +0.09R, SL penuh 12.7%
+UJI = dict(wr=61.7, pf=1.35, rata=0.09, slp=12.7)
+ATURAN_BARU = calendar.timegm((2026, 11, 3, 0, 0, 0)) * 1000          # aturan v149 mulai dipakai, trade lama aturan lain
+JENDELA_SINYAL = 30 * 3600                                            # isi dihitung milik sinyal kalau terjadi dalam 30 jam sesudahnya
 
 
 def _stat(rs):
