@@ -1,4 +1,4 @@
-"""QSE v148 - LAPORAN MINGGUAN: hasil live lawan hasil uji 2021-2026.
+"""QSE v149 - LAPORAN MINGGUAN: hasil live lawan hasil uji 2021-2026.
 Dikirim listener Senin 06:20 WIB dan bisa dipanggil kapan saja dengan /mingguan.
 Tiga bagian:
 1. ROBOT: sinyal jalur terbukti yang selesai 7 hari terakhir (catatan robot sendiri, aturan jalur murni, sudah biaya 0.15% harga),
@@ -164,7 +164,7 @@ def bagian_orang(now, hari=HARI):
         nama = html.escape(str(SY.nama_pengguna(u))) if banyak else "kamu"
         baru = [c for c in cl if (c.get("fill_ts") or c.get("created_ts") or 0) >= ATURAN_BARU]
         m7 = [c for c in baru if c["closed_ts"] >= batas]
-        rows += ["", f"👤 <b>{nama.upper() if banyak else 'TRADE KAMU'}</b> (aturan keluar final: TP 20%, jam ke-8, jeda)"]
+        rows += ["", f"👤 <b>{nama.upper() if banyak else 'TRADE KAMU'}</b> (aturan keluar v149: TP 20%, jam ke-12 dinamis, 30 jam, jeda)"]
         if not baru:
             rows.append("• Belum ada trade selesai dengan aturan final (mulai 27 Okt 2026).")
             continue
@@ -191,7 +191,7 @@ def bagian_orang(now, hari=HARI):
 
 def teks(now=None, hari=HARI, simpan=False):
     now = now or time.time()
-    rows = [f"📅 <b>QSE v148 | LAPORAN MINGGUAN</b> ({_tgl(now - hari * 86400)} sampai {_tgl(now)})",
+    rows = [f"📅 <b>QSE v149 | LAPORAN MINGGUAN</b> ({_tgl(now - hari * 86400)} sampai {_tgl(now)})",
             "Hasil live lawan uji 2021-2026. Satu minggu itu sampel kecil, jangan ubah aturan dari satu minggu saja."]
     for fn in (bagian_robot, bagian_orang):
         try:

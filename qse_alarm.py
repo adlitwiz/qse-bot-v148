@@ -1,4 +1,4 @@
-"""QSE v148 - ALARM HARGA. /alert BTC 60000 [catatan], /alert untuk daftar, /alert hapus BTC atau /alert hapus semua.
+"""QSE v149 - ALARM HARGA. /alert BTC 60000 [catatan], /alert untuk daftar, /alert hapus BTC atau /alert hapus semua.
 Dicek tiap menit oleh qse_listener.py memakai candle 1 menit, jadi sumbu candle yang menyentuh level ikut terdeteksi."""
 import fcntl
 import json
@@ -248,7 +248,7 @@ def _pesan_gzh(a, cl):
             + SY.blok_salin(cl, a["sl"], order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=a["sym"], arah=arah,
                             sebagian=True) + "\n"
             f"Masuk MARKET sekarang. Pasang Trailing Stop Bybit Retracement {jarak}, atau ikuti pesan GESER SL. "
-            f"Jam ke-8 belum kena TP 20%, SL naik ke -0.5R. 36 jam belum kena, tutup market. Sudah aman tapi 10 hari belum kena, "
+            f"Jam ke-12 belum kena TP 20% dan harga melawan, SL naik ke -0.5R (searah: SL tetap). 30 jam belum kena, tutup market. Sudah aman tapi 10 hari belum kena, "
             f"tutup manual."
             + "".join("\n" + z for z in ST.tp_cepat_teks(dict(entry=cl, sl=a["sl"], arah=arah, tick=t, jarak=j3), fmt=TG.fp)) + isi)
 

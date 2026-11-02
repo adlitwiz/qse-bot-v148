@@ -188,7 +188,7 @@ def ramal(sesi="pagi", gerak_t=0):
     except Exception as ex:
         print("[WARN] pagi serentak kemarin", ex)
     ik_s, judul, jam_berita = SESI.get(sesi, SESI["pagi"])
-    rows = [f"{ik_s} <b>QSE v148 | {judul}</b>  ·  {HARI[wd]}", ""]
+    rows = [f"{ik_s} <b>QSE v149 | {judul}</b>  ·  {HARI[wd]}", ""]
     if tingkat is None:
         return None
     if sesi != "pagi":

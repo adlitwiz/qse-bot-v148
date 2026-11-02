@@ -926,7 +926,7 @@ def riset():
     d["riwayat"].append(dict(t=int(time.time()), diuji=baru, lolos=len(lulus), masuk=len(masuk), detik=int(time.time() - t0)))
     _simpan(d)
     th0 = min(time.gmtime(F["t"][250] / 1000).tm_year for F in FS.values() if len(F["t"]) > 250)
-    rows = ["🧪 <b>QSE v148 | LAB RISET HARIAN</b>",
+    rows = ["🧪 <b>QSE v149 | LAB RISET HARIAN</b>",
             "Tiap malam robot membuat teknik trading baru sendiri, lalu mengujinya di data lama.",
             f"Hari ini {baru} teknik diuji di {len(FS)} koin teramai, data {th0} sampai sekarang.",
             f"Hasil: {len(lulus)} lolos uji awal, {n_acak} lebih bagus dari entry acak, {n_tahan} tahan uji ketahanan, "
@@ -1146,7 +1146,7 @@ def sinyal():
     if not (kartu or pesan):
         _log(f"sinyal: tidak ada yang baru ({len(calon)} dicatat diam-diam)")
         return []
-    teks = ("🧪 <b>QSE v148 | SINYAL TEKNIK LAB</b>\nSinyal dari teknik temuan robot sendiri, masih masa percobaan. Pakai lot kecil: "
+    teks = ("🧪 <b>QSE v149 | SINYAL TEKNIK LAB</b>\nSinyal dari teknik temuan robot sendiri, masih masa percobaan. Pakai lot kecil: "
             "KANDIDAT 0.25x, TERBUKTI LAB 0.5x dari lot biasa.\n\n" + "\n\n".join(pesan + kartu))
     _kirim(teks)
     return [teks]
@@ -1402,7 +1402,7 @@ def uji_slsaran():
 
 def bulanan():
     os.makedirs(LAB, exist_ok=True)
-    rows = ["🗓 <b>QSE v148 | LAB BULANAN</b>\nTiap tanggal 1 robot menguji ulang 2 hal dengan data terbaru."]
+    rows = ["🗓 <b>QSE v149 | LAB BULANAN</b>\nTiap tanggal 1 robot menguji ulang 2 hal dengan data terbaru."]
     try:
         r = uji_slsaran()
         if r["n"] < 150:

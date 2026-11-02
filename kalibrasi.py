@@ -1,7 +1,7 @@
 """Cocokkan bot dengan DASBOR.
 TF 4 jam : python kalibrasi.py AUCTIONUSDT TRXUSDT
 TF 1 jam : python kalibrasi.py 60 HBARUSDT KAITOUSDT
-Buka koin yang sama di TradingView (BYBIT:<KOIN>.P) dengan timeframe yang sama dan indikator QSE v148 DASBOR.
+Buka koin yang sama di TradingView (BYBIT:<KOIN>.P) dengan timeframe yang sama dan indikator QSE v149 DASBOR.
 Bandingkan tepat setelah candle tutup, karena panel TradingView ikut berubah selama candle berjalan."""
 import sys
 import time

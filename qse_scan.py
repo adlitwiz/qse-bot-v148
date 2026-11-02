@@ -1,4 +1,4 @@
-"""QSE v148 - proses satu koin: fitur -> mesin -> vonis PUSAT INSTRUKSI (EKSEKUSI/TAHAN, rapor, GOLDEN MOMENT)."""
+"""QSE v149 - proses satu koin: fitur -> mesin -> vonis PUSAT INSTRUKSI (EKSEKUSI/TAHAN, rapor, GOLDEN MOMENT)."""
 import math
 import numpy as np
 import qse_features as F

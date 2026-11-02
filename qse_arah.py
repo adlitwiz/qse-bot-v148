@@ -1,4 +1,4 @@
-"""QSE v148 - /arah KOIN: baca pasar sekarang di 7 TF, kondisi hari yang sama di tahun-tahun sebelumnya,
+"""QSE v149 - /arah KOIN: baca pasar sekarang di 7 TF, kondisi hari yang sama di tahun-tahun sebelumnya,
 pola harga kembar di sejarah koin ini, dan riwayat pola robot (DASBOR) yang sedang aktif.
 Semua dihitung dari candle yang sudah tutup, data diambil saat perintah diketik (real time)."""
 import calendar

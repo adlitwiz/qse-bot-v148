@@ -1,4 +1,4 @@
-"""QSE v148 - TRADE KAMU: catatan entry pribadi dari perintah /entry, pemantauan per menit,
+"""QSE v149 - TRADE KAMU: catatan entry pribadi dari perintah /entry, pemantauan per menit,
 peringatan kasus besar, konsultasi entry, dan statistik WR harian, mingguan, bulanan."""
 import fcntl
 import json
@@ -1017,7 +1017,7 @@ RAPOR_ARTI = {"A": "robot sering untung di koin ini", "B": "hasil robot cukup ba
 # Trade kamu dari sinyal jalur terbukti dikelola dengan aturan jalur itu, bukan TP1 0.8R / TP2 1.8R umum.
 # Uji 2021-2026 (35 ribu trade): aturan jalur +4568R PF 1.26, TP1/TP2 umum dengan SL ke entry +2371R PF 1.16.
 TEKS_IKUT = ("Posisi ini ikut aturan jalur terbukti: SL {sl}, {tp}. Aturan keluar hanya ini: TP 20% kena lalu SL ke entry, "
-             "jam ke-8 belum kena TP 20% SL naik ke -0.5R, batas 36 jam, dan SL atau TP jalur. Robot mengabari tiap langkah. "
+             "jam ke-12 belum kena TP 20% dan harga melawan SL naik ke -0.5R, batas 30 jam, dan SL atau TP jalur. Robot mengabari tiap langkah. "
              "Di luar itu jangan keluar lebih awal. Uji 2021-2026: keluar atau kunci lebih awal sesuka hati menurunkan profit 18 sampai 78%.")
 
 
@@ -1692,11 +1692,11 @@ def entry(args):
         tp_nm = "TP 20%" if ikut else "TP1"
         sl8 = harga - JAM8_R * risk if L else harga + JAM8_R * risk
         if isi_ts is not None:
-            rows.append(f"🛡 <b>Jam ke-{JAM8}: {_jam_wib(isi_ts + JAM8 * JAM)}</b>. Kalau belum kena {tp_nm}, SL naik ke "
-                        f"{fp(sl8, t)} (-0.5R). Sudah rugi lebih dari itu, tutup market.")
+            rows.append(f"🛡 <b>Jam ke-{JAM8}: {_jam_wib(isi_ts + JAM8 * JAM)}</b>. Kalau belum kena {tp_nm} dan harga melawan, SL naik ke "
+                        f"{fp(sl8, t)} (-0.5R). Sudah rugi lebih dari itu, tutup market. Harga searah: SL tetap.")
         else:
-            rows.append(f"🛡 <b>Jam ke-{JAM8} sejak terisi</b>: kalau belum kena {tp_nm}, SL naik ke {fp(sl8, t)} (-0.5R). "
-                        f"Sudah rugi lebih dari itu, tutup market.")
+            rows.append(f"🛡 <b>Jam ke-{JAM8} sejak terisi</b>: kalau belum kena {tp_nm} dan harga melawan, SL naik ke {fp(sl8, t)} (-0.5R). "
+                        f"Sudah rugi lebih dari itu, tutup market. Harga searah: SL tetap.")
         if jw > 0 and isi_ts is not None:
             rows.append(f"⏳ <b>Batas waktu {jw:g} jam: {_jam_wib(isi_ts + jw * JAM)}</b>. Kalau sampai saat itu belum kena {tp_nm}, "
                         f"robot menyuruh tutup market. Sudah kena, posisi aman dan tidak makan slot.")
@@ -2004,7 +2004,7 @@ def _waktu_jam():
 
 
 def batas_waktu(it):
-    """Waktu (ms) batas posisi jalan = jam terisi + 36 jam (qse_modal.WAKTU_JAM). None kalau belum terisi."""
+    """Waktu (ms) batas posisi jalan = jam terisi + 30 jam (qse_modal.WAKTU_JAM). None kalau belum terisi."""
     if it.get("status") not in ("TERISI", "TP1"):
         return None
     jw = _waktu_jam()
@@ -2034,8 +2034,8 @@ def teks_waktu_habis(it, px, now, ulang=False):
                 f"↳ Masih terbuka, sudah {jam:.0f} jam sejak terisi dan {belum}.\n"
                 f"👉 <b>Tutup MARKET di Bybit</b>, lalu catat: /tutup {kd}" + hasil +
                 f"\nKalau sudah ditutup di Bybit, cukup catat /tutup {kd} HARGA")
-    kenapa = ("Uji 2021-2026 aturan lengkap (jam ke-8, 36 jam, slot aman, jeda): total +392R lawan +314R cara lama, "
-              "drawdown 17R lawan 31R, kena SL penuh 4% lawan 29%.")
+    kenapa = ("Uji 2023-2026 aturan v149 (jam ke-12 dinamis, 30 jam, slot aman, jeda): NILAI 8+ total +298R lawan +270R aturan lama, "
+              "drawdown 29R lawan 45R.")
     return (f"⏰ <b>BATAS WAKTU {jw:g} JAM  ·  {it['sym']} {it['arah']}</b>\n"
             f"↳ Terisi {_jam_wib(t0)}, sudah {jam:.0f} jam dan {belum}.\n"
             f"👉 <b>Tutup MARKET di Bybit sekarang</b>, lalu catat: /tutup {kd}" + hasil + f"\n{kenapa}")
@@ -2049,7 +2049,12 @@ def teks_waktu_habis(it, px, now, ulang=False):
 # Kerugian beruntun terbesar -10.8R jadi -7.1R. Jam 8, 10, 12 dan level -0.4 sampai -0.6R hasilnya mirip (stabil). Jeda yang
 # lanjut sendiri setelah 24 jam lebih stabil daripada menunggu sinyal robot menang. Jeda setelah 2 kalah merusak 2024-2026.
 # Batas entry per candle dan batas searah memotong runtun tapi total turun 25-40%, tidak dipakai.
-JAM8, JAM8_R = 8, 0.5          # jam ke-8 belum kena TP 20%: rugi 0.5R atau lebih tutup, kalau belum SL naik ke -0.5R
+# v149 (29 Okt 2026, riset/upgrade/hasil_g13b.txt dan hasil_g13c.txt): jam pengecekan dipindah ke jam ke-12 dan dibuat dinamis:
+# SL hanya digeser ke -0.5R kalau harga MELAWAN (di bawah entry untuk LONG). Harga searah tapi belum kena TP 20%: SL tetap.
+# Uji 2023-2026 robot live (otak, rem harian, maks 4 searah): semua sinyal PF 1.22 -> 1.24, total +267R -> +287R, DD 41R -> 35R,
+# NILAI 8+ PF 1.33 -> 1.37, +270R -> +298R, DD 45R -> 29R, WR naik 2 sampai 3 poin. Jam 10 dan 14 hasilnya mirip (stabil).
+# Batas umur posisi belum aman 36 -> 30 jam. Umur 24 jam untuk SEMUA posisi diuji dan merusak: PF 1.07 dan total +104R.
+JAM8, JAM8_R = 12, 0.5         # jam ke-12 belum kena TP 20%: rugi 0.5R atau lebih tutup, harga melawan SL naik ke -0.5R, searah SL tetap
 JEDA_K, JEDA_JAM = 3, 24       # 3 rugi beruntun (urut waktu tutup): berhenti entry baru 24 jam, lalu hitungan mulai dari 0
 
 
@@ -2076,13 +2081,18 @@ def aturan_jam8(it, px, now):
     it.setdefault("alert", []).append("jam8")
     bw = batas_waktu(it)
     if bw and now >= bw:
-        return None                     # sudah lewat batas 36 jam: pesan BATAS WAKTU yang berlaku
+        return None                     # sudah lewat batas waktu: pesan BATAS WAKTU yang berlaku
     t = it.get("tick") or 1e-8
     kd = it["sym"].replace("USDT", "")
     L = it["arah"] == "LONG"
     tp_nm = "TP 20%" if it.get("ikut") else "TP1"
     r_now = _real(it) + _sisa(it) * _r_at(it, px)
     target = sl_jam8(it)
+    if _r_at(it, px) >= 0:
+        return ("JAM8", f"✅ <b>JAM KE-{JAM8}  ·  {it['sym']} {it['arah']}  ·  SL TETAP</b>\n"
+                        f"↳ Belum kena {tp_nm}, tapi harga searah ({_r_at(it, px):+.2f}R, harga {fp(px, t)}). SL tidak digeser, "
+                        f"biarkan posisi bernapas. Batas waktu tetap berlaku.\n"
+                        "Uji 2023-2026: menggeser SL saat harga masih searah justru menyapu posisi yang akhirnya untung.")
     if _r_at(it, px) <= -JAM8_R:
         return ("JAM8", f"✂️ <b>TUTUP SEKARANG  ·  {it['sym']} {it['arah']}  ·  aturan jam ke-{JAM8}</b>\n"
                         f"↳ Sudah {JAM8} jam belum kena {tp_nm} dan rugi {r_now:+.2f}R{_pmodal(r_now)}, harga {fp(px, t)}.\n"
@@ -2171,11 +2181,14 @@ def baris_sudah_pakai(sym, arah, t_sinyal):
 
 
 def teks_jeda(jd):
-    return (f"⏸️ <b>JEDA ENTRY {JEDA_JAM} JAM</b>: {jd['beruntun']} trade terakhir rugi berturut-turut.\n"
+    return (f"🚨 <b>REM DARURAT · JEDA ENTRY {JEDA_JAM} JAM</b>: {jd['beruntun']} trade terakhir rugi berturut-turut. "
+            "Pasar sedang tidak normal untuk aturan robot.\n"
             + (f"Dihitung dari catatan kamu sendiri: {teks_dihitung(jd)}. Catatan orang lain tidak ikut dihitung.\n"
                if jd.get("dihitung") else "")
             + f"👉 <b>Jangan buka posisi baru sampai {_jam_wib(jd['sampai'])}</b>. Posisi yang masih jalan tetap ikut SL dan TP.\n"
-            "Uji 2021-2026 (satu orang): jeda ini memangkas drawdown dari 27R ke 17R, total profit sama.")
+            "Uji 2021-2026 (satu orang): jeda ini memangkas drawdown dari 27R ke 17R, total profit sama. Uji v149 (hasil_g19.txt): "
+            "tetap mengirim sinyal peluang tertinggi selama jeda justru menaikkan drawdown 29R ke 39R, jadi jeda penuh tetap dipakai. "
+            "Kartu sinyal baru ditahan untuk kamu sampai jeda selesai.")
 
 
 def _jeda_pesan(d, now):
@@ -2464,7 +2477,7 @@ def pantau():
                     ev.append(("INFO", f"LIMIT kejauhan, harga sudah {jauh:.1f} ATR dari entry. Peluang terisi hari ini kecil."))
             if it["status"] == "TP1" and px:
                 ev += _trailing(it, h1, px)
-            # aturan jam ke-8: belum kena TP 20% -> rugi 0.5R atau lebih tutup, kalau belum SL naik ke -0.5R
+            # aturan jam ke-12: belum kena TP 20% -> rugi 0.5R atau lebih tutup, melawan SL naik ke -0.5R, searah SL tetap
             try:
                 j8 = aturan_jam8(it, px, now)
                 if j8:
@@ -2940,7 +2953,7 @@ def isi_bybit(it, jp=None, sl_now=None):
 
 
 def sampai_kapan(it, jp=None, sl_now=None):
-    """Jadwal posisi: jam ke-8, batas 36 jam, atau posisi aman sampai TP, SL berjalan, dan batas jalur. Return list baris."""
+    """Jadwal posisi: jam ke-12, batas 30 jam, atau posisi aman sampai TP, SL berjalan, dan batas jalur. Return list baris."""
     import qse_strat as ST
     t = it.get("tick") or tick_of(None, it["entry"])
     f = lambda v: fp(v, t)
@@ -2973,8 +2986,8 @@ def sampai_kapan(it, jp=None, sl_now=None):
     t8, bw = waktu_jam8(it), batas_waktu(it)
     alert = it.get("alert", [])
     if t8 and "jam8" not in alert and t8 > now and (not bw or t8 < bw):
-        rows.append(f"• <b>{_jam_wib(t8)}</b> (jam ke-{JAM8}): belum kena {tp_nm}, SL naik ke {f(sl_jam8(it))} (-0.5R). "
-                    "Rugi lebih dari itu, tutup market")
+        rows.append(f"• <b>{_jam_wib(t8)}</b> (jam ke-{JAM8}): belum kena {tp_nm} dan harga melawan, SL naik ke {f(sl_jam8(it))} (-0.5R). "
+                    "Rugi lebih dari itu, tutup market. Harga searah: SL tetap")
     elif "jam8" in alert:
         if abs(sl_now - sl_jam8(it)) <= t * 0.5:
             rows.append(f"• Jam ke-{JAM8} sudah lewat: SL sudah naik ke {f(sl_now)} (-0.5R)")
@@ -2993,7 +3006,7 @@ def sampai_kapan(it, jp=None, sl_now=None):
 
 def blok_posisi(no, it, px, r=None, pasar=None):
     """Satu posisi di /status: teknik dan nilainya, jam entry, untung rugi (R dan persen modal), level harga, angka siap
-    isi di Bybit dengan SL dan TP terbaru, sampai kapan (jam ke-8, batas 36 jam, posisi aman), analisa untuk posisi di luar
+    isi di Bybit dengan SL dan TP terbaru, sampai kapan (jam ke-12, batas 30 jam, posisi aman), analisa untuk posisi di luar
     jalur terbukti, dan risiko dekat (BTC 1 jam, berita 3 jam). Tiap bagian dipisah baris kosong."""
     import qse_strat as ST
     t = it.get("tick") or tick_of(None, it["entry"])
@@ -4139,7 +4152,7 @@ def kartu_sl(tidur=False):
             if bw and not sudah_aman(it):
                 t8 = waktu_jam8(it)
                 if t8 and "jam8" not in it.get("alert", []) and t8 > int(time.time() * 1000):
-                    rows_sl.append(f"🛡 <b>Jam ke-{JAM8} {_jam_wib(t8)}</b>: belum kena TP, SL naik ke {fp(sl_jam8(it), t)} (-0.5R)")
+                    rows_sl.append(f"🛡 <b>Jam ke-{JAM8} {_jam_wib(t8)}</b>: belum kena TP dan harga melawan, SL naik ke {fp(sl_jam8(it), t)} (-0.5R)")
                 rows_sl.append(f"⏳ <b>Batas waktu {_jam_wib(bw)}</b>: belum kena TP sampai saat itu, tutup market")
         except Exception as ex:
             print("[WARN] batas waktu kartu SL", ex)
@@ -4156,8 +4169,8 @@ def kartu_sl(tidur=False):
             rows.append(f"{ik} <b>{it['sym']} {it['arah']}</b>  ·  manual{siapa}\n" + "\n".join(rows_sl) + "\n"
                         f"<pre>{it['sym']} {it['arah']}\nSL  {fp(sl, t)}\nTP1 {fp(it['tp1'], t)}\nTP2 {fp(it['tp2'], t)}</pre>\n"
                         "Pastikan SL terpasang di Bybit.")
-    kepala = ("😴 <b>QSE v148 | SIAP TIDUR</b>\nCek tiap posisi di bawah, samakan di Bybit, lalu tinggal tidur."
-              if tidur else "📌 <b>QSE v148 | SL TERBARU POSISI KAMU</b>\nDisematkan dan diperbarui tiap candle 4J tutup.")
+    kepala = ("😴 <b>QSE v149 | SIAP TIDUR</b>\nCek tiap posisi di bawah, samakan di Bybit, lalu tinggal tidur."
+              if tidur else "📌 <b>QSE v149 | SL TERBARU POSISI KAMU</b>\nDisematkan dan diperbarui tiap candle 4J tutup.")
     kaki = ("Kenapa aman: semua SL tersimpan di server Bybit, jalan walau HP mati. Uji 2021-2026: Trailing Stop Bybit "
             "+2474R, geser manual tiap 4J +1933R, geser terlewat saat tidur +2102R. Tidur tidak merugikan.\n"
             "Sinyal jam 23:00 dan 03:00 WIB masih bisa kamu ikuti pagi di laporan 07:05, selama harga masih dekat entry robot."
@@ -4281,7 +4294,7 @@ def sinyal_jalur(jam=False):
                          + "".join("\n" + z for z in (baris_sudah_pakai(it["sym"], it["arah"], it.get("t")) if uid_aktif() is None else []))
                          + "".join(f"\nℹ️ <b>{TG_e(str(nama_pengguna(u)))}</b> sudah memegang {it['sym']}, sinyal ini untuk yang lain"
                                    for u, ss in pegang_per.items() if it["sym"] in ss)))
-    kepala = "📡 <b>QSE v148 | SINYAL JALUR TERBUKTI SEKARANG</b>"
+    kepala = "📡 <b>QSE v149 | SINYAL JALUR TERBUKTI SEKARANG</b>"
     # order Tembus Trendline yang masih menunggu (STOP atau LIMIT, berlaku 24 jam): ikut ditampilkan supaya sama dengan cek per jam
     tunggu = []
     jauh_tt = 0
@@ -4323,7 +4336,7 @@ def sinyal_jalur(jam=False):
         blok_tunggu += (f"\n\n⛔ {n_penuh} sinyal {'/'.join(sorted(penuh))} disembunyikan: posisi berisiko searah kamu sudah maks 4. "
                         "Tunggu satu posisi aman atau selesai.")
     if n_otak and not jam:
-        blok_tunggu += (f"\n\n🧠 {n_otak} sinyal disaring otak robot (peluang untung paling rendah atau cocok celah live). "
+        blok_tunggu += (f"\n\n🧠 {n_otak} sinyal ditahan otak robot (profil koin belum lulus, peluang untung paling rendah, atau cocok celah live). "
                         "Tetap dicatat robot untuk penilaian mingguan.")
     kartu = [f"{ST.medali(i)} <b>PRIORITAS {i}</b>  ·  {ST.label_prioritas(p)}  ·  PF jalur {p[1]:.2f}\n{x}"
              for i, (p, _, x) in enumerate(kartu, 1)]

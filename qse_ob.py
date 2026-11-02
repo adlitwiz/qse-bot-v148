@@ -1,4 +1,4 @@
-"""QSE v148 - JALUR ORDER BLOCK + VOLUME (koin unggulan), candle 4J. Juga analisa volume saat kena SL.
+"""QSE v149 - JALUR ORDER BLOCK + VOLUME (koin unggulan), candle 4J. Juga analisa volume saat kena SL.
 Diuji dari 2 script TradingView kamu (Order Block Finder, LuxAlgo MSB + OB, LuxAlgo SMC BOS/CHoCH + OB, SnR swing):
 111 koin perp, Jul 2020 - Okt 2026, biaya 0.15%. Aturan dipilih di data 2020-2023, diuji ulang di 2024-2026.
   Gagal: entry limit saat harga retest OB (semua versi PF < 1), SMC, MSB, SnR (PF uji 0.9 - 1.12).
@@ -286,6 +286,13 @@ def _jalankan(baru_ok=True):
         if mp is not None and len(mp) - len(mm) <= -2:
             print(f"[ORDERBLOCK] {sym} dilewati: mutu rendah ({', '.join(mm)})")
             continue
+        try:
+            why = ST.pump_tolak(df, "LONG")          # v149: LONG sesudah candle 4J naik 10% atau lebih
+        except Exception:
+            why = ""
+        if why:
+            print(f"[ORDERBLOCK] {sym} dilewati: {why}")
+            continue
         t = tick.get(sym, 0.0001)
         it = dict(sym=sym, arah="LONG", entry=px, sl=sg["sl"], tp=px + TP_R * risk, risk=risk, bar=0, t=now, mutu=sk, mutu_plus=mp,
                   last=sg["ts"], close=px, tick=t, vp=sg["vp"])
@@ -377,7 +384,7 @@ def kartu(no, it, sg):
         "🛠 <b>Cara</b>",
         f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)} ({pc:.1f}%), tepat di bawah order block",
         f"2. TP {TG.fp(it['tp'], t)} (4R) untuk sisa posisi. TP sebagian 20% di +0.5R (baris 💰), setelah kena SL ke entry",
-        "3. Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup market. Robot mengabari. "
+        "3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "
         "Sudah aman tapi 10 hari belum kena SL atau TP: "
         "tutup manual",
         "4. Catat dengan /entry supaya robot mengingatkan dan menganalisa volume kalau kena SL",

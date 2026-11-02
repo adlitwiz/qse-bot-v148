@@ -1,4 +1,4 @@
-"""QSE v148 - kirim laporan ke Telegram (token & chat id dari environment / GitHub Secrets)."""
+"""QSE v149 - kirim laporan ke Telegram (token & chat id dari environment / GitHub Secrets)."""
 import html
 import math
 import os

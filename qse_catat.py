@@ -1,4 +1,4 @@
-"""QSE v148 - CATATAN HASIL LIVE jalur tambahan: momentum, news searah engine, news mandiri.
+"""QSE v149 - CATATAN HASIL LIVE jalur tambahan: momentum, news searah engine, news mandiri.
 Tiap saran dicatat saat dikirim, lalu dicek tiap 15 menit dengan candle 15 menit Bybit memakai aturan yang sama
 dengan backtest: LIMIT harus tersentuh dalam masa berlaku, TP1 tutup separuh lalu SL ke entry, TP2 selesai,
 satu candle kena SL dan TP dihitung SL dulu, posisi ditutup paksa setelah 24 jam. Biaya 0.08R per trade.

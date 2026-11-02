@@ -1,4 +1,4 @@
-"""QSE v148 - semua seri indikator dan bahan pola, urutan mengikuti Pine baris 180-800."""
+"""QSE v149 - semua seri indikator dan bahan pola, urutan mengikuti Pine baris 180-800."""
 import numpy as np
 import pandas as pd
 import qse_ta as T

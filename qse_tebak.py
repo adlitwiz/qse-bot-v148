@@ -1,4 +1,4 @@
-"""QSE v148 - tebakan arah BTC 24 jam dan perkiraan rentang gerak. Dipakai info pasar 06, 12, 18, 00 WIB, /cek BTC,
+"""QSE v149 - tebakan arah BTC 24 jam dan perkiraan rentang gerak. Dipakai info pasar 06, 12, 18, 00 WIB, /cek BTC,
 laporan arah harian, dan baris BTC di kartu sinyal. Model di arah_model.json (riset/arah_harian).
 
 Arah: regresi logistik 6 fitur. Koefisiennya stabil di semua uji maju 2019-2026 (tanda tidak pernah berbalik):

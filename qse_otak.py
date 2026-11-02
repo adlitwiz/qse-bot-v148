@@ -163,6 +163,7 @@ def tandai(it, kunci, df, btc=None):
     try:
         if kunci not in JALUR_SKOR:
             return it
+        tandai_profil(it, kunci)          # v149: hanya jalur yang punya rekam jejak uji (GZH tidak)
         if btc is None:
             import qse_strat as ST
             btc = ST._k4("BTCUSDT", 300)
@@ -180,7 +181,9 @@ def tandai(it, kunci, df, btc=None):
         s["riwayat"] = (s.get("riwayat", []) + [round(p, 4)])[-400:]
         on = s.get("aktif", True) and os.environ.get("QSE_OTAK", "1") == "1"
         cl = _cocok_celah(f, it["arah"], kunci, [c for c in s.get("celah", []) if c.get("sampai_t", 0) > time.time()])
-        if on and p < bt:
+        if it.get("otak_saring"):
+            pass                                    # sudah ditahan profil koin
+        elif on and p < bt:
             it["otak_saring"] = True
             it["otak_why"] = f"peluang {p * 100:.0f}% di bawah batas {bt * 100:.0f}%"
         elif on and cl:
@@ -196,6 +199,80 @@ def tandai(it, kunci, df, btc=None):
 
 def tersaring(it):
     return bool(it.get("otak_saring"))
+
+
+# ---------------- profil per koin (v149, riset/upgrade/hasil_g19c.txt) ----------------
+# Gerbang walk-forward: koin x jalur x arah baru boleh dikirim kalau SUDAH punya minimal 10 sinyal selesai (uji 2021-2026 + catatan
+# live robot, termasuk yang disaring) dengan PF >= 1.3. Kombinasi baru atau yang jelek ditahan sampai terbukti.
+# Uji 2023-2026, maks 4 posisi jalan: semua sinyal PF 1.23 -> 1.35, +185R -> +203R, DD 31R -> 26R. NILAI 8+ PF 1.30 -> 1.55,
+# +185R -> +216R, DD 27R -> 19R, rugi beruntun terpanjang 12 -> 9. Batas tetangga (n 8-20, PF 1.0-2.0) semua juga membaik.
+PROFIL_F = os.path.join(DIR, "profil_koin.json")
+PROFIL_N, PROFIL_PF = 10, 1.3
+T2024 = 1704067200000
+_P = {}
+
+
+def _profil_data():
+    if "d" not in _P:
+        try:
+            with open(PROFIL_F) as f:
+                _P["d"] = json.load(f)
+        except Exception as ex:
+            print("[WARN] profil koin", ex)
+            _P["d"] = dict(akhir_ms=0, sinyal={})
+    return _P["d"]
+
+
+def _nama_uji(sym):
+    """Nama simbol di data uji (Binance): 1000PEPEUSDT -> PEPEUSDT."""
+    out = [sym]
+    for p in ("10000", "1000", "1M"):
+        if sym.startswith(p):
+            out.append(sym[len(p):])
+    return out
+
+
+def profil(sym, jalur, arah, live=None):
+    """Rekam jejak koin x jalur x arah: uji 2021-2026 + catatan live robot sesudah data uji. Return dict."""
+    d = _profil_data()
+    rows = []
+    for nm in _nama_uji(sym):
+        rows = d["sinyal"].get(f"{nm}|{jalur}|{arah}") or []
+        if rows:
+            break
+    rows = [tuple(x) for x in rows]
+    try:
+        live = _ledger() if live is None else live
+        rows += [(int(float(c.get("selesai") or c["t"]) * 1000), float(c["R"])) for c in live
+                 if c.get("sym") == sym and c.get("jalur") == jalur and c.get("arah") == arah
+                 and float(c.get("selesai") or c["t"]) * 1000 > d.get("akhir_ms", 0)]
+    except Exception as ex:
+        print("[WARN] profil live", ex)
+    r = np.array([x[1] for x in rows], float)
+    t = np.array([x[0] for x in rows], np.int64)
+    r24 = r[t >= T2024]
+    pf = _pf(r) if len(r) else 0.0
+    lulus = len(r) >= PROFIL_N and pf >= PROFIL_PF
+    why = "" if lulus else (f"baru {len(r)} sinyal tercatat (butuh {PROFIL_N})" if len(r) < PROFIL_N else f"PF rekam jejak {pf:.2f} di bawah {PROFIL_PF}")
+    return dict(n=len(r), pf=round(pf, 2), wr=round(float((r > 0).mean() * 100) if len(r) else 0.0, 1), n24=len(r24),
+                pf24=round(_pf(r24), 2) if len(r24) else 0.0, wr24=round(float((r24 > 0).mean() * 100) if len(r24) else 0.0, 1),
+                lulus=lulus, alasan=why)
+
+
+def tandai_profil(it, kunci):
+    """Isi it['profil'] dan tahan sinyal yang profil koinnya belum lulus. Gagal = tidak menahan."""
+    try:
+        if os.environ.get("QSE_PROFIL", "1") != "1":
+            return it
+        pr = profil(it["sym"], kunci, it["arah"])
+        it["profil"] = pr
+        if not pr["lulus"] and not it.get("otak_saring"):
+            it["otak_saring"] = True
+            it["otak_why"] = "profil koin: " + pr["alasan"]
+            print(f"[PROFIL] {kunci} {it['sym']} {it['arah']} ditahan: {pr['alasan']}")
+    except Exception as ex:
+        print("[WARN] tandai profil", it.get("sym"), ex)
+    return it
 
 
 # ---------------- evaluasi mingguan: penjaga dan celah ----------------
@@ -260,7 +337,7 @@ def evaluasi(simpan=True, now=None):
     rows = ["🧠 <b>OTAK ROBOT</b>"]
     # 1. penjaga penyaring
     dinilai = [c for c in tr if c.get("otak") is not None]
-    sar = [float(c["R"]) for c in dinilai if c.get("otak_saring") and not str(c.get("otak_why", "")).startswith("celah")]
+    sar = [float(c["R"]) for c in dinilai if c.get("otak_saring") and not str(c.get("otak_why", "")).startswith(("celah", "profil"))]
     kir = [float(c["R"]) for c in dinilai if not c.get("otak_saring")]
     on = s.get("aktif", True)
     if len(sar) >= 30 and kir:

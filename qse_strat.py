@@ -1,4 +1,4 @@
-"""QSE v148 - JALUR STRATEGI TAMBAHAN yang lolos uji 14 strategi umum (candle 4J, 111 koin perp, Jul 2020 - Okt 2026).
+"""QSE v149 - JALUR STRATEGI TAMBAHAN yang lolos uji 14 strategi umum (candle 4J, 111 koin perp, Jul 2020 - Okt 2026).
 Aturan dipilih dari data 2020-2023, lalu diuji di 2024-2026 tanpa diubah. Biaya 0.15%. Maks 8 posisi per jalur.
 Yang lolos dan dipasang:
   ema_short : EMA 20 memotong EMA 50 ke bawah, close di bawah EMA 200, BTC 4J di bawah EMA 50. Hanya SHORT.
@@ -360,14 +360,39 @@ def mutu(df, arah):
     return len(plus), plus, minus
 
 
+DUMP_SATU = 0.12
+PUMP_SATU = 0.10
+
+
 def pump_tolak(df, arah):
     """SHORT pada koin yang naik lebih dari 30% dalam 30 hari (180 candle 4J) dilewati. Uji 2021-2026 semua jalur:
     SHORT seperti ini PF 0.80 (2021-23) dan 0.79 (2024-26). Dibuang: total naik +28R dan +17R, PF naik di dua periode.
     Return teks alasan atau ''."""
     try:
-        if arah != "SHORT" or df is None or len(df) < 181:
+        if df is None or len(df) < 2:
+            return ""
+        if arah == "LONG" and os.environ.get("QSE_AKHIR_PEKAN", "1") == "1" and time.gmtime(time.time()).tm_wday in (5, 6):
+            # v149 (riset/upgrade/hasil_g22.txt, 383 koin, universe 150 koin likuid): LONG yang masuk Sabtu-Minggu UTC
+            # (Sabtu 07:00 sampai Senin 06:59 WIB) rugi di 2024 (-0.07R), 2025 (-0.14R), dipilih dari dua tahun itu lalu terbukti lagi
+            # di 2026 (-0.11R) yang tidak ikut memilih. Ditahan: NILAI 8+ 2025 PF 1.26 -> 1.39, 2026 PF 1.34 -> 1.39.
+            return "LONG akhir pekan (Sabtu-Minggu UTC): rugi di 2024, 2025, dan 2026"
+        if arah == "LONG":
+            # v149 (2 Nov 2026, riset/upgrade/ringkasan.txt nomor 29): LONG tepat sesudah candle 4J sinyal naik 10% atau lebih ditahan.
+            # 2021-23 untung besar (PF 4.58), tapi sejak 2024 rugi: 2024 PF 0.79, 2025-26 PF 0.87, yang lolos profil koin PF 0.84.
+            o_ = float(df["open"].iloc[-1])
+            naik = (float(df["close"].iloc[-1]) - o_) / o_ if o_ > 0 else 0.0
+            return (f"candle 4J sinyal sudah terbang {naik * 100:.0f}%, LONG di pucuk (sejak 2024 PF 0.79-0.87)"
+                    if naik >= PUMP_SATU else "")
+        if arah != "SHORT" or len(df) < 181:
             return ""
         c = df["close"].astype(float)
+        # v149 (2 Nov 2026, kasus UNI -13% satu candle): SHORT tepat sesudah candle 4J sinyal anjlok 12% atau lebih dilewati.
+        # Uji 2021-2026 semua jalur: 94 sinyal seperti ini rata -0.18R (2021-23 -0.32R, 2024-26 -0.12R), rugi di dua periode.
+        # Dibuang: NILAI 8+ total +298R -> +310R, PF 1.37 -> 1.38, semua sinyal tetap (PF 1.24). Ambang 10% dan 11% tidak konsisten.
+        o_ = float(df["open"].iloc[-1])
+        dump = (o_ - float(c.iloc[-1])) / o_ if o_ > 0 else 0.0
+        if dump >= DUMP_SATU:
+            return f"candle 4J sinyal sudah anjlok {dump * 100:.0f}%, SHORT di dasar dump (uji 2021-2026 rata -0.18R)"
         r30 = float(c.iloc[-1]) / float(c.iloc[-181]) - 1
         return f"koin sudah naik {r30 * 100:.0f}% dalam 30 hari, SHORT melawan pump" if r30 > 0.30 else ""
     except Exception:
@@ -434,7 +459,7 @@ def batas_masuk_teks(it, k, fmt=None):
     out = [f"🎯 Entry valid {fmt(b[0], t)} sampai {fmt(b[1], t)}, berlaku sampai {jam} WIB. Lewat itu, lewati"]
     lm = LAMA_JALUR.get(k)
     if lm:
-        out.append(f"⏳ Uji 2021-2026: {lm[0]}% kena TP 20% dalam 36 jam, biasanya ±{lm[1]} jam setelah entry. "
+        out.append(f"⏳ Uji 2021-2026: {lm[0]}% kena TP 20% dalam 36 jam (aturan lama), biasanya ±{lm[1]} jam setelah entry. "
                    f"Yang sudah aman jalan ±{_hari(lm[2])}")
     return out
 
@@ -489,14 +514,14 @@ def rencana_tp(entry, sl, arah, tick, tp=None, jarak=None, fmt=None, uji=True, w
         import qse_modal as MD
         jw = MD.waktu_jam()
     except Exception:
-        jw = 36.0
+        jw = 30.0
     uj = UJI_WAKTU.get(round(jw))
     rows.append(f"🛑 <b>SL: {fmt(sl, tick)} (-{pc(sl):.1f}%)</b>"
                 + (f"  ·  uji 2021-2026: menang {uj[0]}%, kena SL penuh {uj[1]}%" if (uji and uj) else ""))
     if waktu:
         sl8 = entry - 0.5 * risk if arah == "LONG" else entry + 0.5 * risk
-        rows.append(f"🛡 <b>Jam ke-8 belum kena TP {int(TPS_PORSI * 100)}%</b>: SL naik ke {fmt(sl8, tick)} (-{pc(sl8):.1f}%, -0.5R). "
-                    f"Sudah rugi lebih dari itu, tutup market")
+        rows.append(f"🛡 <b>Jam ke-12 belum kena TP {int(TPS_PORSI * 100)}% dan harga melawan</b>: SL naik ke {fmt(sl8, tick)} (-{pc(sl8):.1f}%, -0.5R). "
+                    f"Sudah rugi lebih dari itu, tutup market. Harga searah: SL tetap")
     if jw > 0 and waktu:
         rows.append(f"⏳ <b>Batas {jw:g} jam</b>: belum kena TP {int(TPS_PORSI * 100)}%, tutup market. Sudah kena, posisi aman "
                     f"dan tidak makan slot")
@@ -509,7 +534,9 @@ def rencana_tp(entry, sl, arah, tick, tp=None, jarak=None, fmt=None, uji=True, w
 
 # Per trade semua sinyal live 2021-2026 (TP sebagian 20% di +0.5R, jam ke-8 SL ke -0.5R, batas 36 jam): menang 62%,
 # kena SL penuh 3%, PF 1.86. Tanpa jam ke-8: menang 68%, SL penuh 17%, PF 1.82. riset/porto/pf_slpenuh2.py
-UJI_WAKTU = {36: (62, 3)}
+# v149 per trade semua sinyal 2021-2026 data Binance (riset/upgrade/run_g13.py): jam 12 dinamis + 30 jam menang 61%, SL penuh 11%, PF 1.36
+# (aturan lama di data yang sama: menang 58%, SL penuh 6%, PF 1.34)
+UJI_WAKTU = {30: (61, 11), 36: (62, 3)}
 
 
 def tp_cepat_teks(it, fmt=None, k=None, waktu=True):
@@ -1043,7 +1070,7 @@ def kartu(k, no, it, a):
         "🛠 <b>Cara</b>",
         *([f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)}, TP {TG.fp(it['tp'], t)} ({cfg['tp_r']:g}R) untuk sisa posisi",
             f"2. Pasang juga TP sebagian 20% di +0.5R (lihat baris 💰). Setelah kena, SL ke entry. Selain itu jangan geser SL",
-            f"3. Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup market. Robot mengabari. Sudah aman tapi "
+            f"3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. Sudah aman tapi "
             f"{it.get('maks_bar', MAKS_BAR) // 6} "
             f"hari belum kena SL atau TP: tutup manual",
             "4. Catat dengan /entry supaya ada pengingat dan analisa volume kalau kena SL"] if it.get("tp") else
@@ -1052,7 +1079,7 @@ def kartu(k, no, it, a):
            "2. Pasang Trailing Stop Bybit, isi seperti blok di bawah, atau ikuti pesan GESER SL",
            *([f"   Setelah untung 2R ({TG.fp(it['entry'] + 2 * it['risk'] if L else it['entry'] - 2 * it['risk'], t)}), ganti jarak "
               f"Trailing Stop jadi 5% harga. Robot mengingatkan lewat SL TERBARU"] if it.get("trail_pct_2r") else []),
-           "3. Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup market. Robot mengabari. "
+           "3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "
            "Sudah aman tapi 10 hari belum kena SL: tutup manual",
            "4. Catat dengan /entry supaya pesan GESER SL dan analisa volume SL dikirim"]),
         *([SY.isi_trailing(jarak, it["sl"], t)] if not it.get("tp") else []),

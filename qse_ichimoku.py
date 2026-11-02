@@ -1,4 +1,4 @@
-"""QSE v148 - JALUR ICHIMOKU TREN (TK cross di luar awan + trailing stop), candle 4J.
+"""QSE v149 - JALUR ICHIMOKU TREN (TK cross di luar awan + trailing stop), candle 4J.
 Backtest entry open candle berikutnya, biaya 0.15% pulang pergi:
 30 koin awal: 4843 trade, WR 38%, PF 1.33. 82 koin baru yang tidak dipakai memilih aturan: 13730 trade, PF 1.17.
 Gabungan 112 koin: PF 1.21, SHORT PF 1.30, LONG PF 1.10. Filter BTC 1J, ramalan BTC 4J, tren harian,
@@ -392,7 +392,7 @@ def _jalankan(baru_ok=True):
             f"(lihat baris 💰), setelah kena SL ke entry. Sisanya tanpa TP",
             "2. Tiap candle 4J tutup, robot kirim pesan GESER SL. Ubah SL di Bybit ke angka di pesan itu",
             "3. SL hanya maju searah profit, tidak pernah mundur. Saat harga balik menyentuh SL, posisi tutup sendiri dengan profit yang sudah terkunci",
-            "4. Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup market. Robot mengabari. "
+            "4. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "
             "Sudah aman tapi 10 hari belum kena SL: robot "
             "mengingatkan untuk tutup manual",
             f"5. Catat dengan /entry supaya pesan GESER SL dikirim. Tanpa /entry, robot tidak mengirim pesan lanjutan untuk koin ini",

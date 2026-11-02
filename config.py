@@ -1,4 +1,4 @@
-"""QSE v148 Bot - semua pengaturan. Nilai engine = default input() Pine v148 (jangan diubah bila ingin sama dengan DASBOR)."""
+"""QSE v149 Bot - semua pengaturan. Nilai engine = default input() Pine v148 (jangan diubah bila ingin sama dengan DASBOR)."""
 import os
 
 

@@ -1,4 +1,4 @@
-"""QSE v148 - ambil data Bybit publik (tanpa API key): daftar perpetual, ticker, candle 4H/1H/D/W dengan paging."""
+"""QSE v149 - ambil data Bybit publik (tanpa API key): daftar perpetual, ticker, candle 4H/1H/D/W dengan paging."""
 import time
 import threading
 import requests

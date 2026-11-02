@@ -50,7 +50,7 @@ def conv(e):
     t = ast.fix_missing_locations(T().visit(t))
     return ast.unparse(t.body)
 
-out = ['"""QSE v148 - aturan 90 pola, DIHASILKAN OTOMATIS dari QSE_v148_DASBOR.txt (jangan edit manual)."""', ""]
+out = ['"""QSE v149 - aturan 90 pola, DIHASILKAN OTOMATIS dari QSE_v148_DASBOR.txt (jangan edit manual)."""', ""]
 for nmx in ["nm", "nrA"]:
     it = [x.strip('"') for x in split_top(grab(nmx))]
     assert len(it) == 90, (nmx, len(it))

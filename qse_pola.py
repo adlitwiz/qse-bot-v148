@@ -1,4 +1,4 @@
-"""QSE v148 - CHART PATTERN, POLA CANDLE, DAN STATISTIK EKOR CANDLE.
+"""QSE v149 - CHART PATTERN, POLA CANDLE, DAN STATISTIK EKOR CANDLE.
 Chart pattern dari pivot 4J: channel naik/turun, range, segitiga (netral, naik, turun), wedge naik/turun,
 flag dan pennant, double top/bottom, head and shoulders dan kebalikannya.
 Backtest per koin: tiap kemunculan pola yang sama di sejarah koin, apakah harga lalu bergerak 1,5 ATR searah pola

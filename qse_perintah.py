@@ -1,4 +1,4 @@
-"""QSE v148 - semua perintah Telegram. Dipakai qse_listener.py (balasan detik) dan main.py (cadangan)."""
+"""QSE v149 - semua perintah Telegram. Dipakai qse_listener.py (balasan detik) dan main.py (cadangan)."""
 import fcntl
 import json
 import os
@@ -60,7 +60,7 @@ def mulai_laporan4j():
             "Hasilnya terkirim dalam 10 sampai 20 menit dan otomatis disematkan.")
 
 
-BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
+BANTUAN_SEMUA = ("❓ <b>QSE v149 | SEMUA PERINTAH</b>\n\n"
            "<b>Catat entry</b>\n"
            "/entry long market AUSDT = entry MARKET di harga sekarang\n"
            "/entry long market AUSDT sl 0.99 tp1 1.05 tp2 1.08 = TP dan SL sendiri. Tanpa itu robot pakai sinyal terakhir koin ini\n"
@@ -82,7 +82,7 @@ BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
            "/batal AUSDT = batalkan order yang belum terisi\n\n"
            "<b>Batas posisi dan risiko</b> (otomatis, tanpa pengaturan)\n"
            "Dikunci ke hasil uji terbaik: maks 5 posisi berisiko + 2 posisi aman per orang, rugi kalau semua SL kena maks 5R. "
-           "Jam ke-8 belum kena TP 20%: SL naik ke -0.5R. 36 jam belum kena: tutup. 3 rugi beruntun: jeda "
+           "Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (searah: SL tetap). 30 jam belum kena: tutup. 3 rugi beruntun: jeda "
            "entry 24 jam (dihitung dari catatan kamu sendiri). Model arah BTC dilatih ulang sendiri tiap Senin 05:30 WIB\n"
            "/modal = lihat slot, risiko SL, dan sisa waktu tiap posisi kamu\n"
            "/modal 155 1 5 = isi modal dolar, risiko persen per trade, leverage. Kartu sinyal lalu menampilkan posisi dan margin dalam dolar\n"
@@ -123,10 +123,10 @@ BANTUAN_SEMUA = ("❓ <b>QSE v148 | SEMUA PERINTAH</b>\n\n"
            "⚠️ Waspada di kartu = BTC 1 jam melawan atau berita dekat, lot sudah dipotong setengah")
 
 
-BANTUAN = ("❓ <b>QSE v148 | BANTUAN</b>\n\n"
+BANTUAN = ("❓ <b>QSE v149 | BANTUAN</b>\n\n"
            "Robot berjalan otomatis: scan 4 jam dan per jam, sinyal semua jalur, pemantauan posisi tiap menit, "
            "peringatan dini, gabung posisi, berita, dan arah pasar tiap pagi jam 07:05 WIB. "
-           "Aturan jaga modal juga otomatis: jam ke-8 SL naik ke -0.5R, batas 36 jam, jeda 24 jam setelah 3 rugi beruntun, "
+           "Aturan jaga modal juga otomatis: jam ke-12 SL naik ke -0.5R kalau harga melawan, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun, "
            "dan model arah BTC dilatih ulang sendiri tiap Senin. Kalender berita 7 hari (FOMC, CPI, bank sentral, earnings, "
            "token unlock) dikirim tiap Senin 06:10 WIB, dan LONG baru ditahan 7 hari sebelum token unlock 1% atau lebih. "
            "Perintah di bawah hanya untuk hal yang perlu kamu putuskan sendiri.\n\n"
@@ -239,7 +239,7 @@ def balas(cmd, args, dari_main=False):
     if cmd == "/sl":
         return SY.tutup(args, "cut loss")
     if cmd == "/tespin":
-        ids = TG.send(["📌 <b>QSE v148 | TES PIN</b>\nKalau pesan ini tersemat, izin pin bot sudah benar."]) or []
+        ids = TG.send(["📌 <b>QSE v149 | TES PIN</b>\nKalau pesan ini tersemat, izin pin bot sudah benar."]) or []
         if not ids:
             return "Pesan tes gagal terkirim."
         err = TG.pin(ids[0])
@@ -341,7 +341,7 @@ def balas(cmd, args, dari_main=False):
         return "\n".join(rows)
     if cmd in ("/tidur", "/sl_terbaru", "/slterbaru"):
         teks, _ = SY.kartu_sl(tidur=cmd == "/tidur")
-        return teks or ("😴 <b>QSE v148 | SIAP TIDUR</b>\nTidak ada posisi jalan. Tidak ada yang perlu diatur. Sinyal jam 23:00 dan "
+        return teks or ("😴 <b>QSE v149 | SIAP TIDUR</b>\nTidak ada posisi jalan. Tidak ada yang perlu diatur. Sinyal jam 23:00 dan "
                         "03:00 WIB masih bisa kamu ikuti pagi di laporan 07:05, selama harga masih dekat entry robot.")
     if cmd == "/status":
         try:
@@ -350,7 +350,7 @@ def balas(cmd, args, dari_main=False):
         except Exception:
             s4 = None
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
-        return ("📊 <b>QSE v148 | STATUS</b>" + (f"  ·  👤 {SY.nama_pengguna(SY.uid_aktif())}" if SY.uid_aktif() else "")
+        return ("📊 <b>QSE v149 | STATUS</b>" + (f"  ·  👤 {SY.nama_pengguna(SY.uid_aktif())}" if SY.uid_aktif() else "")
                 + "\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
                 + ("" if SY._peng().get("pemilik") else "\n\nℹ️ Ketik /milikku supaya catatan trade lama jadi milik kamu. "
                    "Trade orang lain di grup tercatat terpisah."))
@@ -382,7 +382,7 @@ def proses(cmds, dari_main=False):
                     "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/mode": "🎚️", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
-            isi = isi if "QSE v148 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v148 | {cmd.upper()[1:]}</b>\n\n{isi}"
+            isi = isi if "QSE v149 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v149 | {cmd.upper()[1:]}</b>\n\n{isi}"
             TG.send(isi.split("\n\n"))
             n += 1
     return n

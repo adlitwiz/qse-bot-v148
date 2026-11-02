@@ -1,4 +1,4 @@
-"""QSE v148 - BATAS POSISI DAN RISIKO, per orang di grup (Rifqi dan Adli punya batas sendiri dari entry masing-masing).
+"""QSE v149 - BATAS POSISI DAN RISIKO, per orang di grup (Rifqi dan Adli punya batas sendiri dari entry masing-masing).
 
 NETRAL (27 Okt 2026, permintaan user): aturan dikunci ke hasil uji terbaik. Semua angka dalam R dan persen modal di risiko
 standar 0.25% per trade (1R = 0.25% modal), jadi berlaku untuk modal berapa pun.
@@ -50,14 +50,17 @@ PROFIL_FILE = os.path.join(STATE_DIR, "profil.json")
 PROFIL_PEMILIK = dict(modal=155.0, risiko=1.0, lev=5)        # bawaan pemilik catatan, ubah dengan /modal
 RISIKO_MAKS_PROFIL = 5.0                                      # persen modal per trade, batas atas yang diterima /modal
 RISK_PCT = 0.25          # persen modal per 1R (saran risiko per trade, lot 1x)
-MAKS_POSISI = 5          # posisi berisiko per orang
-MAKS_AMAN = 2            # posisi aman tambahan (SL sudah di entry atau untung)
+# v149 (permintaan user 2 Nov 2026): maks 4 posisi jalan per orang, termasuk yang sudah aman. Uji 2023-2026 (hasil_g19c.txt):
+# total turun dari +285R ke +185R (sinyal yang tidak bisa diambil), DD 35R -> 31R, rugi beruntun terpanjang 11 -> 9.
+# Digabung profil koin (qse_otak.profil) total kembali +203R dengan PF 1.35 dan DD 26R.
+MAKS_POSISI = 4          # posisi berisiko per orang
+MAKS_AMAN = 0            # posisi aman tambahan (SL sudah di entry atau untung): v149 tidak ada, semua posisi jalan dihitung
 MAKS_SEARAH = 4          # posisi berisiko searah (LONG atau SHORT) per orang. Uji walk-forward 2023-2026 dengan otak + rem harian
                          # (riset/upgrade/hasil_g10c.txt): sinyal NILAI 8 ke atas DD 56R ke 45R, total +250R ke +270R, PF 1.30 ke 1.33,
                          # DD per tahun turun atau sama. Semua sinyal netral (DD 43 ke 42R, total +264 ke +266R). Maks 3: total turun.
 RISIKO_BUKA = 5.0        # R, rugi kalau semua SL kena
 REM_HARIAN = 3.0         # R
-WAKTU_JAM = 36.0         # batas waktu posisi yang belum kena TP 20%
+WAKTU_JAM = 30.0         # batas waktu posisi yang belum kena TP 20% (v149: 36 -> 30 jam, riset/upgrade/hasil_g13c.txt)
 JAM = 3600 * 1000
 
 
@@ -178,7 +181,7 @@ def lihat():
 
 def teks_aturan():
     """Satu baris aturan otomatis, dipakai di pesan sinyal."""
-    return (f"⏳ <b>Aturan otomatis</b>: jam ke-8 belum kena TP 20%, SL naik ke -0.5R. {WAKTU_JAM:g} jam belum kena, tutup. "
+    return (f"⏳ <b>Aturan otomatis</b>: jam ke-12 belum kena TP 20% dan harga melawan, SL naik ke -0.5R (searah: SL tetap). {WAKTU_JAM:g} jam belum kena, tutup. "
             f"3 rugi beruntun, jeda entry 24 jam. Maks {MAKS_SEARAH} posisi berisiko searah. "
             f"Posisi yang SL-nya sudah di entry tidak makan slot (maks {MAKS_AMAN})")
 
@@ -251,7 +254,7 @@ def perintah(args=None):
             f"1R = risiko {rp:g}% modal per trade (lot 1x). Maksimal {MAKS_POSISI} posisi berisiko + {MAKS_AMAN} posisi aman. "
             f"Rugi kalau semua SL kena maksimal {RISIKO_BUKA:g}R = {pmodal(RISIKO_BUKA, st.get('uid')):.2f}% modal. "
             f"Rem harian -{REM_HARIAN:g}R = -{pmodal(REM_HARIAN, st.get('uid')):.2f}% modal",
-            f"🛡 <b>Jam ke-8</b>: belum kena TP 20%, SL naik ke -0.5R. Sudah rugi lebih dari itu, tutup market",
+            f"🛡 <b>Jam ke-12</b>: belum kena TP 20% dan harga melawan, SL naik ke -0.5R. Sudah rugi lebih dari itu, tutup market. Harga searah: SL tetap",
             f"⏳ <b>Batas waktu {WAKTU_JAM:g} jam</b>: posisi yang belum kena TP 20% sejak terisi, tutup market. "
             f"Posisi aman (SL sudah di entry) tidak makan slot berisiko",
             "⏸️ <b>Jeda</b>: 3 trade rugi berturut-turut, berhenti entry baru 24 jam",

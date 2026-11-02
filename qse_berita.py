@@ -1,4 +1,4 @@
-"""QSE v148 - PENJAGA BERITA. Tidak mengubah vonis teknikal, hanya menahan atau memperingatkan.
+"""QSE v149 - PENJAGA BERITA. Tidak mengubah vonis teknikal, hanya menahan atau memperingatkan.
   1. Kalender ekonomi: berita besar USD berdampak tinggi (CPI, FOMC, NFP, PCE, dan sejenisnya), ditambah jadwal resmi
      FOMC, CPI, NFP, ECB, BoJ, BoC sampai Desember 2027 sebagai cadangan, dan kalender 7 hari semua jenis berita
      (bank sentral, earnings saham besar, token unlock) dengan tanda dampak hasil uji (27 Okt 2026)
@@ -267,7 +267,7 @@ def teks_kalender_minggu(now_ms=None, hari=7):
     """Pesan 📅 KALENDER BERITA: jadwal 7 hari ke depan, dikelompokkan per hari (jam WIB), dengan tanda dampak."""
     now_ms = now_ms or int(time.time() * 1000)
     ev = kalender_semua(hari, now_ms)
-    rows = ["📅 <b>QSE v148 | KALENDER BERITA 7 HARI</b>",
+    rows = ["📅 <b>QSE v149 | KALENDER BERITA 7 HARI</b>",
             "Jam WIB. Diambil otomatis tiap minggu: ForexFactory, jadwal resmi bank sentral, Nasdaq (earnings), DefiLlama (unlock)."]
     if not ev:
         rows.append("\nTidak ada berita berdampak tinggi 7 hari ke depan.")

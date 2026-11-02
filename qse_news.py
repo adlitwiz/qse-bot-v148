@@ -1,4 +1,4 @@
-"""QSE v148 - NEWS KE TRADE. Dipanggil listener tiap 15 menit.
+"""QSE v149 - NEWS KE TRADE. Dipanggil listener tiap 15 menit.
 Sumber: RSS media kripto (Cointelegraph, CoinDesk, Decrypt, Cryptonews), Google News, dan Reddit (sosmed).
 Tiap berita: dicocokkan ke koin Bybit, dinilai dampaknya (positif/negatif, kuat/lemah), diterjemahkan ke bahasa Indonesia,
 lalu disambungkan ke hasil engine QSE koin itu. Saran entry hanya keluar kalau arah berita dan engine searah.
