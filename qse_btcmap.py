@@ -196,7 +196,9 @@ def teks(p=None, singkat=False):
         f"• Likuiditas di atas (stop short): {la}",
         f"• Likuiditas di bawah (stop long): {lb}",
         f"👉 {fk} (skor {p['skor']:+d} dari -8 sampai +8)" + (f". Target sapuan berikutnya: {target}" if target else ""),
-        "Dipakai untuk urutan sinyal. Sinyal lawan arah tetap dikirim dengan tanda, karena uji 2021-2026 membuangnya menurunkan profit.",
+        "Ini peta kondisi, bukan ramalan harga BTC: uji 2019-2026 tebakan arah BTC 24 jam dari FOKUS benar 44-53% (lempar koin). "
+        "Gunanya untuk sinyal altcoin: searah FOKUS rata +0.10R per sinyal, lawan FOKUS +0.02R (riset/v149/hasil_fokus_btc.txt). "
+        "Menahan semua sinyal lawan FOKUS menurunkan profit 2025-2026, jadi tetap dikirim dengan tanda.",
     ])
 
 
@@ -210,7 +212,8 @@ def label_sinyal(arah):
         return f"🧭 Komando BTC: TAHAN (skor {p['skor']:+d}), pilih sinyal NILAI tertinggi saja"
     if p["fokus"] == arah:
         return f"🧭 Searah komando BTC (FOKUS {p['fokus']}, skor {p['skor']:+d})"
-    return f"↔️ Lawan komando BTC (FOKUS {p['fokus']}, skor {p['skor']:+d}): boleh, uji 2021-2026 tetap untung rata-rata, pakai lot normal"
+    return (f"↔️ Lawan komando BTC (FOKUS {p['fokus']}, skor {p['skor']:+d}): boleh, tapi uji 2021-2026 rata hanya +0.02R per sinyal "
+            f"lawan +0.10R kalau searah. Pilih yang searah kalau slot terbatas")
 
 
 TF_TEKS = ("⏱ <b>Sinyal TF 4J</b> (candle 4 jam tutup) · konfirmasi akurasi tinggi · gaya swing cepat: TP 20% biasanya kena dalam "
@@ -333,7 +336,7 @@ def kartu_ringkas(m, pr=None, nama=""):
     try:
         p = peta()
         arah_btc = {1: "naik", -1: "turun", 0: "datar"}
-        cocok = "searah" if p["fokus"] == arah else ("netral" if p["fokus"] == "TAHAN" else "lawan arah, boleh, lot normal")
+        cocok = ("searah, uji rata +0.10R" if p["fokus"] == arah else ("netral" if p["fokus"] == "TAHAN" else "lawan arah, uji rata hanya +0.02R"))
         rows.append(f"🧭 BTC fokus <b>{p['fokus']}</b> ({cocok})  ·  1J {arah_btc[p['s1']]}, 4J {arah_btc[p['s4']]}, 1D {arah_btc[p['sD']]}")
     except Exception:
         pass
