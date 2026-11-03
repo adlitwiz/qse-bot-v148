@@ -337,10 +337,8 @@ def status(uid=None):
         r7 = CT.rem7()
     except Exception:
         r7 = dict(aktif=False)
-    if r7.get("aktif"):
-        alasan = (f"REM 7 HARI: trade kertas robot 7 hari terakhir {r7['n']} trade, rugi {pmodal(r7['total_r'], u):+.2f}% modal "
-                  f"(batas {pmodal(CT.REM7_BATAS, u):.2f}%). Sinyal baru ditahan sampai pulih, robot tetap mencatat sendiri")
-    elif hari <= -REM_HARIAN:
+    # v149: rem 7 hari tidak menahan total. Saat aktif hanya NILAI 10 yang dikirim, setengah lot (lolos_mode dan baris_lot).
+    if hari <= -REM_HARIAN:
         alasan = f"REM HARIAN: hasil hari ini {hari:+.2f}R ({pmodal(hari, u):+.2f}% modal), sebaiknya berhenti trading sampai besok"
     elif jd["aktif"]:
         dh = SY.teks_dihitung(jd)
@@ -460,6 +458,12 @@ def baris_lot(entry, sl, kali=1.0, lev=None):
     per orang. Contoh SL 4%, risiko 1%, modal 155: rugi 1.55, posisi 38.8."""
     if entry <= 0 or abs(entry - sl) <= 0:
         return ""
+    try:
+        import qse_catat as CT
+        if CT.rem7()["aktif"]:
+            kali = kali * 0.5          # v149: rem 7 hari menyala, setengah lot
+    except Exception:
+        pass
     sl_pct = abs(entry - sl) / entry * 100
     try:
         import html

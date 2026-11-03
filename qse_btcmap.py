@@ -353,10 +353,31 @@ def kartu_ringkas(m, pr=None, nama=""):
             except Exception:
                 pass
         t = (_CACHE.get("tick") or {}).get(sym, 1e-8)
-        f = lambda v: "-" if v is None else TG.fp(v, t)
+        px = float(d4["close"].values[-1])
+        f = lambda v: "-" if v is None else f"{TG.fp(v, t)} ({(v / px - 1) * 100:+.1f}%)"
         rows.append(f"🧱 Support 4J <b>{f(sup)}</b>  ·  Resistance 4J <b>{f(res)}</b>")
+        # v149: info ringkas pasar (info saja: efisiensi tren, funding, dan derivatif BTC sudah diuji dan tidak memilah, hasil_v150.txt)
+        c = d4["close"].values.astype(float)[-21:]
+        ef = abs(c[-1] - c[0]) / max(np.abs(np.diff(c)).sum(), 1e-12)
+        try:
+            fr = float(B.get_tickers().get(sym, {}).get("funding") or 0) * 100
+            fr_t = f"funding {fr:+.4f}%"
+        except Exception:
+            fr_t = "funding -"
+        rows.append(f"📐 TF pemicu 4J  ·  efisiensi tren 20 candle {ef:.2f} ({'lurus' if ef >= 0.3 else 'berombak' if ef < 0.15 else 'sedang'})  ·  {fr_t}")
     except Exception as ex:
         print("[WARN] snr ringkas", ex)
+    try:
+        import qse_saya as SY
+        import qse_modal as MD
+        sl_ = []
+        for u in SY.daftar_pengguna():
+            st = MD.status(u)
+            sl_.append(f"{SY.nama_pengguna(u)} {st['n_posisi']}/{st['maks']}")
+        if sl_:
+            rows.append("🎰 Slot posisi jalan: " + "  ·  ".join(sl_))
+    except Exception as ex:
+        print("[WARN] slot ringkas", ex)
     rows.append("⏱ TF 4J  ·  <b>ikuti arus, masuk MARKET sekarang</b> (uji: menunggu koreksi lebih jelek)")
     label = []
     for kata in ("COMBO RAJA", "COMBO FIX PROFIT", "COMBO EMAS", "MUTU TINGGI", "PULLBACK", "VOLUME PASAR TINGGI", "BTC.D TURUN"):
@@ -390,7 +411,7 @@ def caption_sinyal(rk, maks=1000):
     """Potong kartu ringkas jadi caption gambar (maks karakter terlihat). Baris yang dibuang dulu: alasan, cara, TF, bukti koin."""
     import telegram_notify as TG
     rows = rk.split("\n")
-    for awal in ("💡", "⏱", "📲", "📊", "🧱", "━━"):
+    for awal in ("💡", "⏱", "🎰", "📐", "📲", "📊", "🧱", "━━"):
         if TG.panjang_terlihat("\n".join(rows)) <= maks:
             break
         rows = [r for r in rows if not r.startswith(awal)]

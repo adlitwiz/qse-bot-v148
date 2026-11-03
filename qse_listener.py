@@ -202,6 +202,12 @@ def _tugas_berkala():
                     # v149: satu sinyal = satu gelembung (gambar chart + kartu ringkas di caption kalau muat), lalu disematkan
                     if no == 1:
                         jd = SY.baris_jadwal(telat_menit=3)
+                        try:
+                            import qse_catat as CT
+                            if CT.rem7()["aktif"]:
+                                jd += "\n🧯 <b>REM 7 HARI AKTIF</b>: hanya NILAI 10 yang dikirim, pakai setengah lot"
+                        except Exception:
+                            pass
                         TG.send([f"📋 <b>QSE v149 | {len(kumpul)} SINYAL BARU</b>\n{jd}"
                                  + ("\n" + peta_btc if peta_btc else "") + ("\n\n" + "\n".join(slot_b) if slot_b else "")])
                     mid = None

@@ -685,8 +685,19 @@ def set_mode(m):
     return m
 
 
+REM7_NILAI = 8          # v149: saat rem 7 hari menyala hanya NILAI 10 (skor 90) yang dikirim, setengah lot
+
+
 def lolos_mode(pr):
-    """pr = hasil prioritas(). True kalau skor label cukup untuk mode sekarang."""
+    """pr = hasil prioritas(). True kalau skor label cukup untuk mode sekarang.
+    Rem 7 hari menyala: hanya NILAI 10. Uji 2023-2026 (riset/upgrade/hasil_v150.txt, hasil_v150b.txt): dibanding tahan total,
+    total +161R jadi +168R, 5.9 jadi 6.5 sinyal per minggu, PF 2025-26 1.58 jadi 1.62, DD 17R jadi 18R."""
+    try:
+        import qse_catat as CT
+        if CT.rem7()["aktif"] and pr[0] < REM7_NILAI:
+            return False
+    except Exception:
+        pass
     return pr[0] >= MODE_MIN[mode_sinyal()]
 
 

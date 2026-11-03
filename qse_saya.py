@@ -4227,13 +4227,12 @@ def sinyal_jalur(jam=False):
         import qse_catat as CT
         import qse_modal as MD
         r7 = CT.rem7()
-        if r7["aktif"] and not TAMPIL_SEMUA:
-            return (f"🧯 <b>QSE v149 | REM 7 HARI AKTIF</b>\nTrade kertas robot 7 hari terakhir: {r7['n']} trade, rugi "
-                    f"{MD.pmodal(r7['total_r']):+.2f}% modal (batas {MD.pmodal(CT.REM7_BATAS):.2f}%). Semua sinyal baru ditahan. "
-                    "Robot tetap mencatat sinyal sendiri dan otomatis lanjut saat total 7 hari pulih.\n"
-                    "Uji 2023-2026: rem ini memangkas bulan terburuk lebih dari separuh tanpa mengurangi total untung.")
+        rem7_teks = (f"🧯 <b>REM 7 HARI AKTIF</b>: trade kertas robot 7 hari terakhir {r7['n']} trade, rugi "
+                     f"{MD.pmodal(r7['total_r']):+.2f}% modal. Hanya sinyal NILAI 10 yang ditampilkan, pakai setengah lot. "
+                     "Normal lagi otomatis saat total 7 hari pulih.") if r7["aktif"] else ""
     except Exception as ex:
         print("[WARN] rem 7 hari sinyal4j", ex)
+        rem7_teks = ""
     sumber = []
     try:
         import qse_ichimoku as IC
@@ -4412,6 +4411,9 @@ def sinyal_jalur(jam=False):
         _bb = PG.baris_btc_sinyal() if kartu else ""
     except Exception:
         _bb = ""
+    if rem7_teks:
+        _bb = (rem7_teks + ("\n" + _bb if _bb else "")) if (kartu or jam) else _bb
+        blok_tunggu = "\n\n" + rem7_teks + blok_tunggu
     if jam:          # dipakai cek per jam: hanya kartu yang masih valid, format sama dan bisa disalin (maks 5, pesan tidak terpotong)
         return ("\n\n".join(([_bb] if _bb else []) + kartu[:5] + arti)
                 + (f"\n\n+{len(kartu) - 5} sinyal valid lain, ketik /sinyal4j" if len(kartu) > 5 else ""))
