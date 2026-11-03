@@ -4227,8 +4227,8 @@ def sinyal_jalur(jam=False):
         import qse_catat as CT
         import qse_modal as MD
         r7 = CT.rem7()
-        rem7_teks = (f"🧯 <b>REM 7 HARI AKTIF</b>: trade kertas robot 7 hari terakhir {r7['n']} trade, rugi "
-                     f"{MD.pmodal(r7['total_r']):+.2f}% modal. Hanya sinyal NILAI 10 yang ditampilkan, pakai setengah lot. "
+        rem7_teks = (f"🧯 <b>REM 7 HARI AKTIF</b>: trade kertas robot 7 hari terakhir {r7['n']} trade, rugi setara "
+                     f"{abs(r7['total_r']):.1f} kali SL penuh. Hanya sinyal NILAI 10 yang ditampilkan, pakai setengah lot. "
                      "Normal lagi otomatis saat total 7 hari pulih.") if r7["aktif"] else ""
     except Exception as ex:
         print("[WARN] rem 7 hari sinyal4j", ex)

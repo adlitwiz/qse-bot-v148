@@ -218,7 +218,9 @@ def rem7(maks_umur=300):
             import qse_strat as ST
             tot, n = 0.0, 0
             for k, _, c in _tutup_terbukti():
-                if now - float(c.get("selesai") or 0) > 7 * 86400 or c.get("otak_saring"):
+                sel = float(c.get("selesai") or 0)
+                # v149: dihitung sejak v149 aktif saja. Trade kertas sebelumnya memakai aturan keluar lama (hasilnya hanya perkiraan)
+                if now - sel > 7 * 86400 or sel < MULAI_V149 or c.get("otak_saring"):
                     continue
                 try:
                     if ST.prioritas(k, c)[0] < 3:
