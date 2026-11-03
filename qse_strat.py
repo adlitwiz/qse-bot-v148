@@ -188,15 +188,19 @@ def _kelola(it, df):
         if ts <= it["last"]:
             continue
         hi, lo, cl = float(df["high"].iloc[k]), float(df["low"].iloc[k]), float(df["close"].iloc[k])
+        v149_langkah(it, hi, lo, cl)
         if (lo <= it["sl"]) if L else (hi >= it["sl"]):
+            v149_tutup(it, it["sl"])
             return "SL", ((it["sl"] - e) if L else (e - it["sl"])) / risk - BIAYA * e / risk, sl_lama
         if it.get("tp"):          # jalur TP tetap (McGinley): TP tidak dicek di candle masuk, sama dengan backtest
             if it["bar"] > 0 and ((hi >= it["tp"]) if L else (lo <= it["tp"])):
+                v149_tutup(it, it["tp"])
                 return "TP", abs(it["tp"] - e) / risk - BIAYA * e / risk, sl_lama
             it["bar"] += 1
             it["last"] = int(ts)
             it["close"] = cl
             if it["bar"] >= it.get("maks_bar", MAKS_BAR):
+                v149_tutup(it, cl)
                 return "WAKTU", ((cl - e) if L else (e - cl)) / risk - BIAYA * e / risk, sl_lama
             continue
         if L:
@@ -214,8 +218,75 @@ def _kelola(it, df):
         it["last"] = int(ts)
         it["close"] = cl
         if it["bar"] >= MAKS_BAR:
+            v149_tutup(it, cl)
             return "WAKTU", ((cl - e) if L else (e - cl)) / risk - BIAYA * e / risk, sl_lama
     return "BUKA", None, sl_lama
+
+
+def v149_langkah(it, hi, lo, cl):
+    """v149: jejak aturan keluar yang diikuti orang, berjalan di samping aturan jalur, per candle 4J: TPawal 20% di +0.5R lalu SL
+    ke entry, jam ke-12 dinamis (rugi >= 0.5R tutup, melawan SL ke -0.5R), batas 30 jam (candle ke-8) untuk yang belum aman.
+    Dipanggil sebelum aturan jalur di tiap candle. Hasil di it['v9']['R'] (tanpa biaya)."""
+    e = it["entry"]
+    risk = abs(e - it.get("sl0", it["sl"])) or it.get("risk") or 1e-12
+    d = 1 if it["arah"] == "LONG" else -1
+    v = it.get("v9")
+    if v is None:
+        v = it["v9"] = dict(real=0.0, sisa=1.0, aman=False, sl=float(it.get("sl0", it["sl"])), n=0, R=None)
+    if v["R"] is not None:
+        return
+    if (lo <= v["sl"]) if d == 1 else (hi >= v["sl"]):
+        v["R"] = v["real"] + v["sisa"] * (v["sl"] - e) * d / risk
+        return
+    lv = e + d * TPS_R * risk
+    if not v["aman"] and ((hi >= lv) if d == 1 else (lo <= lv)):
+        v["real"] += TPS_PORSI * TPS_R
+        v["sisa"] = 1.0 - TPS_PORSI
+        v["aman"] = True
+        v["sl"] = e
+    v["n"] += 1
+    if not v["aman"]:
+        g = (cl - e) * d / risk
+        if v["n"] == 3:
+            if g <= -0.5:
+                v["R"] = v["real"] + v["sisa"] * g
+                return
+            if g < 0:
+                nsl = e - d * 0.5 * risk
+                if (nsl > v["sl"]) if d == 1 else (nsl < v["sl"]):
+                    v["sl"] = nsl
+        if v["n"] >= 8:
+            v["R"] = v["real"] + v["sisa"] * g
+
+
+def v149_tutup(it, px):
+    """Saat jalur selesai di harga px: hasil jejak v149 (sudah biaya). None kalau jejak belum ada."""
+    v = it.get("v9")
+    if not v:
+        return None
+    e = it["entry"]
+    risk = abs(e - it.get("sl0", it["sl"])) or it.get("risk") or 1e-12
+    d = 1 if it["arah"] == "LONG" else -1
+    if v["R"] is None:
+        v["R"] = v["real"] + v["sisa"] * (px - e) * d / risk
+    it["R9"] = round(v["R"] - BIAYA * e / risk, 3)
+    return it["R9"]
+
+
+def r_hasil(c):
+    """Hasil trade kertas menurut aturan v149 (R9). Catatan lama tanpa jejak: perkiraan dari puncak harga (best):
+    kalau pernah +0.5R, 20% untung 0.5R dan sisa tidak rugi. Tanpa data puncak: hasil aturan jalur."""
+    if c.get("R9") is not None:
+        return float(c["R9"])
+    R = float(c["R"])
+    try:
+        e = c["entry"]; risk = abs(e - c.get("sl0", c["sl"]))
+        d = 1 if c["arah"] == "LONG" else -1
+        if risk > 0 and c.get("best") is not None and (c["best"] - e) * d / risk >= TPS_R:
+            return TPS_PORSI * TPS_R + (1 - TPS_PORSI) * max(R, 0.0)
+    except Exception:
+        pass
+    return R
 
 
 def _catat_ledger(k, it, R):

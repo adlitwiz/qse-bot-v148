@@ -332,7 +332,15 @@ def status(uid=None):
         print("[WARN] jeda", ex)
         jd = dict(aktif=False, sampai=None, beruntun=0)
     alasan = ""
-    if hari <= -REM_HARIAN:
+    try:
+        import qse_catat as CT
+        r7 = CT.rem7()
+    except Exception:
+        r7 = dict(aktif=False)
+    if r7.get("aktif"):
+        alasan = (f"REM 7 HARI: trade kertas robot 7 hari terakhir {r7['n']} trade, rugi {pmodal(r7['total_r'], u):+.2f}% modal "
+                  f"(batas {pmodal(CT.REM7_BATAS, u):.2f}%). Sinyal baru ditahan sampai pulih, robot tetap mencatat sendiri")
+    elif hari <= -REM_HARIAN:
         alasan = f"REM HARIAN: hasil hari ini {hari:+.2f}R ({pmodal(hari, u):+.2f}% modal), sebaiknya berhenti trading sampai besok"
     elif jd["aktif"]:
         dh = SY.teks_dihitung(jd)
@@ -349,7 +357,7 @@ def status(uid=None):
     return dict(hari_ini=hari, n_posisi=n_risk, n_aman=n_aman, n_total=len(buka), maks=MAKS_POSISI, maks_aman=MAKS_AMAN,
                 sisa=max(0, min(MAKS_POSISI - n_risk, maks_total - len(buka))),
                 risiko=risiko, risiko_pct=pmodal(risiko, u), risiko_maks=RISIKO_BUKA, daftar=daftar, lewat=lewat, uid=u,
-                rem=bool(alasan), alasan=alasan, jeda=jd, n_arah=n_arah,
+                rem=bool(alasan), alasan=alasan, jeda=jd, rem7=bool(r7.get("aktif")), n_arah=n_arah,
                 penuh_arah=[a for a in ("LONG", "SHORT") if n_arah.get(a, 0) >= MAKS_SEARAH])
 
 

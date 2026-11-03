@@ -245,7 +245,8 @@ def profil(sym, jalur, arah, live=None):
     rows = [tuple(x) for x in rows]
     try:
         live = _ledger() if live is None else live
-        rows += [(int(float(c.get("selesai") or c["t"]) * 1000), float(c["R"])) for c in live
+        import qse_strat as ST
+        rows += [(int(float(c.get("selesai") or c["t"]) * 1000), ST.r_hasil(c)) for c in live
                  if c.get("sym") == sym and c.get("jalur") == jalur and c.get("arah") == arah
                  and float(c.get("selesai") or c["t"]) * 1000 > d.get("akhir_ms", 0)]
     except Exception as ex:

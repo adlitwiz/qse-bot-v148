@@ -135,19 +135,24 @@ def btc_naik():
 
 def _kelola(it, df):
     """Aturan keluar persis backtest: SL dicek dulu, TP tidak dicek di candle masuk, tutup paksa 60 candle."""
+    import qse_strat as ST
     e, risk = it["entry"], it["risk"]
     for k, ts in enumerate(df.index):
         if ts <= it["last"]:
             continue
         hi, lo, cl = float(df["high"].iloc[k]), float(df["low"].iloc[k]), float(df["close"].iloc[k])
+        ST.v149_langkah(it, hi, lo, cl)          # v149: jejak aturan keluar orang di it['R9']
         if lo <= it["sl"]:
+            ST.v149_tutup(it, it["sl"])
             return "SL", (it["sl"] - e) / risk - BIAYA * e / risk
         if it["bar"] > 0 and hi >= it["tp"]:
+            ST.v149_tutup(it, it["tp"])
             return "TP", TP_R - BIAYA * e / risk
         it["bar"] += 1
         it["last"] = int(ts)
         it["close"] = cl
         if it["bar"] >= MAKS_BAR:
+            ST.v149_tutup(it, cl)
             return "WAKTU", (cl - e) / risk - BIAYA * e / risk
     return "BUKA", None
 

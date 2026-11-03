@@ -187,12 +187,68 @@ def _tutup_terbukti():
             out += [(k, cfg["nama"], c) for c in ST.lihat(k).get("closed", [])]
     except Exception:
         pass
-    return [z for z in out if z[2].get("R") is not None]
+    # v149: R = hasil menurut aturan keluar yang diikuti orang (TPawal 20% lalu SL ke entry, jam 12, 30 jam), R_jalur = aturan jalur lama
+    hasil = []
+    for k, n, c in out:
+        if c.get("R") is None:
+            continue
+        try:
+            import qse_strat as ST
+            hasil.append((k, n, dict(c, R_jalur=c["R"], R=ST.r_hasil(c))))
+        except Exception:
+            hasil.append((k, n, c))
+    return hasil
+
+
+# v149: rem 7 hari sistem. Uji 2023-2026 (riset/upgrade/hasil_bulan.txt, hasil_struktur.txt): trade kertas robot NILAI 8+ yang lolos
+# saringan, 7 hari terakhir rugi lebih dari 3R -> sinyal baru ditahan. PF 1.31 jadi 1.48, bulan terburuk -17.1R jadi -7.5R, total sama,
+# 2023-24 PF 1.38, 2025-26 PF 1.60. Robot tetap mencatat trade kertas selama rem, jadi rem lepas sendiri saat total 7 hari pulih.
+REM7_BATAS = float(os.environ.get("QSE_REM7", "-3"))
+_REM7 = {"t": 0, "v": None}
+
+
+def rem7(maks_umur=300):
+    """dict(aktif, total_r, n): jumlah R trade kertas yang selesai 7 hari terakhir (NILAI 8+, tidak disaring otak). Gagal = tidak aktif."""
+    now = time.time()
+    if _REM7["v"] is not None and now - _REM7["t"] < maks_umur:
+        return _REM7["v"]
+    v = dict(aktif=False, total_r=0.0, n=0)
+    try:
+        if REM7_BATAS < 0:
+            import qse_strat as ST
+            tot, n = 0.0, 0
+            for k, _, c in _tutup_terbukti():
+                if now - float(c.get("selesai") or 0) > 7 * 86400 or c.get("otak_saring"):
+                    continue
+                try:
+                    if ST.prioritas(k, c)[0] < 3:
+                        continue
+                except Exception:
+                    pass
+                tot += float(c["R"]); n += 1
+            v = dict(aktif=tot < REM7_BATAS, total_r=round(tot, 2), n=n)
+    except Exception as ex:
+        print("[WARN] rem 7 hari", ex)
+    _REM7.update(t=now, v=v)
+    return v
 
 
 # rata-rata hasil per trade di uji 2021-2026 (R, sudah biaya), pembanding hasil live
 EXP_UJI = {"orderblock": 0.18, "snr_vol": 0.18, "mcginley": 0.17, "rsi_vol": 0.16, "ichimoku": 0.13, "ema_short": 0.11,
            "smc_choch": 0.10, "msb_hpz": 0.09, "GZH": 0.07}
+
+
+# v149: hitungan /jalur mulai dari nol sejak v149 aktif. Trade sebelum itu tidak dihapus, tampil satu baris arsip.
+MULAI_V149 = float(os.environ.get("QSE_JALUR_MULAI", "1793638800"))      # 3 Nov 2026 00:00 WIB
+
+
+def _pm(r):
+    """R ke persen modal (risiko standar per trade, qse_modal.RISK_PCT)."""
+    try:
+        import qse_modal as MD
+        return r * MD.RISK_PCT
+    except Exception:
+        return r * 0.25
 
 
 def _baris(nama, rs, exp=None):
@@ -207,22 +263,26 @@ def _baris(nama, rs, exp=None):
         nilai = "sampel kecil, belum bisa dinilai"
         ik = "⚪"
     elif exp is not None and avg < exp - 0.10:
-        nilai = f"di bawah uji ({exp:+.2f}R)"
+        nilai = f"di bawah uji ({_pm(exp):+.3f}% modal per trade)"
         ik = "🟠"
     else:
-        nilai = "sesuai uji" + (f" ({exp:+.2f}R)" if exp is not None else "")
+        nilai = "sesuai uji" + (f" ({_pm(exp):+.3f}% modal per trade)" if exp is not None else "")
         ik = "🟢"
     return (f"{ik} {nama}: {s_['n']} trade, WR {sum(r > 0 for r in rs) / len(rs) * 100:.0f}%, PF {pf:.2f}, "
-            f"rata {avg:+.2f}R, total {sum(rs):+.1f}R  ·  {nilai}")
+            f"rata {_pm(avg):+.3f}% modal, total {_pm(sum(rs)):+.2f}% modal  ·  {nilai}")
 
 
 def teks():
     """/jalur: hasil live semua jalur terbukti dan semua label, dibanding hasil uji, plus 30 hari terakhir."""
-    data = _tutup_terbukti()
+    semua = _tutup_terbukti()
+    data = [z for z in semua if z[2].get("selesai", 0) >= MULAI_V149]
+    lama = [z[2]["R"] for z in semua if z[2].get("selesai", 0) < MULAI_V149]
     now = time.time()
-    rows = ["Hasil live robot (posisi yang dicatat robot sendiri, sudah biaya). Pembanding: rata-rata per trade di uji 2021-2026.",
+    tgl = time.strftime("%d %b %Y", time.gmtime(MULAI_V149 + 7 * 3600))
+    rows = [f"Hasil live robot sejak v149 aktif ({tgl}), posisi yang dicatat robot sendiri, sudah biaya. "
+            "Dalam persen modal dengan risiko standar per trade. Pembanding: rata-rata per trade di uji 2021-2026.",
             "Penilaian baru berarti setelah 100 trade: di uji, 40 trade berturut-turut PF di bawah 1 terjadi 31-55% waktu walau jalurnya untung.",
-            "", "📊 <b>PER TEKNIK</b> (semua waktu)"]
+            "", "📊 <b>PER TEKNIK</b> (sejak v149)"]
     urut = sorted({(k, n) for k, n, _ in data} | {(k, None) for k in EXP_UJI}, key=lambda z: -EXP_UJI.get(z[0], 0))
     sudah = set()
     for k, _ in urut:
@@ -246,13 +306,13 @@ def teks():
            ("🔊 VOLUME PASAR TINGGI", lambda c: c.get("vol_tinggi"), 0.30),
            ("📉 BTC.D TURUN (SHORT)", lambda c: c.get("dom_turun"), 0.23),
            ("Tanpa label", lambda c: not (c.get("combo") or len(c.get("mutu_plus") or []) >= 3 or c.get("pullback")), 0.11)]
-    rows += ["", "🏷 <b>PER LABEL</b> (label dicatat sejak 20 Okt 2026)"]
+    rows += ["", "🏷 <b>PER LABEL</b> (sejak v149)"]
     for nm, fn, ex in lab:
         rows.append(_baris(nm, [c["R"] for _, _, c in data if fn(c)], ex))
     try:
         import qse_strat as ST
         sk = lambda k, c: ST.prioritas(k, c)[0]
-        rows += ["", "🎖 <b>PER NILAI</b> (dicatat sejak 23 Okt 2026)"]
+        rows += ["", "🎖 <b>PER NILAI</b> (sejak v149)"]
         for nm, lo, hi, ex in (("👑 NILAI 10", 8, 99, 0.50), ("🔥 NILAI 9", 5, 7, 0.29), ("✅ NILAI 8", 3, 4, 0.14)):
             rows.append(_baris(nm, [c["R"] for k, _, c in data if lo <= sk(k, c) <= hi], ex))
     except Exception as ex_:
@@ -260,12 +320,19 @@ def teks():
     b30 = [c["R"] for _, _, c in data if now - c.get("selesai", 0) <= 30 * 86400]
     rows += ["", "🗓 <b>30 HARI TERAKHIR</b>", _baris("Semua jalur", b30, 0.13)]
     try:
-        import qse_porto as PO
+        import qse_porto as PO, qse_modal as MD
         rm = PO.rem()
         rows.append("🛡 Rem portofolio: " + (f"AKTIF, lot setengah ({rm})" if rm else "tidak aktif, lot normal" if PO.REM_LOT else
-                                            "mati, diganti batas 5 posisi per orang (uji 2021-2026: rasio profit/drawdown 3.6 jadi 11.1)"))
+                                            f"mati, diganti batas {MD.MAKS_POSISI} posisi jalan per orang"))
     except Exception:
         pass
-    rows.append("Jalur terbukti tidak dimatikan otomatis dari hasil live pendek. Pengaman yang dipakai: batas 5 posisi per orang "
-                "dan risiko tetap per trade.")
+    if lama:
+        rows += ["", "🗄 " + _baris(f"Arsip sebelum v149 (tidak dihapus)", lama)]
+    try:
+        import qse_modal as MD2
+        mp = MD2.MAKS_POSISI
+    except Exception:
+        mp = 4
+    rows.append(f"Jalur terbukti tidak dimatikan otomatis dari hasil live pendek. Pengaman yang dipakai: batas {mp} posisi jalan per orang, "
+                "rem darurat 3 rugi beruntun, dan risiko tetap per trade.")
     return "\n".join(rows)

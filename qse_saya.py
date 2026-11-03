@@ -797,9 +797,9 @@ BUKTI = {
     "saran fib": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot: 6 trade, WR 33%, PF 0.77, -0.9R"),
     "saran siklus": ("JARANG", "❔", "0.25x", "uji 2 tahun 30 koin: tidak ada sinyal yang lolos semua syarat"),
     "saran cadangan 2": ("JARANG", "❔", "0.25x", "uji 2 tahun 30 koin: tidak ada sinyal yang lolos semua syarat"),
-    "saran trendline": ("TERBUKTI", "✅", "0.5x", "uji 5 tahun 108 koin semua pola Tembus Trendline di DASBOR, SHORT, harga di "
-                        "bawah EMA 200: 691 trade, WR 80%, PF 1.47. Aturan dipilih dari 2021-2023 (PF 1.57), uji ulang "
-                        "2024-2026 PF 1.38. 2026 melemah (PF 1.01), jadi lot 0.5x"),
+    "saran trendline": ("TERBUKTI", "✅", "0.5x", "uji 5 tahun 108 koin: 691 trade, WR 80%, PF 1.47. Uji ulang 3 Nov 2026 mesin "
+                        "sama dengan bot, 30 koin 2023-2026: 107 trade, WR 83%, PF 2.62, 2026 PF 1.68. Searah BTC PF 3.11, "
+                        "lawan BTC PF 1.63. Sampel kecil, jadi lot tetap 0.5x"),
     "saran ema_short": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, maks 8 posisi: 1812 trade, WR 42%, PF 1.42, aturan dipilih "
                         "dari 2020-2023 (PF 1.37), uji ulang 2024-2026 PF 1.47, untung tiap tahun, turun terdalam 16%"),
     "saran snr_vol": ("TERBUKTI", "✅", "1x", "uji 6 tahun 111 koin, 30 paling likuid, maks 8 posisi: 692 trade, WR 39%, PF 1.33, "
@@ -4223,6 +4223,17 @@ def sinyal_jalur(jam=False):
     sinyal maks 2 candle 4J dan harga masih dalam 0.5R dari entry robot (EMA, RSI, McGinley, SnR, SMC, Ichimoku),
     MSB, Order Block, dan GZH hanya sinyal candle terakhir. Koin yang kamu pegang tidak ditampilkan."""
     import qse_strat as ST
+    try:
+        import qse_catat as CT
+        import qse_modal as MD
+        r7 = CT.rem7()
+        if r7["aktif"] and not TAMPIL_SEMUA:
+            return (f"🧯 <b>QSE v149 | REM 7 HARI AKTIF</b>\nTrade kertas robot 7 hari terakhir: {r7['n']} trade, rugi "
+                    f"{MD.pmodal(r7['total_r']):+.2f}% modal (batas {MD.pmodal(CT.REM7_BATAS):.2f}%). Semua sinyal baru ditahan. "
+                    "Robot tetap mencatat sinyal sendiri dan otomatis lanjut saat total 7 hari pulih.\n"
+                    "Uji 2023-2026: rem ini memangkas bulan terburuk lebih dari separuh tanpa mengurangi total untung.")
+    except Exception as ex:
+        print("[WARN] rem 7 hari sinyal4j", ex)
     sumber = []
     try:
         import qse_ichimoku as IC

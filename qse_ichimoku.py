@@ -155,7 +155,9 @@ def _k4(sym, bars=300):
 
 
 def _kelola(it, df):
-    """Jalankan aturan keluar di candle tutup sejak update terakhir. Return (status, R atau None, sl_lama)."""
+    """Jalankan aturan keluar di candle tutup sejak update terakhir. Return (status, R atau None, sl_lama).
+    v149: jejak aturan keluar orang (qse_strat.v149_langkah) ikut dicatat di it['R9']."""
+    import qse_strat as ST
     L = it["arah"] == "LONG"
     e, risk = it["entry"], it["risk"]
     a = _atr(df["high"].values, df["low"].values, df["close"].values)
@@ -165,7 +167,9 @@ def _kelola(it, df):
         if ts <= it["last"]:
             continue
         h, l, c = float(df["high"].iloc[k]), float(df["low"].iloc[k]), float(df["close"].iloc[k])
+        ST.v149_langkah(it, h, l, c)
         if (l <= it["sl"]) if L else (h >= it["sl"]):
+            ST.v149_tutup(it, it["sl"])
             return "SL", ((it["sl"] - e) if L else (e - it["sl"])) / risk - BIAYA * e / risk, sl_lama
         it["bar"] += 1
         if L:
@@ -179,6 +183,7 @@ def _kelola(it, df):
         it["last"] = int(ts)
         it["close"] = c
         if it["bar"] >= MAKS_BAR:
+            ST.v149_tutup(it, c)
             return "WAKTU", ((c - e) if L else (e - c)) / risk - BIAYA * e / risk, sl_lama
     return "BUKA", None, sl_lama
 

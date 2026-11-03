@@ -981,13 +981,56 @@ def _blok_tt(no, r, x, tag, led):
     k = [f"Pola Tembus Trendline di DASBOR ({TG.e(x.get('alasan_pola', 'harga menembus garis tren'))})",
          "Harga 4J di bawah EMA 200: tren turun"]
     if "STOP" in x["order"]:
-        o1 = (f"Tunggu candle 4J tutup di bawah {TG.fp(x['entry'], r.get('tick'))}, lalu masuk MARKET. "
-              f"Kalau 24 jam belum terjadi, batal")
+        # v149: uji 30 koin 2023-2026 (riset/v149/hasil_tt_sentuh.txt lawan hasil_tt_tutup4j.txt): order Conditional yang terisi saat
+        # harga menyentuh entry PF 2.62 (107 trade), menunggu candle 4J tutup di bawah entry lalu MARKET PF 0.72 (88 trade). Cara lama dibuang.
+        o1 = (f"Pasang sekarang di Bybit: Conditional, Sell, Trigger Price {TG.fp(x['entry'], r.get('tick'))} (Last Price), Market. "
+              f"Isi SL dan TP1 di order itu juga. Order terisi sendiri saat harga turun menyentuh entry. Kalau 24 jam belum terisi, batalkan")
     else:
         o1 = f"Pasang {x['order']} di {TG.fp(x['entry'], r.get('tick'))}, berlaku 24 jam"
     cara = [o1,
             "TP1: tutup separuh, pindahkan SL ke harga entry", "Sisanya ke TP2"]
-    return _kartu(no, r, x, "saran trendline", "SARAN BARU" if tag == "BARU" else "entry diperbarui", led, kenapa=k, cara=cara)
+    teks = _kartu(no, r, x, "saran trendline", "SARAN BARU" if tag == "BARU" else "entry diperbarui", led, kenapa=k, cara=cara)
+    try:
+        rows = teks.split("\n")
+        i = next((n for n, z in enumerate(rows) if "BISA DIIKUTI" in z or "TIDAK DISARANKAN" in z), None)
+        if i is not None:
+            rows[i + 1:i + 1] = nilai_tt(x)
+        teks = "\n".join(rows)
+    except Exception as ex:
+        print("[WARN] nilai trendline", ex)
+    return teks
+
+
+# v149: skor Tembus Trendline. Uji ulang 3 Nov 2026 (riset/v149/hasil_tt.txt, tt_kumpul.py + tt_nilai.py): mesin QSE yang sama dengan
+# bot, dijalankan mundur tiap 3 candle 4J di 30 koin Bybit, candle 1D/1W berjalan dibangun dari 1J yang sudah tutup, order STOP harus
+# terisi dalam 24 jam, SL dicek dulu, biaya 0.15%: 107 trade 2023-2026, WR 83%, PF 2.62 (2025 PF 1.96, 2026 PF 1.68).
+# Cara masuk yang diuji: order Conditional terisi saat harga menyentuh entry. Menunggu candle 4J tutup lalu MARKET PF 0.72 (dibuang).
+# FOKUS BTC SHORT (searah) PF 3.11 (n 43), TAHAN PF 3.14 (n 37), LONG (lawan) PF 1.63 (n 27, 2025 PF 0.17).
+# Rekam jejak koin dari mesin tidak memilah: semua sinyal yang dikeluarkan mesin sudah punya minimal 10 trade dengan PF di atas 1.5.
+TT_UJI = dict(n=107, wr=83, pf=2.62, pf26=1.68, searah=3.11, tahan=3.14, lawan=1.63)
+
+
+def nilai_tt(x):
+    """Baris skor, komando BTC, dan rekam jejak koin untuk kartu Tembus Trendline."""
+    fokus = None
+    try:
+        import qse_btcmap as BM
+        fokus = BM.peta().get("fokus")
+    except Exception as ex:
+        print("[WARN] peta btc trendline", ex)
+    lawan = fokus is not None and fokus not in (x["arah"], "TAHAN")
+    skor = 60 if lawan else 75
+    u = TT_UJI
+    rows = [f"💯 <b>Skor {skor}/100</b>  ·  uji 2023-2026 30 koin: {u['n']} trade, WR {u['wr']}%, PF {u['pf']:.2f} (2026 PF {u['pf26']:.2f})"]
+    if fokus is None:
+        rows.append("🧭 Peta BTC belum terbaca, anggap skor 60")
+    elif lawan:
+        rows.append(f"🧭 BTC fokus {fokus}: <b>lawan arah</b>, PF uji {u['lawan']:.2f}. Skor di bawah 75, lewati kalau ikut syarat ambil")
+    else:
+        rows.append(f"🧭 BTC fokus {fokus}: {'searah' if fokus == x['arah'] else 'netral'}, PF uji {u['searah'] if fokus == x['arah'] else u['tahan']:.2f}")
+    if x.get("win", 0) + x.get("loss", 0) > 0:
+        rows.append(f"📊 Koin ini di pola ini (mesin DASBOR): {x.get('win', 0)} TP, {x.get('loss', 0)} SL, PF {x.get('pf', 0):.2f}")
+    return rows
 
 
 def _blok_fib(no, r, x, tag, led):
@@ -2331,7 +2374,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         ("saran 1J", "SARAN VALID 1J", "saran EKSEKUSI di chart 1 jam, searah bias 4J"),
         ("saran cadangan", "SARAN CADANGAN", "zona emas searah bias, skill tambahan minimal 5 dari 8"),
         ("saran fib", "GOLDEN ZONE (fib 0.618-0.65)", "harga di golden pocket, skill dan candle konfirmasi searah"),
-        ("saran trendline", "TEMBUS TRENDLINE SEARAH TREN", "pola Tembus Trendline di DASBOR, SHORT, harga di bawah EMA 200, rapor koin tidak dipakai"),
+        ("saran trendline", "TEMBUS TRENDLINE SEARAH TREN", "pola Tembus Trendline di DASBOR, SHORT, harga di bawah EMA 200, skor dari uji ulang 30 koin dan arah BTC"),
         ("saran cadangan 2", "POLA RAPOR A/B, DIPILIHKAN ROBOT", "pola mutu A/B yang di DASBOR masih TAHAN, entry dipilih robot")]),
         ("🤖", "KARTU SINYAL, URUT PRIORITAS", [
         ("saran siklus", "SIKLUS POLA KEMBAR", "pola harga mirip di sejarah koin")])]
