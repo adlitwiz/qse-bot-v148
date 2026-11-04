@@ -55,7 +55,35 @@ RISK_PCT = 0.25          # persen modal per 1R (saran risiko per trade, lot 1x)
 # total turun dari +285R ke +185R (sinyal yang tidak bisa diambil), DD 35R -> 31R, rugi beruntun terpanjang 11 -> 9.
 # Digabung profil koin (qse_otak.profil) total kembali +203R dengan PF 1.35 dan DD 26R.
 MAKS_POSISI = 4          # posisi berisiko per orang
-MAKS_AMAN = 0            # posisi aman tambahan (SL sudah di entry atau untung): v149 tidak ada, semua posisi jalan dihitung
+MAKS_AMAN = int(os.environ.get("QSE_MAKS_AMAN", "2"))   # batas atas posisi aman (sudah TPawal, SL di entry) di luar batas 4
+# v149 (3 Nov malam): slot aman DINAMIS. Uji riset/upgrade/hasil_v152.txt (dipilih di 2023-24): +2 slot aman hanya saat trade kertas robot
+# 7 hari terakhir positif dan efisiensi tren BTC 20 candle 4J >= 0.1. Lawan selalu +2: 2023-24 total +73R jadi +91R, DD 39R jadi 32R,
+# 2025-26 +96R jadi +93R, DD 20R jadi 22R. QSE_SLOT_DINAMIS=0 = selalu MAKS_AMAN.
+_SD = {"t": 0, "v": None}
+
+
+def maks_aman_sekarang(maks_umur=900):
+    """Jumlah slot aman yang berlaku sekarang (0 atau MAKS_AMAN)."""
+    if not MAKS_AMAN or os.environ.get("QSE_SLOT_DINAMIS", "1") != "1":
+        return MAKS_AMAN
+    now = time.time()
+    if _SD["v"] is not None and now - _SD["t"] < maks_umur:
+        return _SD["v"]
+    v = 0
+    try:
+        import qse_catat as CT
+        r7 = CT.rem7()
+        if r7["n"] > 0 and r7["total_r"] > 0:
+            import bybit_fetch as B
+            d4 = B._raw("BTCUSDT", "240", 40)
+            d4 = d4[d4.index + 14400000 <= int(now * 1000)]
+            c = d4["close"].values.astype(float)[-21:]
+            er = abs(c[-1] - c[0]) / max(float(abs(c[1:] - c[:-1]).sum()), 1e-12)
+            v = MAKS_AMAN if er >= 0.1 else 0
+    except Exception as ex:
+        print("[WARN] slot dinamis", ex)
+    _SD.update(t=now, v=v)
+    return v
 MAKS_SEARAH = 4          # posisi berisiko searah (LONG atau SHORT) per orang. Uji walk-forward 2023-2026 dengan otak + rem harian
                          # (riset/upgrade/hasil_g10c.txt): sinyal NILAI 8 ke atas DD 56R ke 45R, total +250R ke +270R, PF 1.30 ke 1.33,
                          # DD per tahun turun atau sama. Semua sinyal netral (DD 43 ke 42R, total +264 ke +266R). Maks 3: total turun.
@@ -255,7 +283,8 @@ def perintah(args=None):
             baris_profil(st.get("uid")),
             f"1R = risiko {rp:g}% modal per trade (lot 1x). "
             + (f"Maksimal {MAKS_POSISI} posisi jalan, termasuk yang sudah aman. " if not MAKS_AMAN else
-               f"Maksimal {MAKS_POSISI} posisi berisiko + {MAKS_AMAN} posisi aman. ") +
+               f"Maksimal {MAKS_POSISI} posisi berisiko + {MAKS_AMAN} posisi aman (slot aman hanya buka saat robot 7 hari terakhir untung "
+               f"dan BTC sedang tren, sekarang {'BUKA' if maks_aman_sekarang() else 'TUTUP'}). ") +
             f"Rugi kalau semua SL kena maksimal {RISIKO_BUKA:g}R = {pmodal(RISIKO_BUKA, st.get('uid')):.2f}% modal. "
             f"Rem harian -{REM_HARIAN:g}R = -{pmodal(REM_HARIAN, st.get('uid')):.2f}% modal",
             f"🛡 <b>Jam ke-12</b>: belum kena TP 20% dan harga melawan, SL naik ke separuh jarak SL. Sudah rugi lebih dari itu, tutup market. Harga searah: SL tetap",
@@ -325,7 +354,8 @@ def status(uid=None):
         except Exception as ex:
             print("[WARN] batas waktu", ex)
         daftar.append(x)
-    maks_total = MAKS_POSISI + MAKS_AMAN
+    maks_aman = maks_aman_sekarang()
+    maks_total = MAKS_POSISI + maks_aman
     try:
         jd = SY.jeda_info(data["closed"], now)
     except Exception as ex:
@@ -349,10 +379,10 @@ def status(uid=None):
                   f"Posisi yang SL-nya sudah di entry tidak dihitung")
     elif len(buka) >= maks_total:
         alasan = (f"BATAS POSISI: sudah {len(buka)} posisi jalan (maks {MAKS_POSISI}). Sinyal berikutnya dikirim saat satu selesai"
-                  if not MAKS_AMAN else f"BATAS TOTAL: sudah {len(buka)} posisi (maks {MAKS_POSISI} berisiko + {MAKS_AMAN} aman)")
+                  if not maks_aman else f"BATAS TOTAL: sudah {len(buka)} posisi (maks {MAKS_POSISI} berisiko + {maks_aman} aman)")
     elif risiko >= RISIKO_BUKA:
         alasan = f"BATAS RISIKO: kalau semua SL kena rugi {risiko:.1f}R = {pmodal(risiko, u):.2f}% modal (maks {RISIKO_BUKA:g}R)"
-    return dict(hari_ini=hari, n_posisi=n_risk, n_aman=n_aman, n_total=len(buka), maks=MAKS_POSISI, maks_aman=MAKS_AMAN,
+    return dict(hari_ini=hari, n_posisi=n_risk, n_aman=n_aman, n_total=len(buka), maks=MAKS_POSISI, maks_aman=maks_aman,
                 sisa=max(0, min(MAKS_POSISI - n_risk, maks_total - len(buka))),
                 risiko=risiko, risiko_pct=pmodal(risiko, u), risiko_maks=RISIKO_BUKA, daftar=daftar, lewat=lewat, uid=u,
                 rem=bool(alasan), alasan=alasan, jeda=jd, rem7=bool(r7.get("aktif")), n_arah=n_arah,
@@ -411,12 +441,12 @@ def baris_slot():
                     why += f" (dihitung: {html.escape(dh)})" if dh else ""
                 except Exception:
                     pass
-            rows.append((f"⛔ <b>{nm} {st['n_total']}/{st['maks']} posisi jalan: {why}, jangan entry baru dulu</b>" if not MAKS_AMAN else
+            rows.append((f"⛔ <b>{nm} {st['n_total']}/{st['maks']} posisi jalan: {why}, jangan entry baru dulu</b>" if not st.get("maks_aman") else
                          f"⛔ <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko{aman}: {why}, jangan entry baru dulu</b>")
                         + (f"  ·  {rk}" if rk else ""))
         else:
-            rows.append((f"👤 <b>{nm} {st['n_total']}/{st['maks']} posisi jalan</b>, sisa slot {st['sisa']}" if not MAKS_AMAN else
-                         f"👤 <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko</b>{aman}, sisa slot {st['sisa']}")
+            rows.append((f"👤 <b>{nm} {st['n_total']}/{st['maks']} posisi jalan</b>, sisa slot {st['sisa']}" if not st.get("maks_aman") else
+                         f"👤 <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko</b>{aman}, sisa slot {st['sisa']} (+{st['maks_aman']} slot aman buka)")
                         + "".join(f"  ·  ⛔ <b>{a} penuh ({st['n_arah'][a]}/{MAKS_SEARAH} searah), hanya "
                                   f"{'SHORT' if a == 'LONG' else 'LONG'}</b>" for a in st.get("penuh_arah") or [])
                         + (f"  ·  {rk}" if rk else ""))
