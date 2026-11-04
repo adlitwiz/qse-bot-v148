@@ -967,14 +967,6 @@ def status_teks(d=None, ringkas=False):
             f"dicabut. Trade lab berjalan {len(d['open'])}, selesai {len(sel)}"
             + (f" (PF live {_pf(sel):.2f}, total {sum(sel):+.1f}R)" if sel else "") + "."]
     if not ringkas:
-        papan = sorted(d["teknik"].items(), key=lambda kv: (-wr20(kv[1])[1], -wr20(kv[1])[0]))
-        rows.append(f"\n🏆 <b>PAPAN PERINGKAT</b> (kirim ke grup kalau WR {N_WR} trade terakhir {WR_KIRIM * 100:.0f}% ke atas, "
-                    f"⭐ UTAMA lot 0.5x kalau {WR_UTAMA * 100:.0f}% ke atas)")
-        for i, (k, v) in enumerate([kv for kv in papan if kv[1]["status"] in AKTIF][:15], 1):
-            kel, why = kelas_wr(v)
-            ik = {"UTAMA": "⭐", "KIRIM": "✅", "DIAM": "💤"}[kel]
-            rows.append(f"{i}. {ik} {html.escape(nama(v['spec']))}\n   {why}. {baris_rapor(d, k)[2:]}")
-        rows.append("")
         for v in ak:
             mj = v.get("maju", [])
             arah, ms, kl = bagian(v["spec"])
@@ -996,43 +988,6 @@ def _status_maju(v):
     if len(mj) >= 200 and _pf(mj) < 0.90:
         return "DICABUT", f"{len(mj)} trade maju PF {_pf(mj):.2f}"
     return None, ""
-
-
-WR_KIRIM, WR_UTAMA, N_WR = 0.60, 0.65, 20       # v150: kirim kalau WR 20 trade maju terakhir >= 60%, UTAMA >= 65%
-
-
-def wr20(v):
-    mj = v.get("maju", [])[-N_WR:]
-    return len(mj), (sum(r > 0 for r in mj) / len(mj) if mj else 0.0)
-
-
-def kelas_wr(v):
-    n, wr = wr20(v)
-    if n < N_WR:
-        return "DIAM", f"baru {n} dari {N_WR} trade maju, dicatat tanpa kirim"
-    if wr >= WR_UTAMA:
-        return "UTAMA", f"WR {N_WR} trade terakhir {wr * 100:.0f}%"
-    if wr >= WR_KIRIM:
-        return "KIRIM", f"WR {N_WR} trade terakhir {wr * 100:.0f}%"
-    return "DIAM", f"WR {N_WR} trade terakhir {wr * 100:.0f}% (di bawah {WR_KIRIM * 100:.0f}%), dimatikan sementara"
-
-
-def rapor30(d, tid):
-    """Menang, kalah, WR, rata jam sampai TP untuk trade maju teknik ini yang selesai 30 hari terakhir."""
-    bt = _now() - 30 * 86400
-    cl = [c for c in d["closed"] if c.get("id") == tid and c.get("selesai", 0) >= bt]
-    w = sum(c["R"] > 0 for c in cl)
-    tp = [(c["selesai"] - c.get("t", c["selesai"])) / 3600 for c in cl if c.get("alasan") == "TP"]
-    return dict(n=len(cl), w=w, l=len(cl) - w, wr=w / len(cl) if cl else 0.0, jam_tp=sum(tp) / len(tp) if tp else None,
-                R=sum(c["R"] for c in cl))
-
-
-def baris_rapor(d, tid):
-    r = rapor30(d, tid)
-    if not r["n"]:
-        return "📋 Rapor 30 hari: belum ada trade selesai."
-    return (f"📋 Rapor 30 hari: menang {r['w']}, kalah {r['l']}, WR {r['wr'] * 100:.0f}%, total {r['R']:+.1f}R"
-            + (f", rata {r['jam_tp']:.0f} jam sampai TP." if r["jam_tp"] is not None else ", belum pernah kena TP."))
 
 
 def _fmt(x, t):
@@ -1182,14 +1137,11 @@ def sinyal():
     robot = _posisi_robot()
     calon.sort(key=lambda z: (z[0]["status"] != "TERBUKTI LAB", -min(z[0]["uji"]["pf_dev"], z[0]["uji"]["pf_uji"])))
     kartu, dipakai = [], set()
-    calon.sort(key=lambda z: -wr20(z[0])[1])
     for v, tr in calon:
-        if kelas_wr(v)[0] == "DIAM":
-            continue                          # v150: teknik tumpul tetap dicatat diam-diam (uji maju), tidak dikirim
         if len(kartu) < MAKS_KARTU and tr["sym"] not in robot and tr["sym"] not in dipakai:
             tr["kirim"] = True
             dipakai.add(tr["sym"])
-            kartu.append(_kartu(v, tr, SY, tick.get(tr["sym"]), d))
+            kartu.append(_kartu(v, tr, SY, tick.get(tr["sym"])))
     _simpan(d)
     if not (kartu or pesan):
         _log(f"sinyal: tidak ada yang baru ({len(calon)} dicatat diam-diam)")
@@ -1214,13 +1166,12 @@ def _rencana(tr, arah, t):
             f"<b>pindahkan SL ke entry {_fmt(tr['entry'], t)}</b>"]
 
 
-def _kartu(v, tr, SY, tick=None, d=None):
+def _kartu(v, tr, SY, tick=None):
     L = tr["s"] == 1
     arah = "LONG" if L else "SHORT"
     t = tick or (SY.tick_of(None, tr["entry"]) if SY else 0.0001)
     m, mj = v["uji"], v.get("maju", [])
-    kel, why_kel = kelas_wr(v)
-    lot = "0.5x" if (v["status"] == "TERBUKTI LAB" or kel == "UTAMA") else "0.25x"
+    lot = "0.5x" if v["status"] == "TERBUKTI LAB" else "0.25x"
     if SY:
         if tr.get("tp"):
             blok = SY.blok_salin(tr["entry"], tr["sl"], tr["tp"], tr["tp"], "MARKET", t, sym=tr["sym"], arah=arah, sebagian=True)
@@ -1234,9 +1185,7 @@ def _kartu(v, tr, SY, tick=None, d=None):
     _, ms, kl = bagian(v["spec"])
     lb = m.get("label") or label_paruh()
     rows = [f"{'🟢' if L else '🔴'} <b>{tr['sym']} {arah}</b>  ·  {'✅ TERBUKTI LAB' if v['status'] == 'TERBUKTI LAB' else '🧪 KANDIDAT'}"
-            f"  ·  lot {lot}" + ("  ·  ⭐ UTAMA" if kel == "UTAMA" else ""),
-            f"🏷️ Teknik: {html.escape(nama(v['spec']))}",
-            baris_rapor(d or _baca(), tr["id"]) + f" {why_kel}.",
+            f"  ·  lot {lot}",
             f"📐 Cara masuk: {html.escape(ms)}.",
             f"🚪 Cara keluar: {kl}.",
             f"📊 Hasil uji: PF {m['pf_dev']:.2f} ({lb[0]}) dan {m['pf_uji']:.2f} ({lb[1]}), {m['n_dev'] + m['n_uji']} trade. Harapan live sekitar "

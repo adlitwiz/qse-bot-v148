@@ -159,8 +159,7 @@ BANTUAN = ("❓ <b>QSE v149 | BANTUAN</b>\n\n"
            "/modal = lihat slot, risiko SL, dan sisa waktu posisi kamu. /modal 155 1 5 = isi modal, risiko, leverage (dolar)\n"
            "/slok AUSDT = SL di Bybit sudah di entry setelah TP 20% kena\n"
            "/mingguan = laporan 7 hari: robot dan trade kamu lawan hasil uji. Otomatis tiap Senin 06:20 WIB\n"
-           "/bantuan semua = daftar semua perintah\n"
-           "/menu = munculkan lagi tombol menu di bawah kolom ketik")
+           "/bantuan semua = daftar semua perintah")
 
 
 def _sym(a):
@@ -282,9 +281,6 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/ob", "/orderblock"):
         import qse_ob as OB
         return OB.teks()
-    if cmd in ("/lab", "/papan"):
-        import qse_lab as LB
-        return LB.status_teks()
     if cmd in ("/pelengkap", "/sektor"):
         import qse_sektor as SKT
         return SKT.teks()
@@ -387,7 +383,7 @@ def proses(cmds, dari_main=False):
             SY.pakai(None)
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
-                    "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/pelengkap": "🧩", "/lab": "🧪", "/papan": "🧪", "/menu": "🤖", "/sektor": "🧩", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
+                    "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/pelengkap": "🧩", "/sektor": "🧩", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/mode": "🎚️", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v149 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v149 | {cmd.upper()[1:]}</b>\n\n{isi}"

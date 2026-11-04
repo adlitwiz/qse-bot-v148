@@ -26,7 +26,6 @@ import qse_perintah as QP           # noqa: E402
 import qse_saya as SY               # noqa: E402
 import qse_alarm as AL              # noqa: E402
 import telegram_notify as TG        # noqa: E402
-import qse_menu as QM               # noqa: E402
 
 STATE = os.path.join(STATE_DIR, "state.json")
 ALIVE = os.path.join(STATE_DIR, "listener.alive")
@@ -917,10 +916,6 @@ def main():
         _SY.seed_awal()
     except Exception as ex:
         print("[WARN] hapus manual atau seed", ex, flush=True)
-    try:
-        QM.pastikan_menu()
-    except Exception as ex:
-        print("[WARN] menu awal", ex, flush=True)
     threading.Thread(target=_pekerja, daemon=True).start()
     threading.Thread(target=_penjaga, daemon=True).start()
     while True:
@@ -930,7 +925,7 @@ def main():
         off = _st().get("tg_offset", 0)
         try:
             r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
-                             params={"offset": off, "timeout": 25, "allowed_updates": '["message","callback_query"]'}, timeout=(10, 40))
+                             params={"offset": off, "timeout": 25, "allowed_updates": '["message"]'}, timeout=(10, 40))
             js = r.json()
         except Exception as ex:
             print("[WARN] getUpdates", ex)
@@ -945,30 +940,12 @@ def main():
         cmds = []
         for u in data:
             off = max(off, u["update_id"] + 1)
-            cq = u.get("callback_query")
-            m = (cq or {}).get("message") or u.get("message") or {}
-            if str(m.get("chat", {}).get("id")) != str(chat):
-                continue
-            fr = (cq or m).get("from") or {}
-            nm_ = " ".join(x for x in (fr.get("first_name"), fr.get("last_name")) if x) or fr.get("username") or ""
-            try:
-                c_ = QM.dari_tombol(cq) if cq else QM.dari_pesan(m.get("text"), fr.get("id"))
-            except Exception as ex:
-                print("[WARN] menu", ex, flush=True)
-                c_ = None
-            if c_:
-                if c_[0] in ("/menu", "/start"):
-                    QM.kirim_menu()
-                    continue
-                cmds.append((c_[0], c_[1], str(fr.get("id", "")) or None, nm_))
-                continue
+            m = u.get("message") or {}
             txt = (m.get("text") or "").strip()
-            if cq or not txt.startswith("/"):
+            if str(m.get("chat", {}).get("id")) != str(chat) or not txt.startswith("/"):
                 continue
             parts = txt.split()
-            if parts[0].split("@")[0].lower() in ("/menu", "/start"):
-                QM.kirim_menu()
-                continue
+            fr = m.get("from") or {}
             cmds.append((parts[0].split("@")[0].lower(), parts[1:], str(fr.get("id", "")) or None,
                          " ".join(x for x in (fr.get("first_name"), fr.get("last_name")) if x) or fr.get("username") or ""))
         if data:
