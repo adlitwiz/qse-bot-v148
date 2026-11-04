@@ -1,0 +1,527 @@
+//@version=5
+// QSE v148 BOT VISUAL 1 · JALUR SINYAL TERBUKTI
+// Visual dari robot Python QSE v148: 9 jalur terbukti + Tembus Trendline, aturan entry, SL, TP, trailing,
+// tutup paksa, filter mutu, label COMBO, COMBO EMAS, MUTU TINGGI, PULLBACK, satu koin satu jalur.
+// Pakai di chart 4J (240) pair perpetual Bybit. Pasangkan dengan QSE BOT 2 (struktur dan dasbor).
+indicator("QSE v148 BOT VISUAL 1 · Jalur Sinyal", shorttitle="QSE BOT 1", overlay=true, max_labels_count=500, max_lines_count=500, max_bars_back=1000)
+
+// ===== INPUT (hanya tampilan, aturan robot dikunci) =====
+btcSym   = input.symbol("BYBIT:BTCUSDT.P", "Acuan BTC 4J")
+showMA   = input.bool(true, "EMA 20/50/200 + McGinley 34", group="Tampilan")
+showIchi = input.bool(true, "Awan Ichimoku", group="Tampilan")
+showRaw  = input.bool(true, "Tanda sinyal mentah semua jalur", group="Tampilan")
+showPos  = input.bool(true, "Posisi robot: entry, SL berjalan, TP", group="Tampilan")
+showTbl  = input.bool(true, "Tabel hasil per jalur", group="Tampilan")
+useIchi  = input.bool(true, "Ichimoku TK Awan", group="Jalur")
+useOB    = input.bool(true, "Order Block + Volume", group="Jalur")
+useEMA   = input.bool(true, "EMA Cross 20/50 SHORT", group="Jalur")
+useRSI   = input.bool(true, "RSI 50 + Volume", group="Jalur")
+useSNR   = input.bool(true, "SnR Pantul + Volume", group="Jalur")
+useMSB   = input.bool(true, "MSB LuxAlgo HPZ", group="Jalur")
+useSMC   = input.bool(true, "SMC CHoCH searah tren", group="Jalur")
+useMCG   = input.bool(true, "McGinley 34 + Volume", group="Jalur")
+useGZH   = input.bool(true, "GZH Golden Zone", group="Jalur")
+useTT    = input.bool(true, "Tanda Tembus Trendline SHORT", group="Jalur")
+
+// ===== DATA DASAR =====
+atr14 = ta.atr(14)
+e20   = ta.ema(close, 20)
+e50   = ta.ema(close, 50)
+e200  = ta.ema(close, 200)
+vp    = ta.percentrank(volume, 100)
+okBar = bar_index >= 260
+cGreen = color.new(#00c853, 0)
+cRed   = color.new(#ff1744, 0)
+
+btcC = request.security(btcSym, "240", close, lookahead=barmerge.lookahead_off)
+btcE = request.security(btcSym, "240", ta.ema(close, 50), lookahead=barmerge.lookahead_off)
+btcNaik  = not na(btcC) and not na(btcE) and btcC > btcE
+btcTurun = not na(btcC) and not na(btcE) and btcC <= btcE
+
+// pivot gaya smc_core: kiri wajib lebih ekstrem, kanan boleh sama
+pivH(int len) =>
+    high[len] > ta.highest(high, len)[len + 1] and high[len] >= ta.highest(high, len)
+pivL(int len) =>
+    low[len] < ta.lowest(low, len)[len + 1] and low[len] <= ta.lowest(low, len)
+
+// ===== 1. ICHIMOKU TK DI LUAR AWAN =====
+tk    = math.avg(ta.highest(high, 9), ta.lowest(low, 9))
+kj    = math.avg(ta.highest(high, 26), ta.lowest(low, 26))
+sAraw = math.avg(tk, kj)
+sBraw = math.avg(ta.highest(high, 52), ta.lowest(low, 52))
+sa    = sAraw[26]
+sb    = sBraw[26]
+ichiL = bar_index >= 120 and not na(sa) and not na(sb) and close > math.max(sa, sb) and tk > kj and tk[1] <= kj[1]
+ichiS = bar_index >= 120 and not na(sa) and not na(sb) and close < math.min(sa, sb) and tk < kj and tk[1] >= kj[1]
+
+// ===== 2. EMA CROSS 20/50 SHORT =====
+emaS = okBar and e20 < e50 and e20[1] >= e50[1] and close < e200 and btcTurun
+
+// ===== 3. RSI 50 + VOLUME =====
+rsi14 = ta.rsi(close, 14)
+rsiL = okBar and vp >= 80 and rsi14 > 50 and rsi14[1] <= 50 and close > e200 and e50 > e200
+rsiS = okBar and vp >= 80 and rsi14 < 50 and rsi14[1] >= 50 and close < e200 and e50 < e200
+
+// ===== 4. McGINLEY 34 + VOLUME =====
+float md = na
+md := na(md[1]) ? close : md[1] + (close - md[1]) / math.max(0.6 * 34 * math.pow(close / md[1], 4), 1.0)
+mcgL = okBar and vp >= 80 and close > md and close[1] <= md[1] and close > e200
+mcgS = okBar and vp >= 80 and close < md and close[1] >= md[1] and close < e200
+
+// ===== 5. SnR PIVOT 20 PANTUL + VOLUME =====
+snrPL = pivL(20)
+snrPH = pivH(20)
+snrL = okBar and snrPL and close > low[20] and close > e200 and vp >= 80 and btcNaik
+snrS = okBar and snrPH and close < high[20] and close < e200 and vp >= 80 and btcTurun
+
+// ===== 6. MSB LUXALGO + SKOR HPZ =====
+ph7 = pivH(7)
+pl7 = pivL(7)
+var float lph = na
+var float lpl = na
+if ph7
+    lph := high[7]
+if pl7
+    lpl := low[7]
+chg = nz(ta.change(close))
+zm  = ta.sma(chg, 50)
+zs  = ta.stdev(chg, 50)
+zz  = zs == 0 ? 0.0 : (chg - zm) / zs
+mBull = bar_index >= 60 and not na(lph) and close > lph and close[1] <= lph and zz > 0.5
+mBear = bar_index >= 60 and not na(lpl) and close < lpl and close[1] >= lpl and zz < -0.5
+mSc   = math.min(100.0, math.abs(zz) * 20 + nz(vp) * 0.5)
+if mBull
+    lph := na
+if mBear
+    lpl := na
+msbL = okBar and mBull and mSc > 80 and close > e200
+msbS = okBar and mBear and mSc > 80 and close < e200
+
+// ===== 7. SMC LUXALGO CHoCH INTERNAL =====
+f_leg(int size) =>
+    var int leg = 0
+    float hh = ta.highest(high, size)
+    float ll = ta.lowest(low, size)
+    int nw = leg
+    if high[size] > hh
+        nw := 0
+    else if low[size] < ll
+        nw := 1
+    bool nH = nw != leg and nw == 0
+    bool nL = nw != leg and nw == 1
+    leg := nw
+    [nH, nL]
+
+[iNH, iNL] = f_leg(5)
+[sNH, sNL] = f_leg(50)
+var float sHv = na
+var bool  sHx = true
+var float sLv = na
+var bool  sLx = true
+var float iHv = na
+var bool  iHx = true
+var float iLv = na
+var bool  iLx = true
+var int   itr = 0
+if sNH
+    sHv := high[50]
+    sHx := false
+if sNL
+    sLv := low[50]
+    sLx := false
+if iNH
+    iHv := high[5]
+    iHx := false
+if iNL
+    iLv := low[5]
+    iLx := false
+if not sHx and not na(sHv) and close > sHv and close[1] <= sHv
+    sHx := true
+if not sLx and not na(sLv) and close < sLv and close[1] >= sLv
+    sLx := true
+bool chochL = false
+bool chochS = false
+if not iHx and not na(iHv) and (na(sHv) or iHv != sHv) and close > iHv and close[1] <= iHv
+    chochL := itr == -1
+    iHx := true
+    itr := 1
+if not iLx and not na(iLv) and (na(sLv) or iLv != sLv) and close < iLv and close[1] >= iLv
+    chochS := itr == 1
+    iLx := true
+    itr := -1
+smcL = okBar and chochL and close > e200
+smcS = okBar and chochS and close < e200
+
+// ===== 8. ORDER BLOCK + VOLUME (LONG) =====
+greens = close > open and close[1] > open[1] and close[2] > open[2] and close[3] > open[3] and close[4] > open[4]
+obRaw  = bar_index >= 210 and close[5] < open[5] and greens and math.abs(close[5] - close) / close[5] * 100 >= 2.0 and close > e200 and vp >= 80
+obSig  = obRaw and btcNaik
+obSL   = low[5] - 0.3 * atr14
+
+// ===== 9. GZH GOLDEN ZONE HUNTER =====
+gzAtr = ta.atr(10)
+var float zP   = 0.0
+var int   zI   = 0
+var bool  zHi  = false
+var float zY1  = 0.0
+var bool  zAda = false
+var float uS   = na
+var float uE   = na
+bool  gzL   = false
+bool  gzS   = false
+float gzSLv = na
+legOK = zAda and zY1 != 0 and not na(gzAtr[1])
+gSt   = zP
+gEn   = zY1
+gIsL  = gSt > gEn
+g618  = gSt + (gIsL ? -1 : 1) * math.abs(gSt - gEn) * 0.618
+gUsed = gSt == uS and gEn == uE
+if legOK and not gUsed and bar_index > zI
+    bool kena = gIsL ? (low <= g618 and g618 < close[1]) : (high >= g618 and g618 > close[1])
+    if kena
+        uS := gSt
+        uE := gEn
+        bool konf = gIsL ? close > g618 : close < g618
+        float slg = gIsL ? gEn - 0.2 * gzAtr[1] : gEn + 0.2 * gzAtr[1]
+        bool tpOk = gIsL ? gSt > close : gSt < close
+        bool srh  = gIsL ? (close > e200 and btcNaik) : (close < e200 and btcTurun)
+        if konf and tpOk and srh and okBar
+            gzSLv := slg
+            if gIsL
+                gzL := true
+            else
+                gzS := true
+thrT = na(gzAtr) ? 1e9 : gzAtr / close * 100 * 4.0
+wH = ta.highest(high, 11)
+wL = ta.lowest(low, 11)
+isPH = bar_index >= 10 and high[5] >= wH
+isPL = bar_index >= 10 and low[5] <= wL
+if isPH
+    float p = high[5]
+    float dev = 100 * (p - zP) / p
+    if zHi and zAda
+        if p > zP
+            zP := p
+            zI := bar_index - 5
+    else if math.abs(dev) > thrT
+        zY1  := zP
+        zAda := true
+        zP   := p
+        zI   := bar_index - 5
+        zHi  := true
+if isPL and not isPH
+    float p2 = low[5]
+    float dev2 = 100 * (p2 - zP) / p2
+    if not zHi and zAda
+        if p2 < zP
+            zP := p2
+            zI := bar_index - 5
+    else if math.abs(dev2) > thrT
+        zY1  := zP
+        zAda := true
+        zP   := p2
+        zI   := bar_index - 5
+        zHi  := false
+
+// ===== 10. TEMBUS TRENDLINE SHORT (level entry tetap dari DASBOR) =====
+tpH = ta.pivothigh(high, 10, 10)
+tpL = ta.pivotlow(low, 10, 10)
+var float tl1 = na
+var float tl2 = na
+var int tl1i = na
+var int tl2i = na
+if not na(tpL)
+    tl2  := tl1
+    tl2i := tl1i
+    tl1  := tpL
+    tl1i := bar_index - 10
+slpL = not na(tl1) and not na(tl2) and tl1i != tl2i ? (tl1 - tl2) / (tl1i - tl2i) : 0.0
+tlLv = na(tl1) ? na : tl1 + slpL * (bar_index - tl1i)
+rvol = volume / ta.sma(volume, 20)
+tlBD = not na(tlLv) and close < tlLv and close[1] >= nz(tlLv[1], tlLv)
+ttS  = useTT and okBar and tlBD and rvol >= 1.2 and close < e200
+
+// ===== MUTU (kondisi plus dan minus candle sinyal) =====
+hh20 = ta.highest(high, 20)[1]
+ll20 = ta.lowest(low, 20)[1]
+fbL  = low < ll20 and close > ll20
+fbS  = high > hh20 and close < hh20
+lr   = ta.linreg(close, 100, 0)
+sdy  = ta.stdev(close, 100)
+rr   = ta.correlation(close, bar_index, 100)
+resSd = sdy * math.sqrt(math.max(1 - rr * rr, 0))
+chZ  = (close - lr) / (resSd > 0 ? resSd : 1e-9)
+[macL, macSig, macH] = ta.macd(close, 12, 26, 9)
+[dip, dim, adxV] = ta.dmi(14, 14)
+stp  = math.pow(10, math.floor(math.log10(close))) / 2
+nxL  = (math.floor(close / stp) + 1) * stp
+nxS  = (math.ceil(close / stp) - 1) * stp
+rnL  = math.abs(nxL - close) <= 1.5 * atr14
+rnS  = math.abs(nxS - close) <= 1.5 * atr14
+tipL = (close - hh20) > 0 and (close - hh20) < 0.25 * atr14
+tipS = (ll20 - close) > 0 and (ll20 - close) < 0.25 * atr14
+plusL  = (fbL ? 1 : 0) + (chZ > 1 ? 1 : 0) + (macH > 0 ? 1 : 0) + (adxV < 20 ? 1 : 0)
+minusL = (adxV > 25 ? 1 : 0) + (rnL ? 1 : 0) + (tipL ? 1 : 0) + (chZ < -1 ? 1 : 0) + (macL > 0 ? 1 : 0)
+plusS  = (fbS ? 1 : 0) + (chZ < -1 ? 1 : 0) + (macH < 0 ? 1 : 0) + (adxV < 20 ? 1 : 0)
+minusS = (adxV > 25 ? 1 : 0) + (rnS ? 1 : 0) + (tipS ? 1 : 0) + (chZ > 1 ? 1 : 0) + (macL < 0 ? 1 : 0)
+f_mutuTxt(bool isL) =>
+    string t = ""
+    if isL
+        t := (fbL ? "jebakan lawan, " : "") + (chZ > 1 ? "atas channel, " : "") + (macH > 0 ? "MACD hist, " : "") + (adxV < 20 ? "ADX<20, " : "")
+    else
+        t := (fbS ? "jebakan lawan, " : "") + (chZ < -1 ? "bawah channel, " : "") + (macH < 0 ? "MACD hist, " : "") + (adxV < 20 ? "ADX<20, " : "")
+    str.length(t) > 2 ? str.substring(t, 0, str.length(t) - 2) : t
+
+// ===== TABEL JALUR =====
+// indeks: 0 Ichimoku, 1 Order Block, 2 EMA SHORT, 3 RSI, 4 SnR, 5 MSB, 6 SMC, 7 McGinley, 8 GZH
+var NAMA  = array.from("Ichimoku", "Order Block", "EMA SHORT", "RSI 50+Vol", "SnR+Vol", "MSB HPZ", "SMC CHoCH", "McGinley 34", "GZH")
+var KODE  = array.from("ICH", "OB", "EMA", "RSI", "SNR", "MSB", "SMC", "MCG", "GZH")
+var SLA   = array.from(1.5, 0.0, 1.5, 2.0, 2.0, 2.0, 2.0, 1.5, 0.0)
+var TRL   = array.from(4.0, 0.0, 4.0, 3.0, 0.0, 4.0, 0.0, 0.0, 3.0)
+var TPR   = array.from(0.0, 4.0, 0.0, 0.0, 3.0, 0.0, 3.0, 4.0, 0.0)
+var MXB   = array.from(60, 60, 60, 60, 45, 60, 45, 45, 60)
+var SLMIN = array.from(0.0, 0.004, 0.003, 0.003, 0.003, 0.003, 0.003, 0.003, 0.0)
+var PRIO  = array.from(1, 2, 3, 4, 0, 5, 6, 7, 8)
+var PFB   = array.from(1.29, 1.45, 1.42, 1.34, 1.33, 1.27, 1.25, 1.24, 1.24)
+var EMAS  = array.from(86, 25, 23, 2, 7, 3, 78, 72, 70, 75, 52, 50, 30, 37, 35, 36, 62, 46)
+var lastL = array.new_int(9, -1000)
+var lastS = array.new_int(9, -1000)
+var stN   = array.new_int(9, 0)
+var stW   = array.new_int(9, 0)
+var stGW  = array.new_float(9, 0.0)
+var stGL  = array.new_float(9, 0.0)
+var stR   = array.new_float(9, 0.0)
+USE = array.from(useIchi, useOB, useEMA, useRSI, useSNR, useMSB, useSMC, useMCG, useGZH)
+
+// catat sinyal mentah untuk COMBO 72 jam
+if ichiL
+    array.set(lastL, 0, bar_index)
+if ichiS
+    array.set(lastS, 0, bar_index)
+if obRaw
+    array.set(lastL, 1, bar_index)
+if emaS
+    array.set(lastS, 2, bar_index)
+if rsiL
+    array.set(lastL, 3, bar_index)
+if rsiS
+    array.set(lastS, 3, bar_index)
+if snrL
+    array.set(lastL, 4, bar_index)
+if snrS
+    array.set(lastS, 4, bar_index)
+if msbL
+    array.set(lastL, 5, bar_index)
+if msbS
+    array.set(lastS, 5, bar_index)
+if smcL
+    array.set(lastL, 6, bar_index)
+if smcS
+    array.set(lastS, 6, bar_index)
+if mcgL
+    array.set(lastL, 7, bar_index)
+if mcgS
+    array.set(lastS, 7, bar_index)
+if gzL
+    array.set(lastL, 8, bar_index)
+if gzS
+    array.set(lastS, 8, bar_index)
+
+insideBar = high <= high[1] and low >= low[1]
+
+f_combo(int k, bool isL) =>
+    int n = 0
+    string nm = ""
+    string em = ""
+    for j = 0 to 8
+        if j != k
+            int lb = isL ? array.get(lastL, j) : array.get(lastS, j)
+            if bar_index - lb <= 17
+                n += 1
+                nm := nm + (nm == "" ? "" : ", ") + array.get(NAMA, j)
+                if array.includes(EMAS, k * 10 + j)
+                    em := em + (em == "" ? "" : ", ") + array.get(NAMA, j)
+    if n > 0 and insideBar
+        n += 1
+        nm := nm + ", inside bar"
+    [n, nm, em]
+
+// ===== POSISI ROBOT (satu koin satu jalur) =====
+var bool  pOn   = false
+var int   pK    = 0
+var bool  pL    = true
+var float pE    = na
+var float pSL   = na
+var float pTP   = na
+var float pRisk = na
+var float pBest = na
+var int   pBar  = 0
+var int   pEB   = 0
+float plE  = na
+float plSL = na
+float plTP = na
+
+// keluar dulu, lalu cari sinyal baru (sama dengan urutan robot)
+if pOn and bar_index > pEB
+    float trl = array.get(TRL, pK)
+    float tpr = array.get(TPR, pK)
+    int   mx  = array.get(MXB, pK)
+    bool  hitSL = pL ? low <= pSL : high >= pSL
+    float xPx = na
+    string why = ""
+    plE  := pE
+    plSL := pSL
+    plTP := tpr > 0 ? pTP : na
+    if hitSL
+        xPx := pSL
+        why := "SL"
+    else if tpr > 0
+        if pBar > 0 and (pL ? high >= pTP : low <= pTP)
+            xPx := pTP
+            why := "TP"
+        else
+            pBar += 1
+            if pBar >= mx
+                xPx := close
+                why := "WAKTU"
+    else
+        pBest := pL ? math.max(pBest, high) : math.min(pBest, low)
+        pSL   := pL ? math.max(pSL, pBest - trl * atr14) : math.min(pSL, pBest + trl * atr14)
+        plSL  := pSL
+        pBar  += 1
+        if pBar >= mx
+            xPx := close
+            why := "WAKTU"
+    if not na(xPx)
+        float R = ((xPx - pE) * (pL ? 1 : -1)) / pRisk - 0.0015 * pE / pRisk
+        array.set(stN, pK, array.get(stN, pK) + 1)
+        array.set(stR, pK, array.get(stR, pK) + R)
+        if R > 0
+            array.set(stW, pK, array.get(stW, pK) + 1)
+            array.set(stGW, pK, array.get(stGW, pK) + R)
+        else
+            array.set(stGL, pK, array.get(stGL, pK) - R)
+        if showPos
+            label.new(bar_index, pL ? high : low, why + " " + (R >= 0 ? "+" : "") + str.tostring(R, "#.##") + "R\n" + array.get(KODE, pK),
+                 style=pL ? label.style_label_down : label.style_label_up, color=R > 0 ? color.new(#00c853, 20) : color.new(#ff1744, 20),
+                 textcolor=color.white, size=size.small)
+        alert("QSE BOT 1 " + syminfo.ticker + " " + array.get(NAMA, pK) + " SELESAI " + why + " " + str.tostring(R, "#.##") + "R", alert.freq_once_per_bar_close)
+        pOn := false
+
+// kandidat sinyal per jalur bar ini
+cDir = array.from(ichiL ? 1 : ichiS ? -1 : 0, obSig ? 1 : 0, emaS ? -1 : 0, rsiL ? 1 : rsiS ? -1 : 0, snrL ? 1 : snrS ? -1 : 0,
+     msbL ? 1 : msbS ? -1 : 0, smcL ? 1 : smcS ? -1 : 0, mcgL ? 1 : mcgS ? -1 : 0, gzL ? 1 : gzS ? -1 : 0)
+
+if not pOn
+    for idx = 0 to 8
+        int k = array.get(PRIO, idx)
+        int d = array.get(cDir, k)
+        if d != 0 and array.get(USE, k)
+            bool isL = d == 1
+            bool buang = k != 8 and (isL ? plusL - minusL <= -2 : plusS - minusS <= -2)
+            float sl = k == 1 ? obSL : k == 8 ? gzSLv : (isL ? close - array.get(SLA, k) * atr14 : close + array.get(SLA, k) * atr14)
+            float risk = math.abs(close - sl)
+            float rp = risk / close
+            bool slOk = risk > 0 and rp <= 0.10 and rp >= array.get(SLMIN, k) and (isL ? sl < close : sl > close)
+            if not buang and slOk
+                pOn   := true
+                pK    := k
+                pL    := isL
+                pE    := close
+                pSL   := sl
+                pRisk := risk
+                pBest := close
+                pBar  := 0
+                pEB   := bar_index
+                float tpr = array.get(TPR, k)
+                pTP   := tpr > 0 ? (isL ? close + tpr * risk : close - tpr * risk) : na
+                plE   := pE
+                plSL  := pSL
+                plTP  := pTP
+                [cbN, cbNm, cbEm] = f_combo(k, isL)
+                bool mt = (isL ? plusL : plusS) >= 3
+                bool pb = k == 7 and (isL ? (close > e200 and e20 < e50) : (close < e200 and e20 > e50))
+                string kel = tpr > 0 ? "TP " + str.tostring(pTP, format.mintick) + " (" + str.tostring(tpr) + "R penuh, tutup " + str.tostring(array.get(MXB, k)) + " candle)" :
+                     "Tanpa TP, SL berjalan " + str.tostring(array.get(TRL, k)) + " ATR, tutup 60 candle"
+                string txt = (isL ? "LONG" : "SHORT") + " · " + array.get(NAMA, k) + " 4J\nEntry MARKET " + str.tostring(close, format.mintick) +
+                     "\nSL " + str.tostring(sl, format.mintick) + " (" + str.tostring(rp * 100, "#.#") + "%)\n" + kel +
+                     (cbEm != "" ? "\nCOMBO EMAS: " + cbEm : "") +
+                     (cbN > 0 ? "\nCOMBO " + str.tostring(cbN + 1) + ": " + cbNm : "") +
+                     (mt ? "\nMUTU TINGGI: " + f_mutuTxt(isL) : "") +
+                     (pb ? "\nPULLBACK DALAM TREN BESAR" : "") +
+                     "\nUji bot PF " + str.tostring(array.get(PFB, k))
+                if showPos
+                    label.new(bar_index, isL ? low : high, txt, style=isL ? label.style_label_up : label.style_label_down,
+                         color=isL ? color.new(#00c853, 10) : color.new(#ff1744, 10), textcolor=color.white, size=size.small)
+                alert("QSE BOT 1 " + syminfo.ticker + " " + txt, alert.freq_once_per_bar_close)
+                break
+
+// ===== PLOT =====
+plot(showMA ? e20 : na, "EMA 20", color.new(#ffd600, 0), 1)
+plot(showMA ? e50 : na, "EMA 50", color.new(#ff9100, 0), 1)
+plot(showMA ? e200 : na, "EMA 200", color.new(#e040fb, 0), 2)
+plot(showMA ? md : na, "McGinley 34", color.new(#00e5ff, 0), 2)
+pA = plot(showIchi ? sAraw : na, "Senkou A", color.new(#26a69a, 60), offset=26)
+pB = plot(showIchi ? sBraw : na, "Senkou B", color.new(#ef5350, 60), offset=26)
+fill(pA, pB, color=sAraw > sBraw ? color.new(#26a69a, 85) : color.new(#ef5350, 85), title="Awan")
+plot(showIchi ? tk : na, "Tenkan", color.new(#2962ff, 30), 1)
+plot(showIchi ? kj : na, "Kijun", color.new(#b71c1c, 30), 1)
+
+plot(showPos ? plE : na, "Entry robot", color.new(color.white, 0), 1, plot.style_linebr)
+plot(showPos ? plSL : na, "SL robot (berjalan)", color.new(#ff1744, 0), 2, plot.style_linebr)
+plot(showPos ? plTP : na, "TP robot", color.new(#00e676, 0), 2, plot.style_linebr)
+
+plotshape(showRaw and useIchi and ichiL, "Ichimoku LONG", shape.triangleup, location.belowbar, cGreen, text="ICH", size=size.tiny)
+plotshape(showRaw and useIchi and ichiS, "Ichimoku SHORT", shape.triangledown, location.abovebar, cRed, text="ICH", size=size.tiny)
+plotshape(showRaw and useOB and obSig, "Order Block LONG", shape.triangleup, location.belowbar, cGreen, text="OB", size=size.tiny)
+plotshape(showRaw and useEMA and emaS, "EMA SHORT", shape.triangledown, location.abovebar, cRed, text="EMA", size=size.tiny)
+plotshape(showRaw and useRSI and rsiL, "RSI LONG", shape.triangleup, location.belowbar, cGreen, text="RSI", size=size.tiny)
+plotshape(showRaw and useRSI and rsiS, "RSI SHORT", shape.triangledown, location.abovebar, cRed, text="RSI", size=size.tiny)
+plotshape(showRaw and useSNR and snrL, "SnR LONG", shape.triangleup, location.belowbar, cGreen, text="SNR", size=size.tiny)
+plotshape(showRaw and useSNR and snrS, "SnR SHORT", shape.triangledown, location.abovebar, cRed, text="SNR", size=size.tiny)
+plotshape(showRaw and useMSB and msbL, "MSB LONG", shape.triangleup, location.belowbar, cGreen, text="MSB", size=size.tiny)
+plotshape(showRaw and useMSB and msbS, "MSB SHORT", shape.triangledown, location.abovebar, cRed, text="MSB", size=size.tiny)
+plotshape(showRaw and useSMC and smcL, "SMC LONG", shape.triangleup, location.belowbar, cGreen, text="SMC", size=size.tiny)
+plotshape(showRaw and useSMC and smcS, "SMC SHORT", shape.triangledown, location.abovebar, cRed, text="SMC", size=size.tiny)
+plotshape(showRaw and useMCG and mcgL, "McGinley LONG", shape.triangleup, location.belowbar, cGreen, text="MCG", size=size.tiny)
+plotshape(showRaw and useMCG and mcgS, "McGinley SHORT", shape.triangledown, location.abovebar, cRed, text="MCG", size=size.tiny)
+plotshape(showRaw and useGZH and gzL, "GZH LONG", shape.diamond, location.belowbar, color.new(#ffd600, 0), text="GZH", size=size.tiny)
+plotshape(showRaw and useGZH and gzS, "GZH SHORT", shape.diamond, location.abovebar, color.new(#ffd600, 0), text="GZH", size=size.tiny)
+plotshape(ttS, "Tembus Trendline SHORT", shape.xcross, location.abovebar, color.new(#ff6d00, 0), text="TT", size=size.tiny)
+if ttS
+    alert("QSE BOT 1 " + syminfo.ticker + " Tembus Trendline SHORT searah tren. Ambil level entry, SL, TP dari DASBOR", alert.freq_once_per_bar_close)
+
+// ===== TABEL =====
+var table tb = table.new(position.top_right, 6, 13, border_width=1, frame_color=color.new(color.gray, 50), frame_width=1)
+f_cell(int c, int r, string t, color bg, color fg) =>
+    table.cell(tb, c, r, t, bgcolor=bg, text_color=fg, text_size=size.tiny)
+if barstate.isfirst
+    table.merge_cells(tb, 1, 10, 5, 10)
+    table.merge_cells(tb, 1, 11, 5, 11)
+    table.merge_cells(tb, 0, 12, 5, 12)
+if barstate.islast and showTbl
+    color hb = color.new(#263238, 0)
+    color rb = color.new(#11161c, 10)
+    f_cell(0, 0, "QSE v148 BOT 1", hb, color.white)
+    f_cell(1, 0, "Trade", hb, color.white)
+    f_cell(2, 0, "WR", hb, color.white)
+    f_cell(3, 0, "PF chart", hb, color.white)
+    f_cell(4, 0, "Total R", hb, color.white)
+    f_cell(5, 0, "PF uji bot", hb, color.white)
+    for k = 0 to 8
+        int n = array.get(stN, k)
+        float gl = array.get(stGL, k)
+        float pf = gl > 0 ? array.get(stGW, k) / gl : (n > 0 ? 9.99 : 0.0)
+        float tr = array.get(stR, k)
+        f_cell(0, k + 1, array.get(NAMA, k), rb, array.get(USE, k) ? color.white : color.gray)
+        f_cell(1, k + 1, str.tostring(n), rb, color.white)
+        f_cell(2, k + 1, n > 0 ? str.tostring(array.get(stW, k) * 100.0 / n, "#") + "%" : "-", rb, color.white)
+        f_cell(3, k + 1, n > 0 ? str.tostring(pf, "#.##") : "-", rb, pf >= 1.2 ? #00e676 : pf >= 1.0 ? #ffd600 : #ff5252)
+        f_cell(4, k + 1, str.tostring(tr, "#.#"), rb, tr >= 0 ? #00e676 : #ff5252)
+        f_cell(5, k + 1, str.tostring(array.get(PFB, k)), rb, color.silver)
+    string ps = pOn ? ((pL ? "LONG " : "SHORT ") + array.get(NAMA, pK) + " · SL " + str.tostring(pSL, format.mintick) + " · candle " + str.tostring(pBar)) : "tidak ada posisi"
+    f_cell(0, 10, "Posisi", hb, color.white)
+    f_cell(1, 10, ps, rb, pOn ? (pL ? #00e676 : #ff5252) : color.gray)
+    f_cell(0, 11, "BTC 4J", hb, color.white)
+    f_cell(1, 11, btcNaik ? "di atas EMA 50, condong LONG" : "di bawah EMA 50, condong SHORT", rb, btcNaik ? #00e676 : #ff5252)
+    f_cell(0, 12, timeframe.period != "240" ? "PERINGATAN: aturan robot untuk chart 4J (240)" : "Hasil hanya koin ini. Filter likuid dan batas 16 posisi portofolio ada di bot", rb, timeframe.period != "240" ? #ffd600 : color.gray)

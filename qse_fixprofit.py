@@ -287,6 +287,16 @@ def select(results, tickers, led):
             tolak("batas sinyal searah")
             s["saring"] = "batas sinyal searah"
             continue
+        if r["tf"] == "240" and os.environ.get("QSE_AMD", "1") == "1":
+            try:
+                import qse_sesi as SS
+                why = SS.amd_melawan(r["symbol"], s["arah"])
+            except Exception:
+                why = ""
+            if why:
+                tolak("AMD melawan (range Asia disapu berlawanan)")
+                s["saring"] = why
+                continue
         if len(out) >= MAX_SIGNALS:
             tolak("batas jumlah pesan")
             s["saring"] = "batas jumlah pesan"

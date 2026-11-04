@@ -229,3 +229,31 @@ def teks(sesi="pagi", now=None):
     if pw:
         blok += ["", "<b>⚠️ Peringatan hari ini</b>", *pw]
     return "\n".join(blok)
+
+
+def amd_melawan(sym, arah, now=None):
+    """v150 (riset/upgrade/hasil_v157_lokasi.txt): sinyal 4J v149 dilewati kalau range Asia hari ini (00-08 UTC) sudah disapu
+    BERLAWANAN arah sinyal lalu harga kembali masuk range (pola AMD). Dipilih di 2023-2024: 152 sinyal rata -0.002R lawan +0.127R.
+    Dicek di 2025-2026 yang tidak ikut memilih: 155 sinyal rata -0.028R lawan +0.133R. Return teks alasan atau ''."""
+    try:
+        import qse_saya as SY
+        now = now or time.time()
+        jam = time.gmtime(now).tm_hour
+        if jam < 8:
+            return ""
+        d0 = int(now // 86400 * 86400 * 1000)
+        b = [x for x in SY._kline(sym, "60", 30) if x[0] + 3600000 <= now * 1000]
+        asia = [x for x in b if d0 <= x[0] < d0 + 8 * 3600000]
+        lanjut = [x for x in b if x[0] >= d0 + 8 * 3600000]
+        if len(asia) < 8 or not lanjut:
+            return ""
+        ah, al, c = max(x[1] for x in asia), min(x[2] for x in asia), b[-1][3]
+        if not (al < c < ah):
+            return ""
+        if arah == "LONG" and min(x[2] for x in lanjut) < al:
+            return "AMD melawan: low Asia sudah disapu lalu harga balik ke range (uji 2023-2026 rata -0.01R)"
+        if arah == "SHORT" and max(x[1] for x in lanjut) > ah:
+            return "AMD melawan: high Asia sudah disapu lalu harga balik ke range (uji 2023-2026 rata -0.01R)"
+    except Exception:
+        return ""
+    return ""
