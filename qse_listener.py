@@ -151,6 +151,13 @@ def _tugas_berkala():
         except Exception as ex:
             print("[WARN] orderblock", ex)
         try:
+            import qse_sektor as SKT
+            pesan = SKT.jalankan(baru_ok=True)       # v150: kantong kedua, slot sendiri maks 2, lot 0.5x, tidak memakan slot v149
+            if pesan:
+                TG.send(["🧩 <b>QSE v150 | SINYAL PELENGKAP SEKTOR 4J</b>\n\n" + "\n\n".join(pesan)])
+        except Exception as ex:
+            print("[WARN] sektor pelengkap", ex)
+        try:
             for k, pesan in ST.jalankan(baru_ok=True).items():
                 nama = ST.STRAT[k]["nama"].upper()
                 lain = [m for m in pesan if "BISA DIIKUTI" not in m]

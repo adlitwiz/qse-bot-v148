@@ -102,6 +102,7 @@ BANTUAN_SEMUA = ("❓ <b>QSE v149 | SEMUA PERINTAH</b>\n\n"
            "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n"
            "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n"
            "/ob = jalur Order Block + Volume 4J: posisi, hasil, dan hasil uji 6 tahun\n"
+           "/pelengkap = kantong Sinyal Pelengkap sektor 4J (lot 0.5x, maks 2 posisi): posisi dan hasil\n"
            "/strategi = jalur EMA Cross, RSI 50, McGinley, SnR, MSB, SMC, GZH: posisi, hasil, uji 6 tahun\n"
            "/arah SOL = tren 15m sampai 1W, tanggal yang sama tahun lalu, pola kembar, dan riwayat pola robot di koin ini\n\n"
            "<b>Info</b>\n"
@@ -280,6 +281,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/ob", "/orderblock"):
         import qse_ob as OB
         return OB.teks()
+    if cmd in ("/pelengkap", "/sektor"):
+        import qse_sektor as SKT
+        return SKT.teks()
     if cmd in ("/ichimoku", "/ichi"):
         import qse_ichimoku as IC
         return IC.teks()
@@ -379,7 +383,7 @@ def proses(cmds, dari_main=False):
             SY.pakai(None)
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
-                    "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
+                    "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/pelengkap": "🧩", "/sektor": "🧩", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/mode": "🎚️", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v149 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v149 | {cmd.upper()[1:]}</b>\n\n{isi}"
