@@ -1,4 +1,4 @@
-"""QSE v149 - FUNDAMENTAL DAN DERIVATIF untuk /cek.
+"""QSE v150 - FUNDAMENTAL DAN DERIVATIF untuk /cek.
   1. CoinGecko (gratis, tanpa key): market cap, peringkat, FDV, suplai beredar, jarak dari ATH, performa, kategori,
      tokenomics dan perkiraan unlock dari riwayat pasokan beredar 1 tahun (26 Okt 2026)
   2. Bybit: funding, open interest 24 jam, rasio akun long dan short, volume, umur listing

@@ -330,7 +330,7 @@ def _btcd():
     v = None
     try:
         v = float(requests.get("https://api.coingecko.com/api/v3/global", timeout=10,
-                               headers={"User-Agent": "qse-bot/148"}).json()["data"]["market_cap_percentage"]["btc"])
+                               headers={"User-Agent": "qse-bot/150"}).json()["data"]["market_cap_percentage"]["btc"])
     except Exception:
         try:
             v = float(requests.get("https://api.coinpaprika.com/v1/global", timeout=10).json()["bitcoin_dominance_percentage"])

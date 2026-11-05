@@ -1,4 +1,4 @@
-"""QSE v149 - FIX PROFIT: saringan tambahan di atas vonis DASBOR + buku catatan sinyal live yang belajar dari hasil nyata.
+"""QSE v150 - FIX PROFIT: saringan tambahan di atas vonis DASBOR + buku catatan sinyal live yang belajar dari hasil nyata.
 Engine tidak diubah. Lapisan ini hanya memutuskan sinyal mana yang layak dikirim."""
 import fcntl
 import json

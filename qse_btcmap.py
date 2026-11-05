@@ -1,4 +1,4 @@
-"""QSE v149 - PETA KOMANDO BTC.
+"""QSE v150 - PETA KOMANDO BTC.
 Arah BTC di 1J, 4J, 1D dari McGinley Dynamic (close di atas garis yang menanjak = naik), volume objektif
 (volume candle naik lawan turun 6 candle 4J terakhir), order flow (letak close di range x volume, 24 candle 1J),
 struktur smart money (puncak dan lembah 4J terakhir), support resistance terdekat, dan zona likuiditas
@@ -40,7 +40,7 @@ def _atr(h, l, c, n=14):
 
 
 def keadaan(c, n):
-    """+1 naik, -1 turun, 0 sideways (McGinley n, sama dengan riset v149 trend_state)."""
+    """+1 naik, -1 turun, 0 sideways (McGinley n, sama dengan riset v150 trend_state)."""
     if len(c) < n + 5:
         return 0
     md = _mcginley(c, n)
@@ -197,7 +197,7 @@ def teks(p=None, singkat=False):
         f"• Likuiditas di bawah (stop long): {lb}",
         f"👉 {fk} (skor {p['skor']:+d} dari -8 sampai +8)" + (f". Target sapuan berikutnya: {target}" if target else ""),
         "Ini peta kondisi, bukan ramalan harga BTC: uji 2019-2026 tebakan arah BTC 24 jam dari FOKUS benar 44-53% (lempar koin). "
-        "Gunanya untuk sinyal altcoin: searah FOKUS rata +0.10R per sinyal, lawan FOKUS +0.02R (riset/v149/hasil_fokus_btc.txt). "
+        "Gunanya untuk sinyal altcoin: searah FOKUS rata +0.10R per sinyal, lawan FOKUS +0.02R (riset/v150/hasil_fokus_btc.txt). "
         "Menahan semua sinyal lawan FOKUS menurunkan profit 2025-2026, jadi tetap dikirim dengan tanda.",
     ])
 
@@ -305,7 +305,7 @@ def baris_kartu(m, pr=None):
 
 
 def kartu_ringkas(m, pr=None, nama=""):
-    """v149: kartu sinyal ringkas dan rapi dari kartu jalur lengkap. Urutan: judul, label, blok salin, bukti, BTC, level, cara masuk,
+    """v150: kartu sinyal ringkas dan rapi dari kartu jalur lengkap. Urutan: judul, label, blok salin, bukti, BTC, level, cara masuk,
     alasan, aturan keluar, lot. Gagal mengurai = None (pengirim memakai kartu lengkap)."""
     import re
     x = re.search(r"<b>\d+\. ([A-Z0-9]+USDT) (LONG|SHORT)</b>\s*·\s*([^\n]+)", m or "")
@@ -356,7 +356,7 @@ def kartu_ringkas(m, pr=None, nama=""):
         px = float(d4["close"].values[-1])
         f = lambda v: "-" if v is None else f"{TG.fp(v, t)} ({(v / px - 1) * 100:+.1f}%)"
         rows.append(f"🧱 Support 4J <b>{f(sup)}</b>  ·  Resistance 4J <b>{f(res)}</b>")
-        # v149: info ringkas pasar (info saja: efisiensi tren, funding, dan derivatif BTC sudah diuji dan tidak memilah, hasil_v150.txt)
+        # v150: info ringkas pasar (info saja: efisiensi tren, funding, dan derivatif BTC sudah diuji dan tidak memilah, hasil_v150.txt)
         c = d4["close"].values.astype(float)[-21:]
         ef = abs(c[-1] - c[0]) / max(np.abs(np.diff(c)).sum(), 1e-12)
         try:

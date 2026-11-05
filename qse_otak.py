@@ -163,7 +163,7 @@ def tandai(it, kunci, df, btc=None):
     try:
         if kunci not in JALUR_SKOR:
             return it
-        tandai_profil(it, kunci)          # v149: hanya jalur yang punya rekam jejak uji (GZH tidak)
+        tandai_profil(it, kunci)          # v150: hanya jalur yang punya rekam jejak uji (GZH tidak)
         if btc is None:
             import qse_strat as ST
             btc = ST._k4("BTCUSDT", 300)
@@ -201,7 +201,7 @@ def tersaring(it):
     return bool(it.get("otak_saring"))
 
 
-# ---------------- profil per koin (v149, riset/upgrade/hasil_g19c.txt) ----------------
+# ---------------- profil per koin (v150, riset/upgrade/hasil_g19c.txt) ----------------
 # Gerbang walk-forward: koin x jalur x arah baru boleh dikirim kalau SUDAH punya minimal 10 sinyal selesai (uji 2021-2026 + catatan
 # live robot, termasuk yang disaring) dengan PF >= 1.3. Kombinasi baru atau yang jelek ditahan sampai terbukti.
 # Uji 2023-2026, maks 4 posisi jalan: semua sinyal PF 1.23 -> 1.35, +185R -> +203R, DD 31R -> 26R. NILAI 8+ PF 1.30 -> 1.55,

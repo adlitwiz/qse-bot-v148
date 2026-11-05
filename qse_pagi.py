@@ -188,7 +188,7 @@ def ramal(sesi="pagi", gerak_t=0):
     except Exception as ex:
         print("[WARN] pagi serentak kemarin", ex)
     ik_s, judul, jam_berita = SESI.get(sesi, SESI["pagi"])
-    rows = [f"{ik_s} <b>QSE v149 | {judul}</b>  ·  {HARI[wd]}", ""]
+    rows = [f"{ik_s} <b>QSE v150 | {judul}</b>  ·  {HARI[wd]}", ""]
     if tingkat is None:
         return None
     if sesi != "pagi":
@@ -275,7 +275,7 @@ def baris_btc_sinyal():
             print("[WARN] tebak kartu", ex)
         try:
             import qse_btcmap as BM
-            peta = BM.teks(singkat=True)          # v149: peta komando BTC satu baris (kondisi, bukan ramalan harga)
+            peta = BM.teks(singkat=True)          # v150: peta komando BTC satu baris (kondisi, bukan ramalan harga)
         except Exception:
             peta = f"₿ <b>BTC {px:,.0f}</b>  ·  " + "  ·  ".join(rows)
         aturan = ("\n⛔ Hari ini BTC CONDONG NAIK (aturan teruji sejak 06:00 WIB, BTC naik 55-58% hari seperti ini): SHORT baru ditahan"

@@ -1,4 +1,4 @@
-"""QSE v149 - ambil data Bybit publik (tanpa API key): daftar perpetual, ticker, candle 4H/1H/D/W dengan paging."""
+"""QSE v150 - ambil data Bybit publik (tanpa API key): daftar perpetual, ticker, candle 4H/1H/D/W dengan paging."""
 import time
 import threading
 import requests
@@ -8,7 +8,7 @@ import os
 from config import BYBIT_URL, REQ_PER_SEC, STATE_DIR
 
 _S = requests.Session()
-_S.headers.update({"User-Agent": "qse-bot/148"})
+_S.headers.update({"User-Agent": "qse-bot/150"})
 _lock = threading.Lock()
 _last = [0.0]
 IV_MS = {"240": 4 * 3600000, "60": 3600000, "D": 86400000, "W": 7 * 86400000}
@@ -46,6 +46,14 @@ def _get(path, params, tries=5):
             time.sleep(1 + k * 2)
 
 
+def _bukan_saham(s):
+    try:
+        from config import bukan_saham
+        return bukan_saham(s)
+    except Exception:
+        return True
+
+
 def get_symbols(quote="USDT"):
     out, cursor = {}, ""
     while True:
@@ -54,7 +62,7 @@ def get_symbols(quote="USDT"):
             p["cursor"] = cursor
         res = _get("/v5/market/instruments-info", p)
         for it in res.get("list", []):
-            if it.get("quoteCoin") == quote and it.get("status") == "Trading" and it.get("contractType") == "LinearPerpetual":
+            if it.get("quoteCoin") == quote and it.get("status") == "Trading" and it.get("contractType") == "LinearPerpetual" and _bukan_saham(it["symbol"]):
                 out[it["symbol"]] = float(it["priceFilter"]["tickSize"])
         cursor = res.get("nextPageCursor", "")
         if not cursor:
@@ -66,6 +74,8 @@ def get_tickers():
     res = _get("/v5/market/tickers", {"category": "linear"})
     t = {}
     for it in res.get("list", []):
+        if not _bukan_saham(it.get("symbol", "")):
+            continue
         try:
             bid, ask = float(it.get("bid1Price") or 0), float(it.get("ask1Price") or 0)
             t[it["symbol"]] = dict(

@@ -1,5 +1,7 @@
-"""QSE v149 - kirim laporan ke Telegram (token & chat id dari environment / GitHub Secrets)."""
+"""QSE v150 - kirim laporan ke Telegram (token & chat id dari environment / GitHub Secrets)."""
 import html
+import json
+import re
 import math
 import os
 import time
@@ -100,7 +102,71 @@ def pecah_blok(b, maks=3800):
     return out
 
 
-def send(blocks, token=None, chat_id=None):
+# v150: pesan bot tanpa perintah garis miring. Perintah diganti nama tombol menu dalam kurung siku.
+TOMBOL = {
+    "sinyal4j": "📡 Sinyal 4J", "sinyal4": "📡 Sinyal 4J", "sinyal": "📡 Sinyal 4J", "status": "📊 Status", "modal": "💼 Modal",
+    "cek": "🔎 Cek Koin", "cekdetail": "🔎 Cek Koin", "arah": "🔎 Cek Koin", "kalibrasi": "🔎 Cek Koin",
+    "kabar": "📰 Berita", "viral": "📰 Berita", "berita": "📰 Berita", "news": "📰 Berita", "trending": "📰 Berita",
+    "entry": "📝 Entry", "tp": "🎯 Kelola Posisi", "tutup": "🎯 Kelola Posisi", "modify": "🎯 Kelola Posisi",
+    "modif": "🎯 Kelola Posisi", "sl": "🎯 Kelola Posisi", "slok": "🎯 Kelola Posisi", "tpall": "🎯 Kelola Posisi",
+    "slall": "🎯 Kelola Posisi", "tpsemua": "🎯 Kelola Posisi", "slsemua": "🎯 Kelola Posisi", "batal": "🎯 Kelola Posisi",
+    "hapus": "🎯 Kelola Posisi", "pindah": "🎯 Kelola Posisi", "ubah": "🎯 Kelola Posisi", "serok": "🎯 Kelola Posisi",
+    "milikku": "📊 Status", "punyaku": "📊 Status", "alert": "🔔 Alarm", "tunggu": "🔔 Alarm",
+    "pelengkap": "🧩 Jalur Sinyal", "sektor": "🧩 Jalur Sinyal", "jalur": "🧩 Jalur Sinyal", "rekapjalur": "🧩 Jalur Sinyal",
+    "ichimoku": "🧩 Jalur Sinyal", "ob": "🧩 Jalur Sinyal", "orderblock": "🧩 Jalur Sinyal", "strategi": "🧩 Jalur Sinyal",
+    "strat": "🧩 Jalur Sinyal", "smc": "🧩 Jalur Sinyal", "altseason": "🧩 Jalur Sinyal", "lab": "🧩 Jalur Sinyal",
+    "papan": "🧩 Jalur Sinyal", "sinyal1j": "🧩 Jalur Sinyal", "sinyal1": "🧩 Jalur Sinyal", "mode": "🧩 Jalur Sinyal",
+    "mingguan": "📈 Laporan", "pekan": "📈 Laporan", "evaluasi": "📈 Laporan", "uji": "📈 Laporan", "laporan4j": "📈 Laporan",
+    "laporan": "📈 Laporan", "susul": "📈 Laporan", "tespin": "📈 Laporan", "ujimomentum": "📈 Laporan", "ujimom": "📈 Laporan",
+    "tidur": "😴 Mode Tidur", "bangun": "😴 Mode Tidur", "bantuan": "❓ Info", "help": "❓ Info", "start": "❓ Info",
+    "menu": "tombol menu bawah", "lalat": "🪰 Otak Lalat", "scan": "📡 Sinyal 4J", "tren": "🔎 Cek Koin",
+    "rsi": "🔎 Cek Koin", "ticker": "🔎 Cek Koin",
+}
+_RX_KATA = re.compile(r"(?i)\b(kirim|ketik|pakai|gunakan|jalankan|panggil)\s+(?=/[a-z])")
+_RX_CMD = re.compile(r"(?<![<\w:/.%\d~])/([a-z][a-z0-9_]*)")
+
+
+def tanpa_slash(teks):
+    if not teks or "/" not in teks:
+        return teks
+    teks = _RX_KATA.sub("tekan ", teks)
+
+    def ganti(m):
+        k = m.group(1).lower()
+        lb = TOMBOL.get(k)
+        return f"[{lb}]" if lb else k
+    return _RX_CMD.sub(ganti, teks)
+
+
+def _markup(teks, markup, terakhir):
+    """Tombol per potongan pesan: 📋 Salin Setup untuk blok sinyal di potongan itu, ditambah tombol balasan di potongan terakhir.
+    Potongan terakhir tanpa tombol apa pun membawa keyboard menu bawah supaya menu selalu tampil."""
+    try:
+        import qse_menu as _QM
+        salin = _QM.baris_salin(teks)
+    except Exception:
+        salin = []
+    rows = [[{"text": t, "copy_text": {"text": d[2:][:256]}} for t, d in r] for r in salin]
+    if markup and markup.get("inline_keyboard"):
+        rows += markup["inline_keyboard"]
+    elif markup:
+        return markup
+    if rows:
+        return {"inline_keyboard": rows}
+    return _keyboard() if terakhir else None
+
+
+def _keyboard():
+    if os.environ.get("QSE_KEYBOARD", "1") == "0":
+        return None
+    try:
+        import qse_menu as _QM
+        return _QM.keyboard()
+    except Exception:
+        return None
+
+
+def send(blocks, token=None, chat_id=None, markup=None):
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
@@ -109,7 +175,7 @@ def send(blocks, token=None, chat_id=None):
     msgs, cur = [], ""
     pecah = []
     for b in blocks:
-        pecah += pecah_blok(_rapi(b))              # blok kepanjangan: potong di baris kosong, di luar tag HTML
+        pecah += pecah_blok(_rapi(tanpa_slash(b)))              # blok kepanjangan: potong di baris kosong, di luar tag HTML
     for b in pecah:
         if len(cur) + len(b) + 2 > 3800 and cur:
             msgs.append(cur)
@@ -118,11 +184,14 @@ def send(blocks, token=None, chat_id=None):
     if cur.strip():
         msgs.append(cur)
     ids = []
-    for m in msgs:
+    for q, m in enumerate(msgs):
+        data = {"chat_id": chat_id, "text": m, "parse_mode": "HTML", "disable_web_page_preview": True}
+        mk = _markup(m, markup if q == len(msgs) - 1 else None, q == len(msgs) - 1)
+        if mk:
+            data["reply_markup"] = json.dumps(mk, ensure_ascii=False)
         for k in range(4):
             try:
-                r = requests.post(API.format(t=token), data={"chat_id": chat_id, "text": m, "parse_mode": "HTML",
-                                                             "disable_web_page_preview": True}, timeout=20)
+                r = requests.post(API.format(t=token), data=data, timeout=20)
                 if r.status_code == 200:
                     ids.append(r.json().get("result", {}).get("message_id"))
                     break
@@ -130,12 +199,16 @@ def send(blocks, token=None, chat_id=None):
                     time.sleep(int(r.json().get("parameters", {}).get("retry_after", 5)) + 1)
                     continue
                 print("[WARN] Telegram", r.status_code, r.text[:200])
+                if r.status_code == 400 and "reply_markup" in data and "parse" not in r.text.lower():
+                    data.pop("reply_markup", None)            # tombol ditolak: kirim tanpa tombol supaya pesan tidak hilang
+                    continue
                 if r.status_code == 400 and "parse" in r.text.lower():
                     # tag HTML rusak: kirim ulang sebagai teks polos supaya sinyal tidak hilang
                     import re as _re
                     polos = html.unescape(_re.sub(r"<[^>]+>", "", m))
-                    r2 = requests.post(API.format(t=token), data={"chat_id": chat_id, "text": polos,
-                                                                  "disable_web_page_preview": True}, timeout=20)
+                    d2 = {k_: v_ for k_, v_ in data.items() if k_ != "parse_mode"}
+                    d2["text"] = polos
+                    r2 = requests.post(API.format(t=token), data=d2, timeout=20)
                     if r2.status_code == 200:
                         ids.append(r2.json().get("result", {}).get("message_id"))
                 break

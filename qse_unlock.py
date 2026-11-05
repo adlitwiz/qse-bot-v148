@@ -1,4 +1,4 @@
-"""QSE v149 - JADWAL TOKEN UNLOCK (27 Okt 2026).
+"""QSE v150 - JADWAL TOKEN UNLOCK (27 Okt 2026).
 
 Sumber: dataset unlock DefiLlama (gratis, tanpa kunci API): jadwal vesting tiap proyek yang disusun dari dokumen resmi.
 Yang dipakai hanya unlock cliff (sekali buka di satu tanggal). Ukurannya dibanding pasokan yang sudah terbuka sehari

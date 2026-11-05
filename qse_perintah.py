@@ -1,4 +1,4 @@
-"""QSE v149 - semua perintah Telegram. Dipakai qse_listener.py (balasan detik) dan main.py (cadangan)."""
+"""QSE v150 - semua perintah Telegram. Dipakai qse_listener.py (balasan detik) dan main.py (cadangan)."""
 import fcntl
 import json
 import os
@@ -60,107 +60,25 @@ def mulai_laporan4j():
             "Hasilnya terkirim dalam 10 sampai 20 menit dan otomatis disematkan.")
 
 
-BANTUAN_SEMUA = ("❓ <b>QSE v149 | SEMUA PERINTAH</b>\n\n"
-           "<b>Catat entry</b>\n"
-           "/entry long market AUSDT = entry MARKET di harga sekarang\n"
-           "/entry long market AUSDT sl 0.99 tp1 1.05 tp2 1.08 = TP dan SL sendiri. Tanpa itu robot pakai sinyal terakhir koin ini\n"
-           "/entry long limit AUSDT 1.022 = order LIMIT yang menunggu terisi\n"
-           "/entry long limit AUSDT 1.022 terisi 02:00 = lupa catat, sudah terisi jam 02:00 WIB\n"
-           "Tambahan opsional: sl 0.99 tp1 1.05 tp2 1.08 lev 10\n\n"
-           "<b>Kelola posisi</b>\n"
-           "/tp AUSDT 30% = ambil profit 30% posisi di harga sekarang (bisa 50% atau 100%). Urutan bebas, contoh /tp 25% 1000BONK 0.002959. "
-           "Ambil profit sebagian dicatat sebagai TP sebagian, lalu robot menyuruh SL ke entry\n"
-           "/sl AUSDT 50% = cut loss 50% posisi di harga sekarang\n"
-           "/sl AUSDT short 100% = tutup hanya posisi SHORT (kalau ada LONG dan SHORT di koin yang sama)\n"
-           "/serok AUSDT long 0.95 = tambah posisi di harga lebih baik, lot dibatasi supaya rugi total di SL maks 1.5R\n"
-           "/hapus AUSDT short = hapus trade terbuka yang salah entry, kalau tidak ada hapus catatan selesai terakhir\n"
-           "/tp AUSDT 50% 1.050 = sama, tapi di harga yang kamu tulis\n"
-           "/modify AUSDT sl 0.99 tp1 1.05 tp2 1.08 = geser SL atau TP (sama dengan /ubah)\n"
-           "/modify AUSDT sl entry = geser SL ke titik impas\n"
-           "Entry kedua di koin dan arah yang sama otomatis digabung jadi satu posisi, sama seperti di Bybit\n"
-           "/tutup AUSDT = tutup semua sisa posisi di harga sekarang\n"
-           "/batal AUSDT = batalkan order yang belum terisi\n\n"
-           "<b>Batas posisi dan risiko</b> (otomatis, tanpa pengaturan)\n"
-           "Dikunci ke hasil uji v149: maks 4 posisi berisiko per orang ditambah 2 posisi yang sudah aman (sudah TPawal), rugi kalau semua SL kena maks 5R. "
-           "Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (searah: SL tetap). 30 jam belum kena: tutup. 3 rugi beruntun: jeda "
-           "entry 24 jam (dihitung dari catatan kamu sendiri). Model arah BTC dilatih ulang sendiri tiap Senin 05:30 WIB\n"
-           "/modal = lihat slot, risiko SL, dan sisa waktu tiap posisi kamu\n"
-           "/modal 155 1 5 = isi modal dolar, risiko persen per trade, leverage. Kartu sinyal lalu menampilkan posisi dan margin dalam dolar\n"
-           "/slok AUSDT = SL di Bybit sudah dipindah ke entry setelah TP 20% kena, pengingat berhenti\n"
-           "/mingguan = laporan 7 hari: hasil robot dan trade kamu lawan uji, plus selisih harga isi lawan sinyal. Otomatis tiap Senin 06:20 WIB\n\n"
-           "<b>Alarm harga</b>\n"
-           "/alert BTC 60000 = kabari saat harga menyentuh 60000, bisa ditambah catatan\n"
-           "/alert = daftar alarm aktif\n"
-           "/alert hapus BTC atau /alert hapus semua = hapus alarm\n"
-           "/tunggu SOL atas 150 4j = kabari saat candle 4J TUTUP di atas 150 (bawah juga bisa, TF 15m, 1j, 4j, 1d)\n"
-           "/tunggu = daftar, /tunggu hapus SOL = hapus. Sentuhan GZH otomatis dipantau sampai candle 4J tutup\n\n"
-           "<b>Sinyal</b>\n"
-           "/sinyal4j atau /scan = sinyal jalur terbukti yang masih bisa diikuti di harga sekarang\n"
-           "/laporan4j = buat ulang laporan 4 jam sekarang (laporan susulan), hasil dalam 10 sampai 20 menit\n"
-           "/berita = uji news ke trade: sumber berita, terjemahan, harga Bybit\n"
-           "/jalur = hasil live saran momentum, news searah, dan news mandiri\n"
-           "/altseason = cek rezim altcoin vs BTC dan peluangnya di sejarah\n"
-           "/ichimoku = posisi jalur Ichimoku tren 4J, SL trailing terbaru, dan hasilnya\n"
-           "/ob = jalur Order Block + Volume 4J: posisi, hasil, dan hasil uji 6 tahun\n"
-           "/pelengkap = kantong Sinyal Pelengkap sektor 4J (lot 0.5x, maks 2 posisi): posisi dan hasil\n"
-           "/strategi = jalur EMA Cross, RSI 50, McGinley, SnR, MSB, SMC, GZH: posisi, hasil, uji 6 tahun\n"
-           "/arah SOL = tren 15m sampai 1W, tanggal yang sama tahun lalu, pola kembar, dan riwayat pola robot di koin ini\n\n"
-           "<b>Info</b>\n"
-           "Otomatis tanpa perintah: pengingat berita besar H-24 dan H-6 jam, NEWS PENTING, viral 13:00 dan 20:00 WIB. Perintah /kabar dan /viral hanya kalau mau cek sendiri\n"
-           "/cek AUSDT = analisa lengkap koin: kesimpulan, saran robot, teknikal, siklus, skill, fundamental, derivatif, kalender\n"
-           "/evaluasi = jalur, pola, koin, hari, dan jam terbaik dari trade kamu, plus lot disarankan\n"
-           "/uji = hasil uji mundur 6 bulan saran cadangan, fib, dan siklus\n"
-           "/kalibrasi ETHFI = angka bot untuk dicocokkan dengan DASBOR TradingView\n"
-           "/tespin = cek apakah bot sudah bisa menyematkan pesan\n"
-           "/status = trade kamu: teknik, nilai, isi Bybit, sampai kapan, total untung rugi, WR\n"
-           "/bantuan = daftar perintah ini\n\n"
-           "<b>Arti tanda BUKTI di tiap sinyal</b>\nSinyal yang tampil lengkap = yang bisa diikuti. Sisanya tetap dicatat robot dan naik sendiri kalau terbukti di live.\n"
-           "✅ TERBUKTI = untung di backtest 5 tahun (Ichimoku, Order Block + Volume). Ikuti semua, lot penuh\n"
-           "✅ TERBUKTI LIVE = jalur sudah 30 trade live dengan PF 1.2 ke atas. Lot penuh\n"
-           "🧪 SEDANG DIUJI = kelompok yang untung di uji (4J SHORT kelompok terbaik). Setengah lot\n"
-           "⚠️ BELUM TERBUKTI = sudah diuji tapi hasilnya impas atau rugi. Satu baris di TIDAK DISARANKAN, lewati\n"
-           "❔ BELUM DIUJI atau JARANG = belum ada angka uji. Satu baris di TIDAK DISARANKAN, lewati\n"
-           "⚠️ MELEMAH DI LIVE = terbukti, tapi live 40 trade lebih PF di bawah 1. Setengah lot\n"
-           "⚠️ Waspada di kartu = BTC 1 jam melawan atau berita dekat, lot sudah dipotong setengah")
-
-
-BANTUAN = ("❓ <b>QSE v149 | BANTUAN</b>\n\n"
-           "Robot berjalan otomatis: scan 4 jam dan per jam, sinyal semua jalur, pemantauan posisi tiap menit, "
-           "peringatan dini, gabung posisi, berita, dan arah pasar tiap pagi jam 07:05 WIB. "
-           "Aturan jaga modal juga otomatis: jam ke-12 SL naik ke -0.5R kalau harga melawan, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun, "
-           "dan model arah BTC dilatih ulang sendiri tiap Senin. Kalender berita 7 hari (FOMC, CPI, bank sentral, earnings, "
-           "token unlock) dikirim tiap Senin 06:10 WIB, dan LONG baru ditahan 7 hari sebelum token unlock 1% atau lebih. "
-           "Perintah di bawah hanya untuk hal yang perlu kamu putuskan sendiri.\n\n"
-           "<b>Catat dan kelola trade</b>\n"
-           "/entry long market SOL = catat entry (tambah sl tp1 tp2 kalau mau level sendiri)\n"           "/entry lalu tempel blok sinyal (Entry, SL, TP1, TP2) = langsung tercatat, koin dicari otomatis\n"
-           "/modify SOL sl 140 tp1 160 = geser SL atau TP\n"
-           "/tp SOL 50% atau /sl SOL 100% = ambil profit atau cut loss sebagian\n"
-           "/tutup SOL = tutup semua sisa posisi\n"
-           "/hapus SOL long = hapus catatan yang salah\n\n"
-           "<b>Lihat</b>\n"
-           "/status = posisi: teknik, nilai, angka siap isi di Bybit (SL TP terbaru), sampai kapan, total untung rugi, WR\n"
-           "/tidur = cara aman meninggalkan posisi semalam, SL dan Trailing Stop tiap posisi\n"
-           "/cek SOL = analisa lengkap satu koin\n"
-           "/arah SOL = tren 15m sampai 1W dan pola sejarah koin\n"
-           "Otomatis tanpa perintah: pengingat berita besar H-24 dan H-6 jam, NEWS PENTING, viral 13:00 dan 20:00 WIB\n"
-           "/kabar dan /viral hanya kalau mau cek sendiri (/viral 6 = 6 jam terakhir)\n\n"
-           "<b>Alarm</b>\n"
-           "/tunggu SOL atas 150 4j = kabari saat candle 4J TUTUP di atas 150 (bawah juga bisa, TF 15m, 1j, 4j, 1d)\n"
-           "/alert SOL 150 = kabari saat harga menyentuh 150\n\n"
-           "<b>Arti tanda BUKTI di tiap sinyal</b>\nSinyal yang tampil lengkap = yang bisa diikuti. Sisanya tetap dicatat robot dan naik sendiri kalau terbukti di live.\n"
-           "✅ TERBUKTI = untung di backtest 5 tahun (Ichimoku, Order Block + Volume). Ikuti semua, lot penuh\n"
-           "✅ TERBUKTI LIVE = jalur sudah 30 trade live dengan PF 1.2 ke atas. Lot penuh\n"
-           "🧪 SEDANG DIUJI = kelompok yang untung di uji (4J SHORT kelompok terbaik). Setengah lot\n"
-           "⚠️ BELUM TERBUKTI = sudah diuji tapi hasilnya impas atau rugi. Satu baris di TIDAK DISARANKAN, lewati\n"
-           "❔ BELUM DIUJI atau JARANG = belum ada angka uji. Satu baris di TIDAK DISARANKAN, lewati\n"
-           "⚠️ MELEMAH DI LIVE = terbukti, tapi live 40 trade lebih PF di bawah 1. Setengah lot\n"
-           "⚠️ Waspada di kartu = BTC 1 jam melawan atau berita dekat, lot sudah dipotong setengah\n\n"
-           "<b>Lainnya</b>\n"
-           "/modal = lihat slot, risiko SL, dan sisa waktu posisi kamu. /modal 155 1 5 = isi modal, risiko, leverage (dolar)\n"
-           "/slok AUSDT = SL di Bybit sudah di entry setelah TP 20% kena\n"
-           "/mingguan = laporan 7 hari: robot dan trade kamu lawan hasil uji. Otomatis tiap Senin 06:20 WIB\n"
-           "/bantuan semua = daftar semua perintah\n"
-           "/menu = munculkan lagi tombol menu di bawah kolom ketik")
+BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
+           "Robot jalan otomatis: scan tiap 4 jam dan per jam, pantau posisi tiap menit, berita, peta BTC pagi 07:05 WIB, "
+           "dan aturan jaga modal (TP awal 20%, SL ke entry, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun). "
+           "Semua fitur ada di tombol bawah. Isi tombol per orang: posisi, status, dan modal milik yang menekan.\n\n"
+           "📊 <b>Status</b>: hasil hari ini, slot, dan tombol per posisi kamu\n"
+           "📡 <b>Sinyal 4J</b>: sinyal valid sekarang plus rencana Sniper S/R, tiap kartu punya tombol 📋 Salin Setup\n"
+           "₿ <b>Cek BTC</b>: arah BTC, level, dan peta pasar\n"
+           "💼 <b>Modal</b>: isi modal, leverage, entry per koin, risiko persen\n"
+           "📝 <b>Entry</b>: catat posisi, cukup tempel blok yang disalin\n"
+           "🎯 <b>Kelola Posisi</b>: TP 50%, SL ke entry, tutup, per posisi kamu\n"
+           "🔔 <b>Alarm</b>: harga sentuh atau candle tutup\n"
+           "🧩 <b>Jalur Sinyal</b>: Sektor, Ichimoku, Order Block, EMA/RSI/SMC, Lab, Rencana Sniper\n"
+           "🔎 <b>Cek Koin</b>: analisa lengkap koin apa pun\n"
+           "📰 <b>Berita</b>: kabar terbaru dan yang viral 6 jam dalam satu pesan\n"
+           "📈 <b>Laporan</b>: mingguan, evaluasi, uji mundur, laporan 4J\n"
+           "🪰 <b>Otak Lalat</b>: lapar, dopamin, serotonin, GABA, pola disukai dan dibenci, pilihan trade harian lalat\n"
+           "😴 <b>Mode Tidur</b>: posisi dijaga otomatis saat kamu tidur\n\n"
+           "Perintah ketik lama tetap jalan untuk yang sudah hafal.")
+BANTUAN_SEMUA = BANTUAN
 
 
 def _sym(a):
@@ -241,7 +159,7 @@ def balas(cmd, args, dari_main=False):
     if cmd == "/sl":
         return SY.tutup(args, "cut loss")
     if cmd == "/tespin":
-        ids = TG.send(["📌 <b>QSE v149 | TES PIN</b>\nKalau pesan ini tersemat, izin pin bot sudah benar."]) or []
+        ids = TG.send(["📌 <b>QSE v150 | TES PIN</b>\nKalau pesan ini tersemat, izin pin bot sudah benar."]) or []
         if not ids:
             return "Pesan tes gagal terkirim."
         err = TG.pin(ids[0])
@@ -261,7 +179,23 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/tunggu", "/close"):
         return AL.tunggu(args)
     if cmd in ("/sinyal4j", "/sinyal4", "/sinyal", "/scan"):
-        return SY.sinyal_jalur()
+        isi = SY.sinyal_jalur()
+        try:
+            import qse_rencana as RC
+            sp, n_um = RC.blok_spesialis()          # v150: koin spesialis PSG, ACM, BAR paling atas, koin umum di balik tombol
+            if n_um:
+                sp += f"\n\n📂 {n_um} rencana lain (cadangan yang levelnya jauh dan koin umum uji -0.08R) ada di tombol Koin umum."
+            isi = sp + "\n\n" + isi
+        except Exception as ex:
+            print("[WARN] sinyal4j rencana", ex)
+        try:
+            import qse_lalat as LT
+            pl = LT.pilihan_teks()
+            if pl:
+                isi += "\n\n" + pl
+        except Exception as ex:
+            print("[WARN] sinyal4j lalat", ex)
+        return isi
     if cmd in ("/sinyal1j", "/sinyal1"):
         return ("Saran 1J dimatikan. Uji 111 koin data 1 jam 2020-2026: 9 jalur terbukti versi 1J PF 1.00 sampai 1.11, "
                 "tidak ada yang untung setelah biaya. Pakai /sinyal4j.")
@@ -307,19 +241,31 @@ def balas(cmd, args, dari_main=False):
         if args:
             sym = [a.upper() if a.upper().endswith("USDT") else a.upper() + "USDT" for a in args]
         return MO.uji(sym) if sym else "Belum ada koin rapor A/B untuk diuji."
-    if cmd in ("/kabar", "/info"):
-        import qse_news as NW
-        return NW.kabar()
-    if cmd in ("/viral", "/trending", "/hits", "/hot"):
+    if cmd in ("/kabar", "/info", "/viral", "/trending", "/hits", "/hot", "/berita", "/news"):
+        # v150: berita dan kabar jadi satu. Kabar terbaru lalu yang viral 6 jam (atau jam yang diketik)
         import qse_news as NW
         try:
-            jam = int(args[0]) if args else 24
+            jam = int(args[0]) if args else 6
         except ValueError:
-            jam = 24
-        return NW.viral(max(1, min(72, jam)))
-    if cmd in ("/berita", "/news"):
+            jam = 6
+        bag = []
+        for f in (lambda: NW.kabar(), lambda: NW.viral(max(1, min(72, jam)))):
+            try:
+                x = f()
+                if x:
+                    bag.append(x)
+            except Exception as ex:
+                bag.append(f"Sebagian berita gagal diambil: {TG.e(str(ex)[:120])}")
+        return "\n\n".join(bag) or "Belum ada berita baru."
+    if cmd in ("/beritauji", "/ujiberita"):
         import qse_news as NW
         return NW.tes()
+    if cmd in ("/rencana", "/sniper"):
+        import qse_rencana as RC
+        return RC.teks(args[0] if args else "utama")
+    if cmd in ("/lalat", "/otak"):
+        import qse_lalat as LT
+        return LT.perintah(args)
     if cmd == "/modal":
         import qse_modal as MD
         return MD.perintah(args)
@@ -349,7 +295,7 @@ def balas(cmd, args, dari_main=False):
         return "\n".join(rows)
     if cmd in ("/tidur", "/sl_terbaru", "/slterbaru"):
         teks, _ = SY.kartu_sl(tidur=cmd == "/tidur")
-        return teks or ("😴 <b>QSE v149 | SIAP TIDUR</b>\nTidak ada posisi jalan. Tidak ada yang perlu diatur. Sinyal jam 23:00 dan "
+        return teks or ("😴 <b>QSE v150 | SIAP TIDUR</b>\nTidak ada posisi jalan. Tidak ada yang perlu diatur. Sinyal jam 23:00 dan "
                         "03:00 WIB masih bisa kamu ikuti pagi di laporan 07:05, selama harga masih dekat entry robot.")
     if cmd == "/status":
         try:
@@ -358,13 +304,17 @@ def balas(cmd, args, dari_main=False):
         except Exception:
             s4 = None
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
-        return ("📊 <b>QSE v149 | STATUS</b>" + (f"  ·  👤 {SY.nama_pengguna(SY.uid_aktif())}" if SY.uid_aktif() else "")
+        return ("📊 <b>QSE v150 | STATUS</b>" + (f"  ·  👤 {SY.nama_pengguna(SY.uid_aktif())}" if SY.uid_aktif() else "")
                 + "\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
                 + ("" if SY._peng().get("pemilik") else "\n\nℹ️ Ketik /milikku supaya catatan trade lama jadi milik kamu. "
                    "Trade orang lain di grup tercatat terpisah."))
     if cmd in ("/bantuan", "/help", "/start"):
         return BANTUAN_SEMUA if args and args[0] in ("SEMUA", "ALL", "LENGKAP") else BANTUAN
     return ""
+
+
+JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "OTAK LALAT", "/rencana": "RENCANA SNIPER", "/bantuan": "INFO"}
 
 
 def proses(cmds, dari_main=False):
@@ -390,7 +340,13 @@ def proses(cmds, dari_main=False):
                     "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/pelengkap": "🧩", "/lab": "🧪", "/papan": "🧪", "/menu": "🤖", "/sektor": "🧩", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/mode": "🎚️", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
-            isi = isi if "QSE v149 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v149 | {cmd.upper()[1:]}</b>\n\n{isi}"
-            TG.send(isi.split("\n\n"))
+            isi = isi if "QSE v150 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v150 | {JUDUL.get(cmd, cmd.upper()[1:])}</b>\n\n{isi}"
+            try:
+                import qse_menu as QM
+                mk = QM.tombol_untuk(cmd, args, isi, uid, nama)
+            except Exception as ex:
+                print("[WARN] tombol", ex)
+                mk = None
+            TG.send(isi.split("\n\n"), markup=mk)
             n += 1
     return n

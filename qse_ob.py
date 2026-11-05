@@ -1,4 +1,4 @@
-"""QSE v149 - JALUR ORDER BLOCK + VOLUME (koin unggulan), candle 4J. Juga analisa volume saat kena SL.
+"""QSE v150 - JALUR ORDER BLOCK + VOLUME (koin unggulan), candle 4J. Juga analisa volume saat kena SL.
 Diuji dari 2 script TradingView kamu (Order Block Finder, LuxAlgo MSB + OB, LuxAlgo SMC BOS/CHoCH + OB, SnR swing):
 111 koin perp, Jul 2020 - Okt 2026, biaya 0.15%. Aturan dipilih di data 2020-2023, diuji ulang di 2024-2026.
   Gagal: entry limit saat harga retest OB (semua versi PF < 1), SMC, MSB, SnR (PF uji 0.9 - 1.12).
@@ -141,18 +141,18 @@ def _kelola(it, df):
         if ts <= it["last"]:
             continue
         hi, lo, cl = float(df["high"].iloc[k]), float(df["low"].iloc[k]), float(df["close"].iloc[k])
-        ST.v149_langkah(it, hi, lo, cl)          # v149: jejak aturan keluar orang di it['R9']
+        ST.v150_langkah(it, hi, lo, cl)          # v150: jejak aturan keluar orang di it['R9']
         if lo <= it["sl"]:
-            ST.v149_tutup(it, it["sl"])
+            ST.v150_tutup(it, it["sl"])
             return "SL", (it["sl"] - e) / risk - BIAYA * e / risk
         if it["bar"] > 0 and hi >= it["tp"]:
-            ST.v149_tutup(it, it["tp"])
+            ST.v150_tutup(it, it["tp"])
             return "TP", TP_R - BIAYA * e / risk
         it["bar"] += 1
         it["last"] = int(ts)
         it["close"] = cl
         if it["bar"] >= MAKS_BAR:
-            ST.v149_tutup(it, cl)
+            ST.v150_tutup(it, cl)
             return "WAKTU", (cl - e) / risk - BIAYA * e / risk
     return "BUKA", None
 
@@ -292,7 +292,7 @@ def _jalankan(baru_ok=True):
             print(f"[ORDERBLOCK] {sym} dilewati: mutu rendah ({', '.join(mm)})")
             continue
         try:
-            why = ST.pump_tolak(df, "LONG")          # v149: LONG sesudah candle 4J naik 10% atau lebih
+            why = ST.pump_tolak(df, "LONG")          # v150: LONG sesudah candle 4J naik 10% atau lebih
         except Exception:
             why = ""
         if why:

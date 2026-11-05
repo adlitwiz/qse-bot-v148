@@ -1,6 +1,6 @@
-"""Buat ulang qse_rules.py dari file Pine DASBOR. Pakai: python gen_rules.py QSE_v148_DASBOR.txt"""
+"""Buat ulang qse_rules.py dari file Pine DASBOR. Pakai: python gen_rules.py QSE_v150_DASBOR.txt"""
 import ast, re, sys
-src = open(sys.argv[1] if len(sys.argv) > 1 else 'QSE_v148_DASBOR.txt', encoding='utf-8').read().splitlines()
+src = open(sys.argv[1] if len(sys.argv) > 1 else 'QSE_v150_DASBOR.txt', encoding='utf-8').read().splitlines()
 def grab(name):
     for ln in src:
         if ln.startswith(name+"=array.from("):
@@ -50,7 +50,7 @@ def conv(e):
     t = ast.fix_missing_locations(T().visit(t))
     return ast.unparse(t.body)
 
-out = ['"""QSE v149 - aturan 90 pola, DIHASILKAN OTOMATIS dari QSE_v148_DASBOR.txt (jangan edit manual)."""', ""]
+out = ['"""QSE v150 - aturan 90 pola, DIHASILKAN OTOMATIS dari QSE_v150_DASBOR.txt (jangan edit manual)."""', ""]
 for nmx in ["nm", "nrA"]:
     it = [x.strip('"') for x in split_top(grab(nmx))]
     assert len(it) == 90, (nmx, len(it))

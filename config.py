@@ -1,4 +1,4 @@
-"""QSE v149 Bot - semua pengaturan. Nilai engine = default input() Pine v148 (jangan diubah bila ingin sama dengan DASBOR)."""
+"""QSE v150 Bot - semua pengaturan. Nilai engine = default input() Pine v150 (jangan diubah bila ingin sama dengan DASBOR)."""
 import os
 
 
@@ -24,7 +24,7 @@ CEK_1J = _env("QSE_CEK_1J", 1, int) == 1           # saran TF 1J selektif tiap j
 ONLY_SYMBOLS = [s for s in _env("QSE_SYMBOLS", "").replace(" ", "").split(",") if s]
 STATE_DIR = _env("QSE_STATE_DIR", os.path.expanduser("~/qse_state"))
 
-# ===== ENGINE (persis input Pine v148) =====
+# ===== ENGINE (persis input Pine v150) =====
 P = dict(
     hardProven=True, minWRd=55.0, wrTop=75.0, pfTop=2.0, wrDrop=5.0, tierHard=False, grAbon=90.0,
     tierBon=60.0, pfDrop=0.2, needRg=True, slPerm=3, minKeep=12, doneB=2, coolTP=14, freeDir=False,
@@ -68,3 +68,13 @@ FP = dict(
     kirim_stop=_env("QSE_KIRIM_STOP", 0, int) == 1,        # 1 = breakout yang belum tembus dikirim sebagai STOP
     lev_cap=_env("QSE_LEV_CAP", 10, int),                  # batas atas saran leverage
 )
+
+
+# instrumen saham/indeks di Bybit yang bukan kripto, disaring dari semua sinyal. Tambah lewat env QSE_SAHAM=AAA,BBB
+SAHAM = set("SOXL KORU SNDK SKHYNIX SKHY TSLA NVDA AAPL MSTR COIN AMD AMZN GOOGL META MSFT NFLX HOOD QQQ SPY SPX NDX TQQQ SQQQ SOXS INTC MU CRCL BABA PLTR".split())
+SAHAM |= {x.strip().upper() for x in os.environ.get("QSE_SAHAM", "").split(",") if x.strip()}
+
+
+def bukan_saham(symbol):
+    b = symbol[:-4] if symbol.endswith("USDT") else symbol
+    return b.upper() not in SAHAM

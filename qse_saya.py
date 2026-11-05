@@ -1,4 +1,4 @@
-"""QSE v149 - TRADE KAMU: catatan entry pribadi dari perintah /entry, pemantauan per menit,
+"""QSE v150 - TRADE KAMU: catatan entry pribadi dari perintah /entry, pemantauan per menit,
 peringatan kasus besar, konsultasi entry, dan statistik WR harian, mingguan, bulanan."""
 import fcntl
 import json
@@ -692,7 +692,7 @@ def baris_range(rentang, t):
 def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp="", sym=None, arah=None, rentang=None,
                sebagian=False):
     """Blok level yang sama untuk semua sinyal. Tekan lama untuk salin, lalu tempel setelah /entry untuk dicatat.
-    v149: tanpa satuan R, semua dalam persen gerak harga dari entry. Baris 'TPawal' = ambil untung 20% posisi (TP sebagian di +0.5R).
+    v150: tanpa satuan R, semua dalam persen gerak harga dari entry. Baris 'TPawal' = ambil untung 20% posisi (TP sebagian di +0.5R).
     Kata TPawal, rugi, untung, tutup diabaikan /entry, jadi blok yang ditempel tetap tercatat ikut aturan jalur."""
     t = tick or tick_of(None, entry)
     risk = abs(entry - sl) or 1e-12
@@ -714,7 +714,7 @@ def blok_salin(entry, sl, tp1=None, tp2=None, order="", tick=None, catatan_tp=""
 
 
 def cara_pasang(sym, arah, entry, sl, tick=None, tp=None, trail=None, ringkas=False):
-    """v149: langkah pasang di Bybit, berurutan, dalam harga dan persen (tanpa R). trail = jarak Trailing Stop (harga)."""
+    """v150: langkah pasang di Bybit, berurutan, dalam harga dan persen (tanpa R). trail = jarak Trailing Stop (harga)."""
     import qse_strat as ST
     t = tick or tick_of(None, entry)
     L = arah == "LONG"
@@ -2067,7 +2067,7 @@ def teks_waktu_habis(it, px, now, ulang=False):
                 f"↳ Masih terbuka, sudah {jam:.0f} jam sejak terisi dan {belum}.\n"
                 f"👉 <b>Tutup MARKET di Bybit</b>, lalu catat: /tutup {kd}" + hasil +
                 f"\nKalau sudah ditutup di Bybit, cukup catat /tutup {kd} HARGA")
-    kenapa = ("Uji 2023-2026 aturan v149 (jam ke-12 dinamis, 30 jam, slot aman, jeda): NILAI 8+ total +298R lawan +270R aturan lama, "
+    kenapa = ("Uji 2023-2026 aturan v150 (jam ke-12 dinamis, 30 jam, slot aman, jeda): NILAI 8+ total +298R lawan +270R aturan lama, "
               "drawdown 29R lawan 45R.")
     return (f"⏰ <b>BATAS WAKTU {jw:g} JAM  ·  {it['sym']} {it['arah']}</b>\n"
             f"↳ Terisi {_jam_wib(t0)}, sudah {jam:.0f} jam dan {belum}.\n"
@@ -2082,7 +2082,7 @@ def teks_waktu_habis(it, px, now, ulang=False):
 # Kerugian beruntun terbesar -10.8R jadi -7.1R. Jam 8, 10, 12 dan level -0.4 sampai -0.6R hasilnya mirip (stabil). Jeda yang
 # lanjut sendiri setelah 24 jam lebih stabil daripada menunggu sinyal robot menang. Jeda setelah 2 kalah merusak 2024-2026.
 # Batas entry per candle dan batas searah memotong runtun tapi total turun 25-40%, tidak dipakai.
-# v149 (29 Okt 2026, riset/upgrade/hasil_g13b.txt dan hasil_g13c.txt): jam pengecekan dipindah ke jam ke-12 dan dibuat dinamis:
+# v150 (29 Okt 2026, riset/upgrade/hasil_g13b.txt dan hasil_g13c.txt): jam pengecekan dipindah ke jam ke-12 dan dibuat dinamis:
 # SL hanya digeser ke -0.5R kalau harga MELAWAN (di bawah entry untuk LONG). Harga searah tapi belum kena TP 20%: SL tetap.
 # Uji 2023-2026 robot live (otak, rem harian, maks 4 searah): semua sinyal PF 1.22 -> 1.24, total +267R -> +287R, DD 41R -> 35R,
 # NILAI 8+ PF 1.33 -> 1.37, +270R -> +298R, DD 45R -> 29R, WR naik 2 sampai 3 poin. Jam 10 dan 14 hasilnya mirip (stabil).
@@ -2121,7 +2121,7 @@ def aturan_jam8(it, px, now):
     tp_nm = "TP 20%" if it.get("ikut") else "TP1"
     r_now = _real(it) + _sisa(it) * _r_at(it, px)
     target = sl_jam8(it)
-    gerak = (px - it["entry"]) / it["entry"] * 100 * (1 if L else -1)          # v149: persen gerak harga dari entry, tanpa R
+    gerak = (px - it["entry"]) / it["entry"] * 100 * (1 if L else -1)          # v150: persen gerak harga dari entry, tanpa R
     sl_pct = abs(target - it["entry"]) / it["entry"] * 100
     if _r_at(it, px) >= 0:
         return ("JAM8", f"✅ <b>JAM KE-{JAM8}  ·  {it['sym']} {it['arah']}  ·  SL TETAP</b>\n"
@@ -2221,7 +2221,7 @@ def teks_jeda(jd):
             + (f"Dihitung dari catatan kamu sendiri: {teks_dihitung(jd)}. Catatan orang lain tidak ikut dihitung.\n"
                if jd.get("dihitung") else "")
             + f"👉 <b>Jangan buka posisi baru sampai {_jam_wib(jd['sampai'])}</b>. Posisi yang masih jalan tetap ikut SL dan TP.\n"
-            "Uji 2021-2026 (satu orang): jeda ini memangkas drawdown dari 27R ke 17R, total profit sama. Uji v149 (hasil_g19.txt): "
+            "Uji 2021-2026 (satu orang): jeda ini memangkas drawdown dari 27R ke 17R, total profit sama. Uji v150 (hasil_g19.txt): "
             "tetap mengirim sinyal peluang tertinggi selama jeda justru menaikkan drawdown 29R ke 39R, jadi jeda penuh tetap dipakai. "
             "Kartu sinyal baru ditahan untuk kamu sampai jeda selesai.")
 
@@ -4121,7 +4121,7 @@ def _st_txt(nama, b, tf=""):
 def backtest_teks(r):
     """Backtest semua teknik di koin ini, supaya tidak ada koin tanpa data uji."""
     rows = ["<b>Backtest semua teknik di koin ini</b>"]
-    rows.append(f"Robot DASBOR v148 (pelacak 5 saran, sama dengan DASBOR): {r['trd']} trade | WR {r['wr']:.0f}% | "
+    rows.append(f"Robot DASBOR v150 (pelacak 5 saran, sama dengan DASBOR): {r['trd']} trade | WR {r['wr']:.0f}% | "
                 f"PF {r['pf']:.2f} | {r['net_r']:+.1f}R"
                 + (", koin ini masih baru jadi pelacak belum sempat entry" if r["trd"] == 0 else ""))
     pt = r.get("pola_top") or r.get("pola_kecil") or []
@@ -4204,8 +4204,8 @@ def kartu_sl(tidur=False):
             rows.append(f"{ik} <b>{it['sym']} {it['arah']}</b>  ·  manual{siapa}\n" + "\n".join(rows_sl) + "\n"
                         f"<pre>{it['sym']} {it['arah']}\nSL  {fp(sl, t)}\nTP1 {fp(it['tp1'], t)}\nTP2 {fp(it['tp2'], t)}</pre>\n"
                         "Pastikan SL terpasang di Bybit.")
-    kepala = ("😴 <b>QSE v149 | SIAP TIDUR</b>\nCek tiap posisi di bawah, samakan di Bybit, lalu tinggal tidur."
-              if tidur else "📌 <b>QSE v149 | SL TERBARU POSISI KAMU</b>\nDisematkan dan diperbarui tiap candle 4J tutup.")
+    kepala = ("😴 <b>QSE v150 | SIAP TIDUR</b>\nCek tiap posisi di bawah, samakan di Bybit, lalu tinggal tidur."
+              if tidur else "📌 <b>QSE v150 | SL TERBARU POSISI KAMU</b>\nDisematkan dan diperbarui tiap candle 4J tutup.")
     kaki = ("Kenapa aman: semua SL tersimpan di server Bybit, jalan walau HP mati. Uji 2021-2026: Trailing Stop Bybit "
             "PF 1.31, geser manual tiap 4J PF 1.26, geser terlewat saat tidur PF 1.28. Tidur tidak merugikan.\n"
             "Sinyal jam 23:00 dan 03:00 WIB masih bisa kamu ikuti pagi di laporan 07:05, selama harga masih dekat entry robot."
@@ -4353,7 +4353,7 @@ def sinyal_jalur(jam=False):
                          + "".join("\n" + z for z in (baris_sudah_pakai(it["sym"], it["arah"], it.get("t")) if uid_aktif() is None else []))
                          + "".join(f"\nℹ️ <b>{TG_e(str(nama_pengguna(u)))}</b> sudah memegang {it['sym']}, sinyal ini untuk yang lain"
                                    for u, ss in pegang_per.items() if it["sym"] in ss)))
-    kepala = "📡 <b>QSE v149 | SINYAL JALUR TERBUKTI SEKARANG</b>"
+    kepala = "📡 <b>QSE v150 | SINYAL JALUR TERBUKTI SEKARANG</b>"
     # order Tembus Trendline yang masih menunggu (STOP atau LIMIT, berlaku 24 jam): ikut ditampilkan supaya sama dengan cek per jam
     tunggu = []
     jauh_tt = 0

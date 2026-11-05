@@ -1,4 +1,4 @@
-"""QSE v149 - SKILL TAMBAHAN (konfirmasi, tidak mengubah vonis DASBOR).
+"""QSE v150 - SKILL TAMBAHAN (konfirmasi, tidak mengubah vonis DASBOR).
 Diport dari dua Pine tambahan milik pengguna:
   1. Money Flow Profile: POC, value area 70%, sentimen beli atau jual di POC (200 candle, 25 baris)
   2. Smarter SnR: S1-S3 dan R1-R3 dari pivot swing 20

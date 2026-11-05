@@ -1,4 +1,4 @@
-"""QSE v149 - SCAN MOMENTUM 15 DAN 30 MENIT (dipanggil listener tiap 15 menit).
+"""QSE v150 - SCAN MOMENTUM 15 DAN 30 MENIT (dipanggil listener tiap 15 menit).
 Koin yang dipantau: rapor 4J A/B dari scan terakhir dan koin yang sedang kamu pegang.
 Tanda awal pump atau dump: candle tutup terakhir dengan volume minimal 3 kali median 50 candle, badan candle
 minimal 1,2 ATR, dan menembus high atau low 20 candle.

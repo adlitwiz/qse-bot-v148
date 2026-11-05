@@ -1,4 +1,4 @@
-"""QSE v149 - ALARM HARGA. /alert BTC 60000 [catatan], /alert untuk daftar, /alert hapus BTC atau /alert hapus semua.
+"""QSE v150 - ALARM HARGA. /alert BTC 60000 [catatan], /alert untuk daftar, /alert hapus BTC atau /alert hapus semua.
 Dicek tiap menit oleh qse_listener.py memakai candle 1 menit, jadi sumbu candle yang menyentuh level ikut terdeteksi."""
 import fcntl
 import json

@@ -1,4 +1,4 @@
-"""QSE v149 - LATIH ULANG OTOMATIS model arah BTC 24 jam dan perkiraan rentang (qse_tebak).
+"""QSE v150 - LATIH ULANG OTOMATIS model arah BTC 24 jam dan perkiraan rentang (qse_tebak).
 
 Jalan sendiri tiap Senin 05:30 WIB dari qse_listener, sebelum sesi 06:00 WIB. Tidak ada perintah.
 Data latih = sejarah riset 2017-2026 (arah_data.csv.gz, 4 sesi 06/12/18/00 WIB) + catatan live bot sendiri
@@ -266,7 +266,7 @@ def jalankan(kirim=True):
     baru["n_live"] = n_live
     gagal = periksa(baru, lama, n)
     sl, sb = lama["sesi"]["23"]["uji"], baru["sesi"]["23"]["uji"]
-    rows = ["🧠 <b>QSE v149 | MODEL ARAH BTC DILATIH ULANG</b>",
+    rows = ["🧠 <b>QSE v150 | MODEL ARAH BTC DILATIH ULANG</b>",
             f"Data: {n['23']} hari per sesi (sejarah 2017-2026 + {n_live} catatan live bot), sampai {baru['data_sampai']}.",
             f"Uji maju sesi 06:00 WIB: benar {sb['akurasi']:.1f}% (model lama {sl['akurasi']:.1f}%), keyakinan KUAT "
             f"{sb['tingkat']['kuat'][1]:.1f}% (lama {sl['tingkat']['kuat'][1]:.1f}%)."]

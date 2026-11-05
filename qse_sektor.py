@@ -1,14 +1,14 @@
-"""QSE v150 - SINYAL PELENGKAP: PEMIMPIN-PENGIKUT SEKTOR 4J (kantong kedua, tidak memakan slot v149).
+"""QSE v150 - SINYAL PELENGKAP: PEMIMPIN-PENGIKUT SEKTOR 4J (kantong kedua, tidak memakan slot v150).
 Aturan sama dengan backtest riset/upgrade/run_v154.py dan run_v156.py (data Binance 2022-2026, biaya 0.15% harga):
   1. Candle 4J tutup: di satu sektor (peta riset/orderblock/sektor.py), koin dengan gerak candle terbesar searah naik
      (atau turun) minimal 8% dan volume minimal 3x rata 20 candle = PEMIMPIN.
   2. Koin lain di sektor itu yang di candle yang sama baru bergerak kurang dari 1.5% = calon PENGIKUT.
   3. Dalam 2 candle 4J berikutnya: pengikut menutup di atas high 20 candle (SHORT: di bawah low 20 candle) dengan volume minimal 1.5x.
      Masuk MARKET di open candle sesudahnya. SL 1.5 x rata rentang 14 candle 4J. SL harus 0.4% sampai 8% dari entry.
-  4. Keluar aturan v149: TPawal 20% di +0.5R lalu SL ke entry, trailing 3 x rata rentang 4J tiap 4 jam,
+  4. Keluar aturan v150: TPawal 20% di +0.5R lalu SL ke entry, trailing 3 x rata rentang 4J tiap 4 jam,
      jam ke-12 belum TPawal dan rugi 0.5R tutup (rugi kurang dari itu: SL ke -0.5R), 30 jam belum TPawal tutup.
   5. Kantong sendiri: maksimal 2 posisi, satu posisi per koin, lot 0.5x, jeda 24 jam setelah 3 rugi beruntun.
-Hasil kantong (lot 0.5x) bersama v149: 2023-2024 +8.2R, 2025-2026 +26.7R. v149 2025-2026 +93R jadi +121R, bulan rugi tetap 4 dari 22,
+Hasil kantong (lot 0.5x) bersama v150: 2023-2024 +8.2R, 2025-2026 +26.7R. v150 2025-2026 +93R jadi +121R, bulan rugi tetap 4 dari 22,
 PF gabungan 1.46. Kantong sendiri 2025-2026: 170 trade, 1.8 per minggu, WR 62%.
 Pengaman turun kasta otomatis (10 trade terakhir jelek jadi kertas) sudah diuji dan TIDAK dipakai: memotong 2025-2026 dari +26.7R ke +7.7R."""
 import fcntl
@@ -36,8 +36,8 @@ for _sec, _cs in {"L1": "ADA ALGO APT ATOM AVAX BCH CELO CFX CKB DOT EGLD ETC HB
                   "AI": "FET WLD NMR ARPA IOTX", "GAME": "ALICE APE AXS ENJ GALA GMT MANA SAND HOOK CHZ THETA", "DEPIN": "AR FIL STORJ ANKR JASMY"}.items():
     for _c in _cs.split():
         SEKTOR[_c + "USDT"] = _sec
-BT = ("Binance 2022-2026, kantong 2 posisi lot 0.5x bersama v149: 2023-2024 +8.2R, 2025-2026 +26.7R, "
-      "bulan rugi v149 tetap 4 dari 22, WR 62%, sekitar 1.8 sinyal per minggu")
+BT = ("Binance 2022-2026, kantong 2 posisi lot 0.5x bersama v150: 2023-2024 +8.2R, 2025-2026 +26.7R, "
+      "bulan rugi v150 tetap 4 dari 22, WR 62%, sekitar 1.8 sinyal per minggu")
 
 
 def _kosong():
@@ -122,7 +122,7 @@ def cari(c4):
 
 
 def simulasi(e, d, risk, at4, h, l, c):
-    """Aturan keluar v149 di candle 1J sejak entry (sama dengan sim3 backtest). Return (selesai, R kotor, jam, sl_sekarang, aman)."""
+    """Aturan keluar v150 di candle 1J sejak entry (sama dengan sim3 backtest). Return (selesai, R kotor, jam, sl_sekarang, aman)."""
     sl = e - d * risk; best = e; sisa = 1.0; real = 0.0; tpsd = False; aman = False
     lvp = e + d * TPS_LV * risk; lvb = e + d * BE_LV * risk
     n = min(len(c), MAKS_JAM)
@@ -219,7 +219,7 @@ def _kelola():
             it = d["open"][key]
             _catat_ledger(it, R)
             out.append(f"{'✅' if R > 0 else '🛑'} <b>PELENGKAP SEKTOR SELESAI  ·  {it['sym']} {it['arah']}  ·  {R * LOT:+.2f}R (lot {LOT}x)</b>\n"
-                       f"Ditutup aturan v149 setelah {jam} jam. Kalau posisi Kamu masih terbuka, tutup sekarang.")
+                       f"Ditutup aturan v150 setelah {jam} jam. Kalau posisi Kamu masih terbuka, tutup sekarang.")
     return out
 
 
@@ -241,7 +241,7 @@ def _kartu(no, it, tick):
     return "\n".join([
         garis,
         f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {it['arah']}</b>  ·  🧩 SINYAL PELENGKAP Sektor 4J",
-        f"✅ <b>BISA DIIKUTI</b>  ·  kantong kedua, tidak memakan slot v149  ·  lot <b>{LOT}x lot normal</b>",
+        f"✅ <b>BISA DIIKUTI</b>  ·  kantong kedua, tidak memakan slot v150  ·  lot <b>{LOT}x lot normal</b>",
         garis,
         blok,
         "💡 <b>Kenapa</b>",
@@ -337,7 +337,7 @@ def status_singkat():
 
 def teks():
     d = lihat()
-    rows = [f"<b>🧩 Sinyal Pelengkap: Pemimpin-Pengikut Sektor 4J</b>\nLot {LOT}x, maksimal {MAKS_BUKA} posisi, tidak memakan slot v149.\nBacktest: {BT}"]
+    rows = [f"<b>🧩 Sinyal Pelengkap: Pemimpin-Pengikut Sektor 4J</b>\nLot {LOT}x, maksimal {MAKS_BUKA} posisi, tidak memakan slot v150.\nBacktest: {BT}"]
     if d["open"]:
         rows.append(f"\nPosisi berjalan ({len(d['open'])}):")
         for it in d["open"].values():

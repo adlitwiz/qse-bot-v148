@@ -1,4 +1,4 @@
-"""QSE v149 - mesin backtest, skor, seleksi 5 saran, zona TP/SL, pelacak robot (Pine baris 838-1391).
+"""QSE v150 - mesin backtest, skor, seleksi 5 saran, zona TP/SL, pelacak robot (Pine baris 838-1391).
 Dikompilasi numba bila tersedia. Kode tipe order: 0 -, 1 MARKET, 2 CONDITIONAL STOP, 3 LIMIT, 4 SCALED LIMIT, 5 TUNGGU."""
 import numpy as np
 

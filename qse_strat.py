@@ -1,4 +1,4 @@
-"""QSE v149 - JALUR STRATEGI TAMBAHAN yang lolos uji 14 strategi umum (candle 4J, 111 koin perp, Jul 2020 - Okt 2026).
+"""QSE v150 - JALUR STRATEGI TAMBAHAN yang lolos uji 14 strategi umum (candle 4J, 111 koin perp, Jul 2020 - Okt 2026).
 Aturan dipilih dari data 2020-2023, lalu diuji di 2024-2026 tanpa diubah. Biaya 0.15%. Maks 8 posisi per jalur.
 Yang lolos dan dipasang:
   ema_short : EMA 20 memotong EMA 50 ke bawah, close di bawah EMA 200, BTC 4J di bawah EMA 50. Hanya SHORT.
@@ -188,19 +188,19 @@ def _kelola(it, df):
         if ts <= it["last"]:
             continue
         hi, lo, cl = float(df["high"].iloc[k]), float(df["low"].iloc[k]), float(df["close"].iloc[k])
-        v149_langkah(it, hi, lo, cl)
+        v150_langkah(it, hi, lo, cl)
         if (lo <= it["sl"]) if L else (hi >= it["sl"]):
-            v149_tutup(it, it["sl"])
+            v150_tutup(it, it["sl"])
             return "SL", ((it["sl"] - e) if L else (e - it["sl"])) / risk - BIAYA * e / risk, sl_lama
         if it.get("tp"):          # jalur TP tetap (McGinley): TP tidak dicek di candle masuk, sama dengan backtest
             if it["bar"] > 0 and ((hi >= it["tp"]) if L else (lo <= it["tp"])):
-                v149_tutup(it, it["tp"])
+                v150_tutup(it, it["tp"])
                 return "TP", abs(it["tp"] - e) / risk - BIAYA * e / risk, sl_lama
             it["bar"] += 1
             it["last"] = int(ts)
             it["close"] = cl
             if it["bar"] >= it.get("maks_bar", MAKS_BAR):
-                v149_tutup(it, cl)
+                v150_tutup(it, cl)
                 return "WAKTU", ((cl - e) if L else (e - cl)) / risk - BIAYA * e / risk, sl_lama
             continue
         if L:
@@ -218,13 +218,13 @@ def _kelola(it, df):
         it["last"] = int(ts)
         it["close"] = cl
         if it["bar"] >= MAKS_BAR:
-            v149_tutup(it, cl)
+            v150_tutup(it, cl)
             return "WAKTU", ((cl - e) if L else (e - cl)) / risk - BIAYA * e / risk, sl_lama
     return "BUKA", None, sl_lama
 
 
-def v149_langkah(it, hi, lo, cl):
-    """v149: jejak aturan keluar yang diikuti orang, berjalan di samping aturan jalur, per candle 4J: TPawal 20% di +0.5R lalu SL
+def v150_langkah(it, hi, lo, cl):
+    """v150: jejak aturan keluar yang diikuti orang, berjalan di samping aturan jalur, per candle 4J: TPawal 20% di +0.5R lalu SL
     ke entry, jam ke-12 dinamis (rugi >= 0.5R tutup, melawan SL ke -0.5R), batas 30 jam (candle ke-8) untuk yang belum aman.
     Dipanggil sebelum aturan jalur di tiap candle. Hasil di it['v9']['R'] (tanpa biaya)."""
     e = it["entry"]
@@ -259,8 +259,8 @@ def v149_langkah(it, hi, lo, cl):
             v["R"] = v["real"] + v["sisa"] * g
 
 
-def v149_tutup(it, px):
-    """Saat jalur selesai di harga px: hasil jejak v149 (sudah biaya). None kalau jejak belum ada."""
+def v150_tutup(it, px):
+    """Saat jalur selesai di harga px: hasil jejak v150 (sudah biaya). None kalau jejak belum ada."""
     v = it.get("v9")
     if not v:
         return None
@@ -274,7 +274,7 @@ def v149_tutup(it, px):
 
 
 def r_hasil(c):
-    """Hasil trade kertas menurut aturan v149 (R9). Catatan lama tanpa jejak: perkiraan dari puncak harga (best):
+    """Hasil trade kertas menurut aturan v150 (R9). Catatan lama tanpa jejak: perkiraan dari puncak harga (best):
     kalau pernah +0.5R, 20% untung 0.5R dan sisa tidak rugi. Tanpa data puncak: hasil aturan jalur."""
     if c.get("R9") is not None:
         return float(c["R9"])
@@ -443,12 +443,12 @@ def pump_tolak(df, arah):
         if df is None or len(df) < 2:
             return ""
         if arah == "LONG" and os.environ.get("QSE_AKHIR_PEKAN", "1") == "1" and time.gmtime(time.time()).tm_wday in (5, 6):
-            # v149 (riset/upgrade/hasil_g22.txt, 383 koin, universe 150 koin likuid): LONG yang masuk Sabtu-Minggu UTC
+            # v150 (riset/upgrade/hasil_g22.txt, 383 koin, universe 150 koin likuid): LONG yang masuk Sabtu-Minggu UTC
             # (Sabtu 07:00 sampai Senin 06:59 WIB) rugi di 2024 (-0.07R), 2025 (-0.14R), dipilih dari dua tahun itu lalu terbukti lagi
             # di 2026 (-0.11R) yang tidak ikut memilih. Ditahan: NILAI 8+ 2025 PF 1.26 -> 1.39, 2026 PF 1.34 -> 1.39.
             return "LONG akhir pekan (Sabtu-Minggu UTC): rugi di 2024, 2025, dan 2026"
         if arah == "LONG":
-            # v149 (2 Nov 2026, riset/upgrade/ringkasan.txt nomor 29): LONG tepat sesudah candle 4J sinyal naik 10% atau lebih ditahan.
+            # v150 (2 Nov 2026, riset/upgrade/ringkasan.txt nomor 29): LONG tepat sesudah candle 4J sinyal naik 10% atau lebih ditahan.
             # 2021-23 untung besar (PF 4.58), tapi sejak 2024 rugi: 2024 PF 0.79, 2025-26 PF 0.87, yang lolos profil koin PF 0.84.
             o_ = float(df["open"].iloc[-1])
             naik = (float(df["close"].iloc[-1]) - o_) / o_ if o_ > 0 else 0.0
@@ -457,7 +457,7 @@ def pump_tolak(df, arah):
         if arah != "SHORT" or len(df) < 181:
             return ""
         c = df["close"].astype(float)
-        # v149 (2 Nov 2026, kasus UNI -13% satu candle): SHORT tepat sesudah candle 4J sinyal anjlok 12% atau lebih dilewati.
+        # v150 (2 Nov 2026, kasus UNI -13% satu candle): SHORT tepat sesudah candle 4J sinyal anjlok 12% atau lebih dilewati.
         # Uji 2021-2026 semua jalur: 94 sinyal seperti ini rata -0.18R (2021-23 -0.32R, 2024-26 -0.12R), rugi di dua periode.
         # Dibuang: NILAI 8+ total +298R -> +310R, PF 1.37 -> 1.38, semua sinyal tetap (PF 1.24). Ambang 10% dan 11% tidak konsisten.
         o_ = float(df["open"].iloc[-1])
@@ -600,7 +600,7 @@ def rencana_tp(entry, sl, arah, tick, tp=None, jarak=None, fmt=None, uji=True, w
 
 # Per trade semua sinyal live 2021-2026 (TP sebagian 20% di +0.5R, jam ke-8 SL ke -0.5R, batas 36 jam): menang 62%,
 # kena SL penuh 3%, PF 1.86. Tanpa jam ke-8: menang 68%, SL penuh 17%, PF 1.82. riset/porto/pf_slpenuh2.py
-# v149 per trade semua sinyal 2021-2026 data Binance (riset/upgrade/run_g13.py): jam 12 dinamis + 30 jam menang 61%, SL penuh 11%, PF 1.36
+# v150 per trade semua sinyal 2021-2026 data Binance (riset/upgrade/run_g13.py): jam 12 dinamis + 30 jam menang 61%, SL penuh 11%, PF 1.36
 # (aturan lama di data yang sama: menang 58%, SL penuh 6%, PF 1.34)
 UJI_WAKTU = {30: (61, 11), 36: (62, 3)}
 
@@ -685,7 +685,7 @@ def set_mode(m):
     return m
 
 
-REM7_NILAI = 8          # v149: saat rem 7 hari menyala hanya NILAI 10 (skor 90) yang dikirim, setengah lot
+REM7_NILAI = 8          # v150: saat rem 7 hari menyala hanya NILAI 10 (skor 90) yang dikirim, setengah lot
 
 
 def lolos_mode(pr):

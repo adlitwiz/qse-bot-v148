@@ -1,4 +1,4 @@
-"""QSE v149 - gambar chart sinyal (PNG) tanpa library tambahan: numpy + zlib.
+"""QSE v150 - gambar chart sinyal (PNG) tanpa library tambahan: numpy + zlib.
 Candle 4J terakhir, garis entry (biru), SL (merah), TP sebagian (hijau muda), TP (hijau), support dan resistance (abu putus-putus),
 skala harga di kanan dengan angka kecil (font 3x5 buatan sendiri). Dipakai sebagai gambar di gelembung sinyal Telegram."""
 import struct

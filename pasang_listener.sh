@@ -12,7 +12,7 @@ fi
 [ -x "$STATE/venv/bin/python" ] || { echo "Jalankan bot sekali dulu (bash run.sh) supaya venv terbentuk."; exit 1; }
 sudo tee /etc/systemd/system/qse-listener.service > /dev/null << UNIT
 [Unit]
-Description=QSE v149 pendengar perintah Telegram
+Description=QSE v150 pendengar perintah Telegram
 After=network-online.target
 Wants=network-online.target
 

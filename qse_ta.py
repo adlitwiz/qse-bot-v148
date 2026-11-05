@@ -1,4 +1,4 @@
-"""QSE v149 - fungsi TA versi Pine Script v5 (numpy). na = np.nan, bool tidak pernah na."""
+"""QSE v150 - fungsi TA versi Pine Script v5 (numpy). na = np.nan, bool tidak pernah na."""
 import numpy as np
 import pandas as pd
 from numpy.lib.stride_tricks import sliding_window_view as swv

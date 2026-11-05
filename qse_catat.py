@@ -1,4 +1,4 @@
-"""QSE v149 - CATATAN HASIL LIVE jalur tambahan: momentum, news searah engine, news mandiri.
+"""QSE v150 - CATATAN HASIL LIVE jalur tambahan: momentum, news searah engine, news mandiri.
 Tiap saran dicatat saat dikirim, lalu dicek tiap 15 menit dengan candle 15 menit Bybit memakai aturan yang sama
 dengan backtest: LIMIT harus tersentuh dalam masa berlaku, TP1 tutup separuh lalu SL ke entry, TP2 selesai,
 satu candle kena SL dan TP dihitung SL dulu, posisi ditutup paksa setelah 24 jam. Biaya 0.08R per trade.
@@ -188,7 +188,7 @@ def _tutup_terbukti():
             out += [(k, cfg["nama"], c) for c in ST.lihat(k).get("closed", [])]
     except Exception:
         pass
-    # v149: R = hasil menurut aturan keluar yang diikuti orang (TPawal 20% lalu SL ke entry, jam 12, 30 jam), R_jalur = aturan jalur lama
+    # v150: R = hasil menurut aturan keluar yang diikuti orang (TPawal 20% lalu SL ke entry, jam 12, 30 jam), R_jalur = aturan jalur lama
     hasil = []
     for k, n, c in out:
         if c.get("R") is None:
@@ -201,7 +201,7 @@ def _tutup_terbukti():
     return hasil
 
 
-# v149: rem 7 hari sistem. Uji 2023-2026 (riset/upgrade/hasil_bulan.txt, hasil_struktur.txt): trade kertas robot NILAI 8+ yang lolos
+# v150: rem 7 hari sistem. Uji 2023-2026 (riset/upgrade/hasil_bulan.txt, hasil_struktur.txt): trade kertas robot NILAI 8+ yang lolos
 # saringan, 7 hari terakhir rugi lebih dari 3R -> sinyal baru ditahan. PF 1.31 jadi 1.48, bulan terburuk -17.1R jadi -7.5R, total sama,
 # 2023-24 PF 1.38, 2025-26 PF 1.60. Robot tetap mencatat trade kertas selama rem, jadi rem lepas sendiri saat total 7 hari pulih.
 REM7_BATAS = float(os.environ.get("QSE_REM7", "-3"))
@@ -220,7 +220,7 @@ def rem7(maks_umur=300):
             tot, n = 0.0, 0
             for k, _, c in _tutup_terbukti():
                 sel = float(c.get("selesai") or 0)
-                # v149: dihitung sejak v149 aktif saja. Trade kertas sebelumnya memakai aturan keluar lama (hasilnya hanya perkiraan)
+                # v150: dihitung sejak v150 aktif saja. Trade kertas sebelumnya memakai aturan keluar lama (hasilnya hanya perkiraan)
                 if now - sel > 7 * 86400 or sel < MULAI_V149 or c.get("otak_saring"):
                     continue
                 try:
@@ -241,7 +241,7 @@ EXP_UJI = {"orderblock": 0.18, "snr_vol": 0.18, "mcginley": 0.17, "rsi_vol": 0.1
            "smc_choch": 0.10, "msb_hpz": 0.09, "GZH": 0.07}
 
 
-# v149: hitungan /jalur mulai dari nol sejak v149 aktif. Trade sebelum itu tidak dihapus, tampil satu baris arsip.
+# v150: hitungan /jalur mulai dari nol sejak v150 aktif. Trade sebelum itu tidak dihapus, tampil satu baris arsip.
 MULAI_V149 = float(os.environ.get("QSE_JALUR_MULAI", "1793638800"))      # 3 Nov 2026 00:00 WIB
 
 
@@ -282,10 +282,10 @@ def teks():
     lama = [z[2]["R"] for z in semua if z[2].get("selesai", 0) < MULAI_V149]
     now = time.time()
     tgl = time.strftime("%d %b %Y", time.gmtime(MULAI_V149 + 7 * 3600))
-    rows = [f"Hasil live robot sejak v149 aktif ({tgl}), posisi yang dicatat robot sendiri, sudah biaya. "
+    rows = [f"Hasil live robot sejak v150 aktif ({tgl}), posisi yang dicatat robot sendiri, sudah biaya. "
             "Dalam persen modal dengan risiko standar per trade. Pembanding: rata-rata per trade di uji 2021-2026.",
             "Penilaian baru berarti setelah 100 trade: di uji, 40 trade berturut-turut PF di bawah 1 terjadi 31-55% waktu walau jalurnya untung.",
-            "", "📊 <b>PER TEKNIK</b> (sejak v149)"]
+            "", "📊 <b>PER TEKNIK</b> (sejak v150)"]
     urut = sorted({(k, n) for k, n, _ in data} | {(k, None) for k in EXP_UJI}, key=lambda z: -EXP_UJI.get(z[0], 0))
     sudah = set()
     for k, _ in urut:
@@ -309,13 +309,13 @@ def teks():
            ("🔊 VOLUME PASAR TINGGI", lambda c: c.get("vol_tinggi"), 0.30),
            ("📉 BTC.D TURUN (SHORT)", lambda c: c.get("dom_turun"), 0.23),
            ("Tanpa label", lambda c: not (c.get("combo") or len(c.get("mutu_plus") or []) >= 3 or c.get("pullback")), 0.11)]
-    rows += ["", "🏷 <b>PER LABEL</b> (sejak v149)"]
+    rows += ["", "🏷 <b>PER LABEL</b> (sejak v150)"]
     for nm, fn, ex in lab:
         rows.append(_baris(nm, [c["R"] for _, _, c in data if fn(c)], ex))
     try:
         import qse_strat as ST
         sk = lambda k, c: ST.prioritas(k, c)[0]
-        rows += ["", "🎖 <b>PER NILAI</b> (sejak v149)"]
+        rows += ["", "🎖 <b>PER NILAI</b> (sejak v150)"]
         for nm, lo, hi, ex in (("👑 NILAI 10", 8, 99, 0.50), ("🔥 NILAI 9", 5, 7, 0.29), ("✅ NILAI 8", 3, 4, 0.14)):
             rows.append(_baris(nm, [c["R"] for k, _, c in data if lo <= sk(k, c) <= hi], ex))
     except Exception as ex_:
@@ -330,7 +330,7 @@ def teks():
     except Exception:
         pass
     if lama:
-        rows += ["", "🗄 " + _baris(f"Arsip sebelum v149 (tidak dihapus)", lama)]
+        rows += ["", "🗄 " + _baris(f"Arsip sebelum v150 (tidak dihapus)", lama)]
     try:
         import qse_modal as MD2
         mp = MD2.MAKS_POSISI

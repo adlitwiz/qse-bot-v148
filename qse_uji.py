@@ -1,4 +1,4 @@
-"""QSE v149 - UJI MUNDUR saran cadangan dan saran siklus di 6 bulan terakhir (sekitar 1080 candle 4J).
+"""QSE v150 - UJI MUNDUR saran cadangan dan saran siklus di 6 bulan terakhir (sekitar 1080 candle 4J).
 Aturan entry, SL, TP, dan pengelolaan (TP1 separuh, SL ke entry, sisa ke TP2) sama dengan yang dipakai live.
 Fee taker pulang pergi dipotong. Batasan: rapor robot di masa lalu tidak dihitung ulang (terlalu berat),
 jadi koin yang diuji adalah koin rapor A/B saat ini ditambah koin paling likuid."""

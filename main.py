@@ -1,4 +1,4 @@
-"""QSE v149 Bot - pindai semua perpetual USDT Bybit, kirim sinyal ke Telegram.
+"""QSE v150 Bot - pindai semua perpetual USDT Bybit, kirim sinyal ke Telegram.
 Jadwal: tiap jam (TF 1J), dan tiap candle 4H tutup (TF 4J + 1J). Paksa semua TF: python main.py semua"""
 import os
 import sys
@@ -151,7 +151,7 @@ def trade_saya():
         print("[WARN] pantau trade kamu:", ex)
         return
     if pesan:
-        TG.send(["👤 <b>QSE v149 | TRADE KAMU</b>\n\n" + "\n".join(pesan)])
+        TG.send(["👤 <b>QSE v150 | TRADE KAMU</b>\n\n" + "\n".join(pesan)])
 
 
 _SCAN = {}
@@ -206,7 +206,7 @@ def _susun_scan(now):
     ung = _unggulan(res, sudah) if res else []
     rad = _radar(res, sudah | {r["symbol"] for r, *_ in lain}) if res else []
     # kondisi pasar
-    pas = [f"🔎 <b>QSE v149 | SCAN SEKARANG</b>\n{jam}"]
+    pas = [f"🔎 <b>QSE v150 | SCAN SEKARANG</b>\n{jam}"]
     kond = []
     bt = next((r for r in res), None)
     if bt:
@@ -268,7 +268,7 @@ def scan_sekarang():
     try:
         fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
-        TG.send(["🔎 <b>QSE v149 | SCAN SEKARANG</b>\nScan terjadwal sedang berjalan. Hasilnya ikut terkirim sebentar lagi."])
+        TG.send(["🔎 <b>QSE v150 | SCAN SEKARANG</b>\nScan terjadwal sedang berjalan. Hasilnya ikut terkirim sebentar lagi."])
         return
     try:
         _SCAN.clear()
@@ -277,7 +277,7 @@ def scan_sekarang():
             cek_1j(now, paksa=True)
         TG.send(_susun_scan(now))
     except Exception:
-        TG.send(["🔎 <b>QSE v149 | SCAN SEKARANG</b>\nScan gagal: " + TG.e(traceback.format_exc()[-300:])])
+        TG.send(["🔎 <b>QSE v150 | SCAN SEKARANG</b>\nScan gagal: " + TG.e(traceback.format_exc()[-300:])])
     finally:
         fcntl.flock(lk, fcntl.LOCK_UN)
 
@@ -306,7 +306,7 @@ def main():
         time.sleep(52 * 60)
         print("[FATAL] main.py lewat 52 menit, keluar paksa supaya kunci jadwal lepas", flush=True)
         try:
-            TG.send(["⚠️ <b>QSE v149 | SCAN TERLALU LAMA</b>\nmain.py lewat 52 menit dan aku hentikan paksa. "
+            TG.send(["⚠️ <b>QSE v150 | SCAN TERLALU LAMA</b>\nmain.py lewat 52 menit dan aku hentikan paksa. "
                      "Jadwal berikutnya tetap jalan. Log: ~/qse_state/main.log"])
         except Exception:
             pass
@@ -348,7 +348,7 @@ def main():
         raise
     except Exception as ex:
         traceback.print_exc()
-        TG.send([f"<b>QSE v149 | BOT GAGAL JALAN</b>\n{TG.e(type(ex).__name__)}: {TG.e(str(ex)[:300])}\n"
+        TG.send([f"<b>QSE v150 | BOT GAGAL JALAN</b>\n{TG.e(type(ex).__name__)}: {TG.e(str(ex)[:300])}\n"
                  f"Log lengkap: ~/qse_state/main.log"])
         raise
     finally:
@@ -436,7 +436,7 @@ def _pin(ids, jenis="saran4", isi=None, led=None):
     err = TG.pin(ids[0])
     if err:
         if time.time() - st.get("pin_warn", 0) > 86400:
-            TG.send([f"⚠️ <b>QSE v149 | PIN GAGAL</b>\nTelegram: {TG.e(str(err))}\nJadikan bot admin grup dengan izin "
+            TG.send([f"⚠️ <b>QSE v150 | PIN GAGAL</b>\nTelegram: {TG.e(str(err))}\nJadikan bot admin grup dengan izin "
                      f"<b>Sematkan pesan</b> (Pin messages), lalu sinyal berikutnya otomatis disematkan."])
             _st_update({"pin_warn": time.time()})
         return
@@ -786,7 +786,7 @@ def _siklus_saran(results, sel, cad, led, tickers, ctx, maks=3):
 
 
 def _konfluensi(r, arah, zona=False):
-    """Faktor pendukung di luar syarat v148. Tidak menyaring, hanya menambah keyakinan."""
+    """Faktor pendukung di luar syarat v150. Tidak menyaring, hanya menambah keyakinan."""
     L = arah == "LONG"
     ok = []
     if zona:
@@ -981,7 +981,7 @@ def _blok_tt(no, r, x, tag, led):
     k = [f"Pola Tembus Trendline di DASBOR ({TG.e(x.get('alasan_pola', 'harga menembus garis tren'))})",
          "Harga 4J di bawah EMA 200: tren turun"]
     if "STOP" in x["order"]:
-        # v149: uji 30 koin 2023-2026 (riset/v149/hasil_tt_sentuh.txt lawan hasil_tt_tutup4j.txt): order Conditional yang terisi saat
+        # v150: uji 30 koin 2023-2026 (riset/v150/hasil_tt_sentuh.txt lawan hasil_tt_tutup4j.txt): order Conditional yang terisi saat
         # harga menyentuh entry PF 2.62 (107 trade), menunggu candle 4J tutup di bawah entry lalu MARKET PF 0.72 (88 trade). Cara lama dibuang.
         o1 = (f"Pasang sekarang di Bybit: Conditional, Sell, Trigger Price {TG.fp(x['entry'], r.get('tick'))} (Last Price), Market. "
               f"Isi SL dan TP1 di order itu juga. Order terisi sendiri saat harga turun menyentuh entry. Kalau 24 jam belum terisi, batalkan")
@@ -1001,7 +1001,7 @@ def _blok_tt(no, r, x, tag, led):
     return teks
 
 
-# v149: skor Tembus Trendline. Uji ulang 3 Nov 2026 (riset/v149/hasil_tt.txt, tt_kumpul.py + tt_nilai.py): mesin QSE yang sama dengan
+# v150: skor Tembus Trendline. Uji ulang 3 Nov 2026 (riset/v150/hasil_tt.txt, tt_kumpul.py + tt_nilai.py): mesin QSE yang sama dengan
 # bot, dijalankan mundur tiap 3 candle 4J di 30 koin Bybit, candle 1D/1W berjalan dibangun dari 1J yang sudah tutup, order STOP harus
 # terisi dalam 24 jam, SL dicek dulu, biaya 0.15%: 107 trade 2023-2026, WR 83%, PF 2.62 (2025 PF 1.96, 2026 PF 1.68).
 # Cara masuk yang diuji: order Conditional terisi saat harga menyentuh entry. Menunggu candle 4J tutup lalu MARKET PF 0.72 (dibuang).
@@ -1081,12 +1081,12 @@ def _wr_baris(led):
 
 
 def cek_1j(now, jalur_aktif=True, paksa=False):
-    """Saran TF 1J selektif: hanya koin rapor 4J A/B, arah 1J searah bias 4J, lolos semua syarat v148 di chart 1 jam.
+    """Saran TF 1J selektif: hanya koin rapor 4J A/B, arah 1J searah bias 4J, lolos semua syarat v150 di chart 1 jam.
     Statistik rapor robot 1J dicatat sebagai uji jalur 1J. Tidak menghapus cek per jam TF 4J."""
     t0 = time.time()
     if not SARAN_DASBOR_1J:
         if paksa:
-            _SCAN["1j"] = dict(blocks=["🔎 <b>QSE v149 | SCAN SEKARANG TF 1J</b>\nSaran 1J dimatikan: uji 111 koin data 1 jam "
+            _SCAN["1j"] = dict(blocks=["🔎 <b>QSE v150 | SCAN SEKARANG TF 1J</b>\nSaran 1J dimatikan: uji 111 koin data 1 jam "
                                        "2020-2026, tidak ada aturan 1J yang untung setelah biaya (PF 1.00 sampai 1.11). "
                                        "Pakai sinyal 4J jalur terbukti."], baru=[], n=0)
         return
@@ -1153,7 +1153,7 @@ def cek_1j(now, jalur_aktif=True, paksa=False):
         print(f"Cek TF 1J {len(hasil)} koin, tidak ada saran baru. {time.time() - t0:.0f}s")
         return
     jam = now.astimezone(WIB).strftime("%d/%m %H:%M WIB")
-    judul = "🔎 <b>QSE v149 | SCAN SEKARANG TF 1J</b>" if paksa else "🕐 <b>QSE v149 | SARAN TF 1J</b>"
+    judul = "🔎 <b>QSE v150 | SCAN SEKARANG TF 1J</b>" if paksa else "🕐 <b>QSE v150 | SARAN TF 1J</b>"
     blocks = [f"{judul}\n{jam if paksa else SY.baris_jadwal(3600000)}\n"
               f"Syarat ganda: rapor 4J A/B, rapor 1J A/B, dan searah bias 4J | dinilai {len(hasil)} koin"]
     if not jalur_aktif or not QU.aktif("1j"):
@@ -1322,7 +1322,7 @@ def _kartu_jam(results, b1, led):
     try:
         c = b1["close"].values
         ch1, ch3 = (c[-1] / c[-2] - 1) * 100, (c[-1] / c[-4] - 1) * 100
-        rows.append(f"₿ BTC {c[-1]:,.0f}  ·  1 jam {ch1:+.2f}%  ·  3 jam {ch3:+.2f}%")          # v149: peta BTC satu baris di bawah
+        rows.append(f"₿ BTC {c[-1]:,.0f}  ·  1 jam {ch1:+.2f}%  ·  3 jam {ch3:+.2f}%")          # v150: peta BTC satu baris di bawah
     except Exception:
         pass
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
@@ -1471,7 +1471,7 @@ def cek_cepat(now, paksa=False):
         json.dump(lama, f, default=float)
     masih = [(r, x) for r, x in sel if tag_of[id(x)] == "sudah dikirim"] if paksa else []
     jam = now.astimezone(WIB).strftime("%d/%m %H:%M WIB")
-    judul = "🔎 <b>QSE v149 | SCAN SEKARANG TF 4J</b>" if paksa else "⏱️ <b>QSE v149 | CEK PER JAM TF 4J</b>"
+    judul = "🔎 <b>QSE v150 | SCAN SEKARANG TF 4J</b>" if paksa else "⏱️ <b>QSE v150 | CEK PER JAM TF 4J</b>"
     blocks = [f"{judul}\n{jam}\n" + _kartu_jam(results, b1, led)]
     if paksa and SARAN_DASBOR_4J:
         ung = _unggulan(results, {r["symbol"] for r, _ in sel})
@@ -1530,7 +1530,7 @@ def cek_cepat(now, paksa=False):
                or x["mutu"] == "A"]
     if prospek:
         # disematkan sampai ada laporan 4 jam bersaran baru, atau sampai semua sarannya tidak berlaku lagi
-        _pin(TG.send([f"🎯 <b>QSE v149 | SINYAL PROSPEK 4 JAM</b>\n{jam}\nSinyal baru di tengah candle dengan mutu A, "
+        _pin(TG.send([f"🎯 <b>QSE v150 | SINYAL PROSPEK 4 JAM</b>\n{jam}\nSinyal baru di tengah candle dengan mutu A, "
                       f"GOLDEN, atau konfluensi tinggi."] +
                      [_blok(i, r, x, f"{x['mutu']} EKSEKUSI, SINYAL BARU", led) for i, (r, x) in enumerate(prospek, 1)])
              or [], "prospek", [(r["symbol"], x["arah"]) for r, x in prospek])
@@ -1551,7 +1551,7 @@ def pantau(now):
         try:
             kena = AL.cek()
             if kena:
-                TG.send(["🔔 <b>QSE v149 | ALARM HARGA</b>\n\n" + "\n\n".join(kena)])
+                TG.send(["🔔 <b>QSE v150 | ALARM HARGA</b>\n\n" + "\n\n".join(kena)])
         except Exception as ex:
             print("[WARN] alarm:", ex)
     led = FX.load()
@@ -1661,7 +1661,7 @@ def scan(now, run4, tfs):
                        f"Sinyal baru ditahan 3 jam. Posisi jalan: tahan sesuai aturan jalur, SL di Bybit yang melindungi "
                     f"(uji 2021-2026: geser SL ke entry menurunkan profit 18%).")
     if waspada:
-        TG.send(["⚠️ <b>QSE v149 | PERINGATAN POSISI</b>\n\n" + "\n\n".join(waspada)])
+        TG.send(["⚠️ <b>QSE v150 | PERINGATAN POSISI</b>\n\n" + "\n\n".join(waspada)])
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, tfs)]
     for r in results:
         r["tk"] = tickers.get(r["symbol"])
@@ -2126,7 +2126,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
     baru = sum(1 for r, s in sig if tag_of[id(s)] != "sudah dikirim")
     cad = [z for z in (cad or []) if z[0]["tf"] == tf and dasbor]
     pasar, scan = [], []
-    head = [GARIS, f"📊 <b>QSE v149 | LAPORAN {judul}</b>",
+    head = [GARIS, f"📊 <b>QSE v150 | LAPORAN {judul}</b>",
             SY.baris_jadwal(rs[0]["tf_ms"], tutup) if tutup else now.astimezone(WIB).strftime("%d/%m %H:%M WIB")]
     if tutup and time.time() * 1000 - tutup > 20 * 60000:
         head.append(f"⏰ Laporan susulan, dibuat {now.astimezone(WIB).strftime('%H:%M WIB')} karena jadwal sempat "
@@ -2435,6 +2435,14 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                        "harga masih dekat entry. Uji 2020-2026: entry telat 1 candle PF 1.49/1.21.\n\n" + "\n\n".join(ung))
     if dasbor:
         out += _pantauan(rs, sig + [(r, x) for r, x, _ in cad] + [(r, x) for r, x, _ in sik], kode)
+        try:
+            import qse_lalat as LT          # v150: ringkasan lalat bionik di laporan 4 jam
+            _lt = LT.state()
+            out.append(f"{GARIS}\n🪰 <b>LALAT BIONIK</b>: {LT.mood(_lt)}  ·  lapar {_lt['lapar']:.0f}%  ·  DA {_lt['DA']:.0f}  ·  "
+                       f"5-HT {_lt['SER']:.0f}  ·  GABA {_lt['GABA']:.0f}  ·  posisi {len(_lt['open'])}/2. Detail di tombol 🪰 Otak Lalat."
+                       + ("\n\n" + LT.pilihan_teks() if _lt["open"] else ""))
+        except Exception as ex:
+            print("[WARN] lalat laporan", ex)
     rendah = {}
     for r, x in (eks_ab if dasbor else []):
         if r["rapor"] not in ("A", "B") and r["symbol"] not in rendah:
@@ -2475,7 +2483,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                             "CPI/FOMC: robot kirim SIAGA 1 jam sebelum")
             except Exception:
                 pass
-        so.insert(0, f"🎯 <b>QSE v149 | SINYAL {judul}</b>\n{SY.baris_jadwal(rs[0]['tf_ms'] if rs else 4 * 3600000, tutup)}\n"
+        so.insert(0, f"🎯 <b>QSE v150 | SINYAL {judul}</b>\n{SY.baris_jadwal(rs[0]['tf_ms'] if rs else 4 * 3600000, tutup)}\n"
                      + (prio + "\n" if prio else "") + f"{SY.GARIS}\n" + (f"{ktx}\n" if ktx.strip() else "")
                      + "Detail tiap sinyal di bawah. Laporan lengkap ada di pesan 📊 berikutnya.")
         return out, so, True

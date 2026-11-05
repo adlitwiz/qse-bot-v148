@@ -1,7 +1,7 @@
-"""QSE v149 - LAPORAN SESI pagi (06:00 WIB), siang (12:00 WIB), malam (18:00 WIB). Lima bagian, langsung bisa dipakai:
+"""QSE v150 - LAPORAN SESI pagi (06:00 WIB), siang (12:00 WIB), malam (18:00 WIB). Lima bagian, langsung bisa dipakai:
 1. Peta komando BTC (qse_btcmap): tren 1J/4J/1D McGinley, volume objektif, order flow, S/R, likuiditas, fokus.
 2. Karakter sesi dari candle 1 jam BTC: rentang Asia (07:00-14:00 WIB), London (14:00-20:00 WIB), New York (20:00-04:00 WIB).
-   Uji BTC 2019-2026 (riset/v149/sesi_stat.py, 2.838 hari):
+   Uji BTC 2019-2026 (riset/v150/sesi_stat.py, 2.838 hari):
    - London menyapu high atau low Asia di 78% hari (2019-22 dan 2023-26 sama), dua sisi 7-9%.
    - Arah sesudah sapuan (pola AMD: sapu lalu balik) 46-53%, sama dengan lempar koin. Level Asia = target, bukan arah.
    - New York membuat high atau low baru hari itu di 75% (2019-22) dan 86% (2023-26) hari: gerak terbesar biasanya di NY.
@@ -43,7 +43,7 @@ def karakter_sesi(d1, sesi, now=None):
             rows.append(f"• Rentang Asia sejauh ini: high {f(A['high'].max())}, low {f(A['low'].min())} "
                         f"({(A['high'].max() / A['low'].min() - 1) * 100:.1f}%).")
         rows.append("• London (mulai 14:00 WIB) menyapu salah satu ujung rentang Asia di 78% hari. Arah sesudah sapuan 50:50, "
-                    "jadi jangan entry hanya karena sapuan. Tunggu sinyal robot.")
+                    "jadi jangan entry hanya karena sapuan. Pakai angka Sniper di bagian pantauan.")
     elif sesi in ("malam", "tengah"):
         if len(A):
             ah, al = A["high"].max(), A["low"].min()
@@ -149,42 +149,26 @@ def _valid_jalur(tk):
 
 
 def pantauan(tk, maks=5):
-    import bybit_fetch as B
-    import qse_btcmap as BM
+    """v150: sinyal jalur yang masih valid (dengan blok salin), lalu rencana Sniper S/R berangka (LIMIT, SL, TP)."""
+    import qse_saya as SY
     rows = []
     v = _valid_jalur(tk)
     v.sort(key=lambda z: -tk.get(z[0], {}).get("turnover", 0))
     for sym, arah, k, dR, it in v[:maks]:
-        rows.append(f"• 🎯 <b>{sym} {arah}</b> sinyal {k} masih valid ({dR:+.2f}R dari entry robot). Kirim /sinyal4j untuk blok salin.")
+        px = (tk.get(sym) or {}).get("last") or it["entry"]
+        t = it.get("tick") or SY.tick_of(None, px)
+        tp = it.get("tp")
+        rows.append(f"• 🎯 <b>{sym} {arah}</b> sinyal {k} masih valid ({dR:+.2f}R dari entry robot), MARKET\n"
+                    + SY.blok_salin(px, it["sl"], tp, tp, "MARKET", t, catatan_tp="" if tp else "tanpa, pakai Trailing Stop",
+                                    sym=sym, arah=arah))
     if len(rows) >= 3:
         return rows
-    sisa = maks - len(rows)
-    ada = {r[0] for r in v}
-    calon = sorted((s for s in tk if s.endswith("USDT") and s not in ada and s != "BTCUSDT" and tk[s]["turnover"] >= 5e7 and tk[s]["spread"] < 0.1),
-                   key=lambda s: -abs(tk[s]["chg24"]) * tk[s]["turnover"] ** 0.5)[:15]
-    ms = int(time.time() * 1000)
-    for s in calon:
-        if sisa <= 0:
-            break
-        try:
-            d4 = B._raw(s, "240", 160)
-            d4 = d4[d4.index + 14400000 <= ms]
-            h, l, c = (d4[x].values.astype(float) for x in ("high", "low", "close"))
-            a = BM._atr(h, l, c)[-1]
-            sup, res = BM.snr(h, l, c)
-            px = tk[s]["last"]
-            dekat = []
-            if sup and (px - sup) <= 0.5 * a:
-                dekat.append(f"dekat support {sup:.6g}")
-            if res and (res - px) <= 0.5 * a:
-                dekat.append(f"dekat resistance {res:.6g}")
-            if dekat:
-                rows.append(f"• 👀 {s} ({tk[s]['chg24'] * 100:+.1f}% 24 jam, ATR 4J {a / px * 100:.1f}%): {', '.join(dekat)}. "
-                            "Tunggu sinyal robot, bukan entry sendiri.")
-                sisa -= 1
-        except Exception:
-            continue
-    return rows or ["• Belum ada koin di area tembak. Robot tidak memaksa sinyal."]
+    try:
+        import qse_rencana as RC
+        rows += RC.baris_pantauan(tk, maks=maks - len(rows))
+    except Exception as ex:
+        print("[WARN] pantauan sniper", ex)
+    return rows or ["• Belum ada koin likuid dengan level S/R dekat harga. Rencana dihitung ulang tiap 30 menit."]
 
 
 def peringatan_hari_ini(now=None):
@@ -219,7 +203,7 @@ def teks(sesi="pagi", now=None):
     ms = int(now * 1000)
     d1 = B._raw("BTCUSDT", "60", 60)
     d1 = d1[d1.index + JAM <= ms]
-    blok = [f"<b>QSE v149 | {SESI_JUDUL.get(sesi, 'LAPORAN SESI')}</b>", "",
+    blok = [f"<b>QSE v150 | {SESI_JUDUL.get(sesi, 'LAPORAN SESI')}</b>", "",
             "<b>1. Peta BTC</b>", BM.teks(p), "",
             "<b>2. Karakter sesi</b>", *karakter_sesi(d1, sesi, now), "",
             "<b>3. Rotasi dana</b>", *(rotasi(tk) or ["• Data belum tersedia"]), "",
@@ -232,7 +216,7 @@ def teks(sesi="pagi", now=None):
 
 
 def amd_melawan(sym, arah, now=None):
-    """v150 (riset/upgrade/hasil_v157_lokasi.txt): sinyal 4J v149 dilewati kalau range Asia hari ini (00-08 UTC) sudah disapu
+    """v150 (riset/upgrade/hasil_v157_lokasi.txt): sinyal 4J v150 dilewati kalau range Asia hari ini (00-08 UTC) sudah disapu
     BERLAWANAN arah sinyal lalu harga kembali masuk range (pola AMD). Dipilih di 2023-2024: 152 sinyal rata -0.002R lawan +0.127R.
     Dicek di 2025-2026 yang tidak ikut memilih: 155 sinyal rata -0.028R lawan +0.133R. Return teks alasan atau ''."""
     try:

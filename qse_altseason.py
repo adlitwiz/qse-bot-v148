@@ -1,4 +1,4 @@
-"""QSE v149 - ALTSEASON METER (masuk laporan 4 jam dan perintah /altseason).
+"""QSE v150 - ALTSEASON METER (masuk laporan 4 jam dan perintah /altseason).
 Keranjang altcoin besar (ETH, SOL, XRP, DOGE, ADA, LINK, AVAX, BNB, LTC) dibandingkan dengan BTC.
 Statistik di bawah dari backtest harian Jan 2022 sampai Okt 2026 (data Binance): apakah keranjang alt
 mengalahkan BTC dalam 14 hari berikutnya, dikelompokkan menurut arah alt/BTC 7 hari terakhir dan arah BTC 30 hari."""
