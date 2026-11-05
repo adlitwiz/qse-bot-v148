@@ -119,7 +119,7 @@ TOMBOL = {
     "mingguan": "📈 Laporan", "pekan": "📈 Laporan", "evaluasi": "📈 Laporan", "uji": "📈 Laporan", "laporan4j": "📈 Laporan",
     "laporan": "📈 Laporan", "susul": "📈 Laporan", "tespin": "📈 Laporan", "ujimomentum": "📈 Laporan", "ujimom": "📈 Laporan",
     "tidur": "😴 Mode Tidur", "bangun": "😴 Mode Tidur", "bantuan": "❓ Info", "help": "❓ Info", "start": "❓ Info",
-    "menu": "tombol menu bawah", "lalat": "🪰 Otak Lalat", "scan": "📡 Sinyal 4J", "tren": "🔎 Cek Koin",
+    "menu": "tombol menu bawah", "lalat": "🪰 Otak Lalat", "gurita": "🐙 Otak Gurita", "scan": "📡 Sinyal 4J", "tren": "🔎 Cek Koin",
     "rsi": "🔎 Cek Koin", "ticker": "🔎 Cek Koin",
 }
 _RX_KATA = re.compile(r"(?i)\b(kirim|ketik|pakai|gunakan|jalankan|panggil)\s+(?=/[a-z])")

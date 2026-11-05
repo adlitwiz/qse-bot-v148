@@ -815,11 +815,37 @@ def _lalat():
     _st({"lalat_t": time.time()})
     import qse_lalat as LT
     pesan = LT.jalankan()
-    if pesan:
-        TG.send(["🪰 <b>QSE v150 | LALAT BIONIK</b>\n\n" + "\n\n".join(pesan)])
+    for m in pesan:            # v150: tiap makanan lalat satu pesan, pilihan baru dan order terisi disematkan
+        ids = TG.send(["🪰 <b>QSE v150 | LALAT BIONIK</b>\n\n" + m])
+        if any(k in m for k in ("PILIHAN BARU", "terisi", "TP1")):
+            _pin_sinyal(ids or [])
+
+
+def _gurita():
+    """🐙 Gurita bionik: tiap 15 menit menonton hasil semua jalur (belajar), tidur sekali sehari."""
+    if time.time() - _st().get("gurita_t", 0) < 900:
+        return
+    _st({"gurita_t": time.time()})
+    import qse_gurita as GR
+    pesan = GR.jalankan()
+    for m in pesan:            # tiap sinyal gurita satu pesan, sinyal baru disematkan
+        ids = TG.send(["🐙 <b>QSE v150 | GURITA BIONIK</b>\n\n" + m])
+        if "SINYAL GURITA" in m:
+            _pin_sinyal(ids or [])
 
 
 def _tugas_menit():
+    try:
+        import qse_ditahan as DT          # v150: sinyal jalur yang ditahan otak tetap dikirim (lot kecil), semua isi Jalur Live sampai grup
+        for m in DT.jalankan():
+            ids = TG.send(["🧠 <b>QSE v150 | JALUR LIVE</b>\n\n" + m])
+            _pin_sinyal(ids or [])
+    except Exception as ex:
+        print("[WARN] ditahan", ex)
+    try:
+        _gurita()
+    except Exception as ex:
+        print("[WARN] gurita", ex)
     try:
         _lalat()
     except Exception as ex:
@@ -828,7 +854,9 @@ def _tugas_menit():
         import qse_lalat as LT
         for x in LT.refleks():            # mata cepat lalat: candle 5 menit tiap menit untuk order dan posisi lalat
             teks, rows = (x, None) if isinstance(x, str) else x
-            TG.send(["⚡ <b>QSE v150 | REFLEKS LALAT</b>\n\n" + teks], markup=QM._inline(rows) if rows else None)
+            ids = TG.send(["⚡ <b>QSE v150 | REFLEKS LALAT</b>\n\n" + teks], markup=QM._inline(rows) if rows else None)
+            if "ORDER TERISI" in teks or "REFLEKS MASUK" in teks:
+                _pin_sinyal(ids or [])
     except Exception as ex:
         print("[WARN] refleks lalat", ex)
     try:

@@ -1611,6 +1611,10 @@ def entry(args):
         asal = dict(jalur=jp["jalur"], pola=jp["nama"], skor=None)
     if asal["jalur"] == "manual" and dari_sinyal:          # SL dan TP diambil dari sinyal robot: asal ikut sinyal itu
         asal = dict(jalur=dari_sinyal["jalur"], pola=dari_sinyal["pola"], skor=dari_sinyal["skor"])
+    if asal["jalur"] == "manual" and not jp:
+        hw = hewan_asal(sym, arah, harga)                    # v150: order dari kartu lalat, gurita, atau Sniper S/R
+        if hw:
+            asal = hw
     jalur, pola_asal = asal["jalur"], asal["pola"]
     skor_lb, label_lb = None, []          # nilai sinyal (skor label) saat entry, ditampilkan di /status
     if jp:
@@ -2901,6 +2905,34 @@ def _alasan_sl(it, sl_now):
     return "SL berjalan jalur"
 
 
+def hewan_asal(sym, arah, harga):
+    """Cocokkan entry dengan kartu 🪰 lalat, 🐙 gurita, atau 🎯 Sniper S/R yang masih aktif (entry dalam 0.5%)."""
+    dekat = lambda e: e and abs(e - harga) <= abs(harga) * 0.005
+    try:
+        import qse_lalat as LT
+        for it in LT.state().get("open", {}).values():
+            if it["sym"] == sym and it["arah"] == arah and dekat(it.get("entry")):
+                lab = "medali" if it.get("medali") else "koin umum"
+                return dict(jalur="lalat", pola=f"🪰 Lalat bionik, Sniper S/R {lab} lot {it.get('lot', 0.25):g}x", skor=None)
+    except Exception as ex:
+        print("[WARN] asal lalat", ex)
+    try:
+        import qse_gurita as GR
+        for p in GR._baca().get("pick", []):
+            if p.get("R") is None and p["sym"] == sym and p["arah"] == arah and dekat(p.get("entry")):
+                return dict(jalur="gurita", pola=f"🐙 Gurita bionik, cincin saraf {p.get('combo')} lengan ({p.get('jalur')})", skor=None)
+    except Exception as ex:
+        print("[WARN] asal gurita", ex)
+    try:
+        import qse_rencana as RC
+        for r in (RC._baca().get("semua") or RC._baca().get("rows") or []):
+            if r["sym"] == sym and r["arah"] == arah and dekat(r.get("entry")):
+                return dict(jalur="sniper", pola="🎯 Sniper S/R " + ("medali" if r.get("spesialis") or r.get("cadangan") else "koin umum"), skor=None)
+    except Exception as ex:
+        print("[WARN] asal sniper", ex)
+    return None
+
+
 def info_teknik(it, jp=None):
     """Asal entry untuk kartu posisi: nama teknik, skor label saat sinyal, dan nama label. Dicatat saat /entry
     (skor_label, label_sinyal). Trade lama tanpa catatan diambil dari posisi robot jalur yang masih jalan."""
@@ -3069,6 +3101,8 @@ def blok_posisi(no, it, px, r=None, pasar=None):
     asal = []
     if inf["jalur"] == "manual":
         asal.append("📍 Teknik: <b>manual</b> (bukan sinyal robot)")
+    elif inf["jalur"] in ("lalat", "gurita", "sniper"):
+        asal.append(f"📍 Teknik: <b>{TG_e(inf['nama'])}</b>")
     elif not it.get("ikut") and inf["jalur"] not in JALUR_TERBUKTI():
         asal.append(f"📍 Teknik: <b>{TG_e(inf['nama'])}</b> ({TG_e(inf['jalur'])})")
         asal.append("🏅 Nilai: bukan sinyal jalur terbukti"
@@ -4321,6 +4355,13 @@ def sinyal_jalur(jam=False):
                 ket += "  ·  🏆 COMBO EMAS"
             if it.get("pullback"):
                 ket += "  ·  🔁 pullback"
+            try:
+                import qse_gurita as GR_
+                _g = GR_.baris_kartu(k, it["sym"], it["arah"])
+                if _g:
+                    ket += "\n" + _g
+            except Exception as ex:
+                print("[WARN] gurita kartu", ex)
             if len(it.get("mutu_plus") or []) >= 3:
                 ket += "  ·  💎 mutu tinggi"
             if it.get("vol_tinggi"):

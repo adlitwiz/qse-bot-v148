@@ -179,13 +179,40 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/tunggu", "/close"):
         return AL.tunggu(args)
     if cmd in ("/sinyal4j", "/sinyal4", "/sinyal", "/scan"):
+        # v150 urutan: 1 sinyal jalur live yang masih valid, 2 sinyal terkuat (combo raja/fix/emas, NILAI 9-10) dan yang ditahan otak,
+        # 3 Sniper S/R koin medali
         isi = SY.sinyal_jalur()
         try:
+            import qse_ditahan as DT
+            now = time.time()
+            kuat, tahan = [], []
+            for k, nama, it in DT._sumber():
+                if now - it.get("t", 0) > 12 * 3600:
+                    continue
+                lab = ("👑 COMBO RAJA" if it.get("combo_raja") else "💎 COMBO FIX" if it.get("combo_fix") else
+                       "🏆 COMBO EMAS" if it.get("combo_emas") else "")
+                try:
+                    import qse_strat as ST
+                    nl = ST.prioritas(ST.kunci_jalur(k), it)[0]
+                except Exception:
+                    nl = None
+                baris = f"• {it['sym']} {it['arah']} · {nama}" + (f" · {lab}" if lab else "") + f" · entry {it['entry']:.6g} SL {it['sl']:.6g}"
+                if lab or (isinstance(nl, (int, float)) and nl >= 9):
+                    kuat.append(baris + ("" if not it.get("otak_saring") else " · 🧠 ditahan otak"))
+                elif it.get("otak_saring"):
+                    tahan.append(baris)
+            if kuat:
+                isi += "\n\n🔥 <b>SINYAL TERKUAT 12 JAM TERAKHIR</b> (combo raja, fix, emas, NILAI 9-10)\n" + "\n".join(kuat[:10])
+            if tahan:
+                isi += "\n\n🧠 <b>DITAHAN OTAK, tetap dicatat Jalur Live</b> (lot 0.1x, kartu lengkap sudah dikirim)\n" + "\n".join(tahan[:10])
+        except Exception as ex:
+            print("[WARN] sinyal4j kuat", ex)
+        try:
             import qse_rencana as RC
-            sp, n_um = RC.blok_spesialis()          # v150: koin spesialis PSG, ACM, BAR paling atas, koin umum di balik tombol
+            sp, n_um = RC.blok_spesialis()          # koin medali di bagian ketiga, koin umum di balik tombol
             if n_um:
                 sp += f"\n\n📂 {n_um} rencana lain (cadangan yang levelnya jauh dan koin umum uji -0.08R) ada di tombol Koin umum."
-            isi = sp + "\n\n" + isi
+            isi += "\n\n" + sp
         except Exception as ex:
             print("[WARN] sinyal4j rencana", ex)
         try:
@@ -263,6 +290,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/rencana", "/sniper"):
         import qse_rencana as RC
         return RC.teks(args[0] if args else "utama")
+    if cmd in ("/gurita", "/octopus"):
+        import qse_gurita as GR
+        return GR.teks()
     if cmd in ("/lalat", "/otak"):
         import qse_lalat as LT
         return LT.perintah(args)
@@ -314,7 +344,7 @@ def balas(cmd, args, dari_main=False):
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "OTAK LALAT", "/rencana": "RENCANA SNIPER", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "OTAK LALAT", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/bantuan": "INFO"}
 
 
 def proses(cmds, dari_main=False):

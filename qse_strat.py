@@ -1117,6 +1117,16 @@ def kartu(k, no, it, a):
     if rm:
         lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
     lot_b, cat_hari = PO.lot_hari(lot_b, it.get("dom_turun"))
+    mb_baris = ""
+    try:
+        import qse_mb as MBJ          # v150: otak MB asli FlyWire menilai sinyal jalur, lot x2 kalau disukai, x0.4 kalau dijauhi
+        kali, va = MBJ.lot_jalur(k, it["sym"], it["arah"])
+        if kali != 1.0:
+            lot_b = f"{min(1.0, SY.lot_angka(lot_b) * kali):g}x"
+            mb_baris = (f"🧬 Otak MB asli: valensi {va:+.3f}, {'disukai, lot dinaikkan' if kali > 1 else 'dijauhi, lot diturunkan'} "
+                        f"(uji 2025-2026: disukai rata +0.21R, dijauhi +0.09R)")
+    except Exception as ex:
+        print("[WARN] lot MB jalur", ex)
     try:
         import qse_modal as MD
         lot = MD.baris_lot(it["entry"], it["sl"], SY.lot_angka(lot_b))
@@ -1129,6 +1139,7 @@ def kartu(k, no, it, a):
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (ukuran posisi tiap orang di baris 💼)",
         *combo_teks(it),
         *([cat_hari] if cat_hari else []),
+        *([mb_baris] if mb_baris else []),
         *mutu_teks(it),
         *(["🔁 <b>PULLBACK DALAM TREN BESAR</b>: searah EMA 200, tren pendek baru berbalik. "
            "Uji 2021-2026 McGinley pullback PF 1.43, McGinley biasa PF 1.18"] if it.get("pullback") else []),

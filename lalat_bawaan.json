@@ -321,30 +321,6 @@
 "wr_uji": 0.773,
 "ex_uji": 0.136
 },
-"ATMUSDT": {
-"arah": "LONG",
-"tier": 2,
-"wr_latih": 0.706,
-"ex_latih": 0.078,
-"wr_uji": 0.657,
-"ex_uji": -0.005
-},
-"ASRUSDT": {
-"arah": "LONG",
-"tier": 2,
-"wr_latih": 0.716,
-"ex_latih": 0.072,
-"wr_uji": 0.635,
-"ex_uji": -0.043
-},
-"SANTOSUSDT": {
-"arah": "LONG",
-"tier": 2,
-"wr_latih": 0.707,
-"ex_latih": 0.071,
-"wr_uji": 0.583,
-"ex_uji": -0.124
-},
 "CITYUSDT": {
 "arah": "LONG",
 "tier": 2,
@@ -352,14 +328,6 @@
 "ex_latih": 0.068,
 "wr_uji": 0.737,
 "ex_uji": 0.082
-},
-"ALPINEUSDT": {
-"arah": "LONG",
-"tier": 2,
-"wr_latih": 0.703,
-"ex_latih": 0.064,
-"wr_uji": 0.65,
-"ex_uji": -0.037
 },
 "LAZIOUSDT": {
 "arah": "LONG",
@@ -386,5 +354,15 @@
 "ex_uji": 0.067
 }
 },
-"aturan_spesialis": "latih 2023-2024: n >= 40, WR >= 70%, harapan > 0 (run_v158_spesialis.py). Tier 1 = latih >= +0.10R."
+"aturan_spesialis": "Tier 1 PSG/ACM/BAR: latih 2023-2024 WR >= 70% dan harapan >= +0.10R (run_v158_spesialis.py). Tier 2 CITY/NEXO/PORTO/LAZIO: lolos latih WR >= 70%, dipertahankan pemilik karena untung di uji 2025-2026 (dipilih memakai data uji). Pengganti WR >= 62% dan harapan >= +0.08R: tidak ada koin baru yang lolos (run_v158_spesialis2.py).",
+"ketat_daftar": {
+"PSGUSDT": "LONG",
+"ACMUSDT": "LONG",
+"BARUSDT": "LONG",
+"CITYUSDT": "LONG",
+"LAZIOUSDT": "LONG",
+"PORTOUSDT": "LONG",
+"NEXOUSDT": "SHORT"
+},
+"ketat_catatan": "Mode ketat: 7 koin medali (PSG, ACM, BAR, CITY, NEXO, PORTO, LAZIO). SANTOS, ASR, ALPINE, ATM dibuang (rugi di uji), permintaan pemilik 5 Nov 18:08."
 }

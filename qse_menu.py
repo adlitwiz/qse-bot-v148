@@ -11,17 +11,17 @@ import requests
 from config import STATE_DIR
 
 PATH = os.path.join(STATE_DIR, "menu.json")
-VERSI = 4                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
+VERSI = 5                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
 
 UTAMA = [["📊 Status", "📡 Sinyal 4J", "₿ Cek BTC"],
          ["💼 Modal", "📝 Entry", "🎯 Kelola Posisi"],
          ["🔔 Alarm", "🧩 Jalur Sinyal", "🔎 Cek Koin"],
          ["📰 Berita", "📈 Laporan", "🪰 Otak Lalat"],
-         ["😴 Mode Tidur", "❓ Info"]]
+         ["🐙 Otak Gurita", "😴 Mode Tidur", "❓ Info"]]
 # label -> perintah. None = buka sub menu inline
 LABEL = {"📊 Status": "/status", "📡 Sinyal 4J": "/sinyal4j", "₿ Cek BTC": "/cek BTC", "💼 Modal": None, "📝 Entry": None,
          "🎯 Kelola Posisi": None, "🔔 Alarm": None, "🧩 Jalur Sinyal": None, "🔎 Cek Koin": None,
-         "📰 Berita": "/berita", "📈 Laporan": None, "🪰 Otak Lalat": "/lalat", "😴 Mode Tidur": "/tidur", "❓ Info": "/bantuan"}
+         "📰 Berita": "/berita", "📈 Laporan": None, "🪰 Otak Lalat": "/lalat", "🐙 Otak Gurita": "/gurita", "😴 Mode Tidur": "/tidur", "❓ Info": "/bantuan"}
 # label lama v150 awal, tetap dikenali kalau keyboard lama masih tampil
 LAMA = {"🧠 Otak Lalat": "🪰 Otak Lalat", "Cek BTC": "₿ Cek BTC"}
 
@@ -271,7 +271,8 @@ def tombol_untuk(cmd, args, isi, uid=None, nama=""):
         extra = [[("🔄 Segarkan", "c:/berita"), ("📰 Uji berita ke trade", "c:/beritauji")]]
     elif cmd == "/lalat":
         extra = [[("🔄 Segarkan", "c:/lalat"), ("🧬 Sinapsis lengkap", "c:/lalat SINAPSIS")], [("🍽️ Paksa cari makan", "c:/lalat BURU")],
-                 [("⚡ Refleks masuk", "y:/lalat REFLEKS MASUK"), ("⚡ Refleks keluar", "y:/lalat REFLEKS KELUAR")]]
+                 [("⚡ Refleks masuk", "y:/lalat REFLEKS MASUK"), ("⚡ Refleks keluar", "y:/lalat REFLEKS KELUAR")],
+                 [("🍽️ Lapar bertingkat nyala/mati", "y:/lalat LAPAR")]]
     elif cmd in ("/tp", "/tutup", "/modify", "/modif", "/sl", "/batal", "/entry", "/ubah", "/serok", "/tpall", "/slall"):
         extra = [[("🎯 Kelola Posisi", "m:🎯 Kelola Posisi"), ("📊 Status", "c:/status")]]
     return _inline(extra) if extra else None

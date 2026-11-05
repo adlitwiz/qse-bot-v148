@@ -12,8 +12,10 @@ PATH = os.path.join(STATE_DIR, "rencana.json")
 # off = jarak entry dari level (ATR 4J), sk = SL di luar level, t1/t2 = TP dari entry, mx = batas tahan (candle 4J), dist = jarak maks level dari harga
 PARAM = dict(off=0.0, sk=1.0, t1=0.5, t2=0.8, mx=6, dist=2.0, fil="semua", lot=0.25)
 UJI = ("Uji 183 koin, latih 2023-2024, uji 2025-2026: koin umum -0.08R per trade (WR 62%). Spesialis 🥇 PSG/ACM/BAR +0.12R, "
-       "WR 75%. Cadangan 🥈 8 koin lolos latih WR 70%+, uji impas (WR 67%). Rincian hasil_v158_spesialis.txt.")
+       "WR 75%. Perak 🥈 CITY/NEXO/PORTO/LAZIO uji +0.045R, WR 71% (dipilih memakai data uji). Rincian hasil_v158_spesialis.txt.")
 CACHE_DETIK = 1800
+KOIN_MAKS = 183            # jumlah koin yang dipindai (sama dengan riset)
+KOIN_MIN_TURNOVER = 3e6
 SPESIALIS_MIN = 0.3        # nilai bawaan lalat minimal supaya koin+arah masuk daftar spesialis
 
 
@@ -120,17 +122,17 @@ def hitung(sym, px=None, p=None, semua_jarak=False):
         d_ = 1 if L else -1
         lv, e, sl, a, dist, px = (float(x) for x in (lv, e, sl, a, dist, px))
         out.append(dict(sym=sym, arah="LONG" if L else "SHORT", level=lv, entry=e, sl=sl, tp1=e + d_ * p["t1"] * a,
-                        tp2=e + d_ * p["t2"] * a, atr=a, dist=dist, px=px, tren=bool((e200 is None) or ((px > e200) == L)),
+                        tp2=e + d_ * p["t2"] * a, atr=a, dist=dist, distp=abs(px - lv) / px * 100, px=px, tren=bool((e200 is None) or ((px > e200) == L)),
                         jauh=bool(dist > p["dist"]), **fit))
     return out
 
 
-def daftar(tk=None, maks=5, segar=False):
+def daftar(tk=None, maks=5, segar=False, semua=False):
     """Rencana terbaik hari ini, urut dari level terdekat. Cache 30 menit supaya angka sama dan hemat API."""
     import bybit_fetch as B
     st = _baca()
     if not segar and st.get("t", 0) > time.time() - CACHE_DETIK and st.get("rows") is not None:
-        return st["rows"][:maks]
+        return (st.get("semua") or st["rows"])[:maks] if semua else st["rows"][:maks]
     tk = tk or B.get_tickers()
     sp = spesialis(0.0001)          # semua koin+arah yang disukai bekal lalat
     dft = daftar_spesialis()
@@ -138,8 +140,8 @@ def daftar(tk=None, maks=5, segar=False):
     utama = {s for s, d in dft.items() if d["tier"] == 1}
     cadangan = {s for s, d in dft.items() if d["tier"] == 2}
     calon = [s for s in sp if s in tk and tk[s]["spread"] < 0.3]
-    calon += sorted((s for s in tk if s.endswith("USDT") and s not in sp and tk[s]["turnover"] >= 5e7 and tk[s]["spread"] < 0.1),
-                    key=lambda s: -tk[s]["turnover"])[:30]
+    calon += sorted((s for s in tk if s.endswith("USDT") and s not in sp and tk[s]["turnover"] >= KOIN_MIN_TURNOVER and tk[s]["spread"] < 0.2),
+                    key=lambda s: -tk[s]["turnover"])[:KOIN_MAKS]          # v150: mata lalat memindai 183 koin teratas
     bn = _btc_naik()
     rows = []
     try:
@@ -147,9 +149,19 @@ def daftar(tk=None, maks=5, segar=False):
         calon = [s for s in calon if bukan_saham(s)]          # saham/indeks tidak ikut
     except Exception:
         pass
-    for s in calon:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _h(s):
         try:
-            for r in hitung(s, tk[s]["last"], semua_jarak=s in dft):
+            return s, hitung(s, tk[s]["last"], semua_jarak=s in dft)
+        except Exception as ex:
+            print("[WARN] rencana", s, ex)
+            return s, []
+    with ThreadPoolExecutor(8) as ex_:
+        hasil = list(ex_.map(_h, calon))
+    for s, hs in hasil:
+        try:
+            for r in hs:
                 if s in sp and r["arah"] != sp[s]:
                     continue
                 r["spesialis"] = s in utama
@@ -169,8 +181,8 @@ def daftar(tk=None, maks=5, segar=False):
         if r["sym"] in sudah:
             continue
         sudah.add(r["sym"]); satu.append(r)
-    _tulis(dict(t=time.time(), rows=satu[:60]))
-    return satu[:maks]
+    _tulis(dict(t=time.time(), rows=satu, semua=rows))
+    return rows[:maks] if semua else satu[:maks]
 
 
 def kartu(r, ringkas=False):
@@ -182,7 +194,7 @@ def kartu(r, ringkas=False):
               f"harga {SY.fp(r['px'], t)} ({r['dist']:.1f} ATR dari level)"
               + ("\n🏅 Koin spesialis: uji 2025-2026 +0.12R per trade, WR 75%"
                  + (f". Level masih {r['dist']:.1f} ATR, order jarang terisi hari ini" if r.get("jauh") else "") if r.get("spesialis") else
-                 f"\n🥈 Spesialis cadangan (latih WR {_wr(r['sym'], 'wr_latih')}): uji 2025-2026 WR {_wr(r['sym'], 'wr_uji')}, "
+                 f"\n🥈 Koin perak (latih WR {_wr(r['sym'], 'wr_latih')}): uji 2025-2026 WR {_wr(r['sym'], 'wr_uji')}, "
                  f"{_ex(r['sym'])} per trade" if r.get("cadangan") else
                  "\n🥈 Calon spesialis: uji 2025-2026 sekitar impas, dipantau lalat" if r.get("calon") else
                  "\n⚠️ Koin umum: uji 2025-2026 -0.08R per trade. Angka cadangan, lot paling kecil"))
@@ -214,7 +226,7 @@ def blok_spesialis(maks=6):
     n1 = ", ".join(s.replace("USDT", "") for s, d in dft.items() if d["tier"] == 1)
     n2 = ", ".join(s.replace("USDT", "") for s, d in dft.items() if d["tier"] == 2)
     kep = (f"🏅 <b>SNIPER KOIN SPESIALIS</b>\n🥇 {n1}: uji 2025-2026 WR 75%, +0.12R per trade\n"
-           f"🥈 Cadangan {n2}: lolos latih WR 70%+, uji 2025-2026 WR 67%, impas\n"
+           f"🥈 Perak {n2}: uji 2025-2026 WR 71%, +0.045R per trade (dipilih memakai data uji)\n"
            f"Order Limit antre di level 4J, lot {PARAM['lot']:g}x, berlaku 24 jam.")
     if not tampil:
         return kep + "\nData koin spesialis belum terbaca, dicoba lagi 30 menit.", sembunyi
