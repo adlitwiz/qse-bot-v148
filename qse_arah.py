@@ -149,7 +149,13 @@ def teks(args):
         tf_rows, skor, kes = _baca_tf(sym)
     except Exception as ex:
         return f"{sym} gagal dibaca: {str(ex)[:100]}"
-    blok = [f"<b>ARAH {sym}</b> (candle tutup, data saat ini)",
+    blok = [f"<b>ARAH {sym}</b> (candle tutup, data saat ini)"]
+    try:
+        import qse_kompas as KP          # sama persis dengan Cek BTC dan gerbang sinyal (9 Nov 2026)
+        blok.append(KP.blok(singkat=True))
+    except Exception as ex:
+        print("[WARN] kompas arah", ex)
+    blok += [
             "<b>Tren per TF</b>\n" + "\n".join(tf_rows) + f"\nKesimpulan 7 TF: {kes} (skor {skor:+d} dari ±7)"]
     try:
         hs, nxt = _hari_sama(sym)

@@ -7,6 +7,7 @@ Aturan (sama dengan backtest dan Pine "QSE Ichimoku TK Awan Trail"):
   LONG : close di atas awan dan Tenkan memotong Kijun ke atas. SHORT kebalikannya.
   SL awal 1.5 ATR dari entry (sejak 19 Okt 2026, sebelumnya 2). Tiap candle 4J tutup: cek SL kena dulu, lalu SL digeser ke puncak - 4 ATR (tidak pernah mundur, sebelumnya 3).
   Tutup paksa setelah 60 candle 4J (10 hari). Satu posisi per koin."""
+import qse_modal as MD          # kelas margin di kartu (9 Nov 2026)
 import fcntl
 import json
 import os
@@ -379,7 +380,7 @@ def _jalankan(baru_ok=True):
         out.append("\n".join([
             SY.GARIS,
             f"{'🟢' if L else '🔴'} <b>{len(baru)}. {sym} {arah}</b>  ·  Ichimoku 4J",
-            f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (ukuran posisi tiap orang di baris 💼)",
+            f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  <b>{MD.teks_kelas(lot_b)}</b> (margin dan leverage tiap orang di baris bawah)",
             *ST_combo(it),
             *([cat_hari] if cat_hari else []),
             SY.GARIS,

@@ -402,7 +402,7 @@ def kartu_ringkas(m, pr=None, nama=""):
         rows.append(SY.cara_pasang(sym, arah, lv["entry"], lv["sl"], it_.get("tick"), tp=lv["tp"], trail=trail, ringkas=True))
     except Exception as ex:
         print("[WARN] langkah ringkas", ex)
-    for awal in ("⛔", "🛡 <b>Rem", "🔓", "📅", "↔️ Lawan", "💼"):
+    for awal in ("⛔", "🛡 <b>Rem", "🔓", "📅", "↔️ Lawan", "💼", "🟦", "🟨"):
         rows += [b for b in baris if b.startswith(awal) and b not in rows]
     return "\n".join(rows)
 

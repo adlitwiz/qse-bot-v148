@@ -234,6 +234,16 @@ def _nama_uji(sym):
     return out
 
 
+def _gabungan(jalur, arah):
+    """Statistik gabungan semua koin untuk jalur x arah (dipakai koin baru yang datanya < PROFIL_N). Cache per proses."""
+    kk = ("gab", jalur, arah)
+    if kk not in _P:
+        d = _profil_data()
+        r = np.array([x[1] for key, rows in d["sinyal"].items() if key.endswith(f"|{jalur}|{arah}") for x in rows], float)
+        _P[kk] = r
+    return _P[kk]
+
+
 def profil(sym, jalur, arah, live=None):
     """Rekam jejak koin x jalur x arah: uji 2021-2026 + catatan live robot sesudah data uji. Return dict."""
     d = _profil_data()
@@ -255,11 +265,27 @@ def profil(sym, jalur, arah, live=None):
     t = np.array([x[0] for x in rows], np.int64)
     r24 = r[t >= T2024]
     pf = _pf(r) if len(r) else 0.0
+    if len(r) < PROFIL_N:
+        # v150 9 Nov: koin baru tidak lagi ditahan karena "butuh 10". Pakai statistik gabungan jalur x arah dari backtest semua koin.
+        g = _gabungan(jalur, arah)
+        if len(g) >= PROFIL_N:
+            pg = float(_pf(g))
+            return dict(n=len(r), pf=round(pg, 2), wr=round(float((g > 0).mean() * 100), 1), n24=len(g), pf24=round(pg, 2),
+                        wr24=round(float((g > 0).mean() * 100), 1), lulus=bool(pg >= PROFIL_PF), gabungan=len(g),
+                        alasan="" if pg >= PROFIL_PF else f"PF gabungan {jalur} {arah} {pg:.2f} di bawah {PROFIL_PF}",
+                        tot=round(float(r.sum()), 2), blokir=bool(len(r) >= BLOKIR_N and float(r.sum()) < 0))
     lulus = len(r) >= PROFIL_N and pf >= PROFIL_PF
+    blokir = len(r) >= BLOKIR_N and float(r.sum()) < 0
     why = "" if lulus else (f"baru {len(r)} sinyal tercatat (butuh {PROFIL_N})" if len(r) < PROFIL_N else f"PF rekam jejak {pf:.2f} di bawah {PROFIL_PF}")
     return dict(n=len(r), pf=round(pf, 2), wr=round(float((r > 0).mean() * 100) if len(r) else 0.0, 1), n24=len(r24),
                 pf24=round(_pf(r24), 2) if len(r24) else 0.0, wr24=round(float((r24 > 0).mean() * 100) if len(r24) else 0.0, 1),
-                lulus=lulus, alasan=why)
+                lulus=lulus, alasan=why, tot=round(float(r.sum()), 2), blokir=bool(blokir))
+
+
+# QC 56 (riset/upgrade/hasil_v163_koin.txt): teknik yang rekam jejaknya RUGI di koin itu (minimal 5 sinyal, total R < 0) diblokir
+# total. Uji 2025 dan 2026, batas 5/10/20 sinyal: sinyal yang diblokir selalu lebih jelek dari yang lolos (2025 +0.137 vs +0.177,
+# 2026 -0.067 vs -0.004 per sinyal). Kunci mutlak 1 koin 1 teknik TIDAK dipakai: 2025 PF 1.68 tapi 2026 PF 1.04 (n 5) dan 0.83 (n 10).
+BLOKIR_N = 5
 
 
 def tandai_profil(it, kunci):
@@ -269,6 +295,12 @@ def tandai_profil(it, kunci):
             return it
         pr = profil(it["sym"], kunci, it["arah"])
         it["profil"] = pr
+        if pr.get("blokir") and os.environ.get("QSE_BLOKIR_KOIN", "1") == "1":
+            it["otak_saring"] = True
+            it["blokir_koin"] = True
+            it["otak_why"] = f"teknik ini rugi di koin ini ({pr['n']} sinyal, total {pr['tot']:+.1f}R), diblokir"
+            print(f"[PROFIL] {kunci} {it['sym']} {it['arah']} DIBLOKIR: {it['otak_why']}")
+            return it
         if not pr["lulus"] and not it.get("otak_saring"):
             it["otak_saring"] = True
             it["otak_why"] = "profil koin: " + pr["alasan"]

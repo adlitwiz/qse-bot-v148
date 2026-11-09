@@ -8,6 +8,7 @@ Aturan (sama persis dengan backtest):
   Close di atas EMA 200, volume candle ke-5 masuk 20% tertinggi dari 100 candle, koin masuk 50 paling likuid
   (nilai transaksi 30 hari), BTC 4J close di atas EMA 50.
   Entry MARKET. SL di bawah low candle merah (order block) dikurangi 0.3 ATR. TP 4R. Tutup paksa setelah 60 candle (10 hari)."""
+import qse_modal as MD          # kelas margin di kartu (9 Nov 2026)
 import fcntl
 import json
 import os
@@ -373,7 +374,7 @@ def kartu(no, it, sg):
     return "\n".join([
         SY.GARIS,
         f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  Order Block + Volume 4J",
-        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (ukuran posisi tiap orang di baris 💼)",
+        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  <b>{MD.teks_kelas(lot_b)}</b> (margin dan leverage tiap orang di baris bawah)",
         *_combo_teks(it),
         *([cat_hari] if cat_hari else []),
         SY.GARIS,
@@ -569,7 +570,7 @@ def baris_unggulan(harga=None, jam=5):
         if not px or px <= it["sl"] or px > it["entry"] + 0.3 * it["risk"]:
             continue
         t = it.get("tick", 0.0001)
-        out.append(f"🟢 <b>{TG.e(it['sym'])} LONG</b>  ·  Order Block + Volume  ·  {ik} {tk}  ·  lot {lot}  ·  "
+        out.append(f"🟢 <b>{TG.e(it['sym'])} LONG</b>  ·  Order Block + Volume  ·  {ik} {tk}  ·  {MD.teks_kelas(lot)}  ·  "
                    f"sinyal {time.strftime('%d/%m %H:%M', time.gmtime(it['t'] + 7 * 3600))} WIB\n"
                    + SY.blok_salin(px, it["sl"], it["tp"], it["tp"], "MARKET", t, sym=it["sym"], arah="LONG", sebagian=True)
                    + "".join("\n" + z for z in _tpc_rencana(dict(it, entry=px, sl0=it["sl"]))))

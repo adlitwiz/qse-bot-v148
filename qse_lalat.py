@@ -63,6 +63,18 @@ LR_USER = 0.005          # trade kamu (Rifqi, Adli) yang kena TP atau SL
 LR_LEDGER = 0.0          # hasil kertas semua jalur robot: setup berbeda dari lalat, tidak dipakai untuk bobot
 
 
+F_AKTIF = os.path.join(STATE_DIR, "abdul_aktif.json")          # v150 9 Nov: kunci sinyal Abdul
+# Tangga pengunci profit (9 Nov, QC 53, riset/upgrade/hasil_v161_lalat.txt): sesudah TP1 sisa 50% SL dikunci di +0.2R, bukan di entry.
+# Medali + NEXO: latih ex +0.087 -> +0.097, uji +0.073 -> +0.085 (PF 1.27 -> 1.32), WR tetap 73%. Tangga penuh usulan user
+# (BE di 0.4R, TP1 0.8R kunci 0.4R, TP2 1.2R) ex lebih besar (+0.102 uji) tapi WR turun ke 47%, jadi tidak dipakai.
+KUNCI_TP1 = 0.2
+
+
+def harga_kunci(it):
+    d = 1 if it["arah"] == "LONG" else -1
+    return it["entry"] + d * KUNCI_TP1 * abs(it["entry"] - it["sl"])
+
+
 def _seed():
     s = 0
     for g in WILAYAH.values():
@@ -346,7 +358,7 @@ def _catat_ledger(it, R):
         def f(d):
             d["closed"].append(dict(jalur="lalat", sym=it["sym"], arah=it["arah"], entry=it["entry"], sl=it["sl"], tp1=it["tp1"],
                                     tp2=it["tp2"], t=it["t"], status="SELESAI", R=round(R, 2), isi=it.get("isi_t", it["t"]),
-                                    selesai=time.time(), ket=f"lalat bionik lot {it.get('lot', LOT):g}x"))
+                                    selesai=time.time(), ket=f"lalat Abdul kelas {kelas_abdul(it).lower()}"))
         CT._ubah(f)
     except Exception as ex:
         print("[WARN] lalat ledger", ex)
@@ -357,7 +369,8 @@ def _tutup(st, m, key, it, R, why, out):
     st["open"].pop(key, None)
     if R is None or why.startswith(("order tidak terisi", "refleks batal")):
         st["riwayat"].append(dict(it, R=None, why=why, selesai=time.time()))
-        out.append(f"🪰 {it['sym']} {it['arah']}: {why}.")
+        out.append(f"🪰 <b>ANTREAN ABDUL DITARIK: {it['sym']} {it['arah']}</b>, harga belum pernah menyentuh entry. Alasan: {why}. "
+                   "Kalau order Limit masih terpasang di Bybit, batalkan.")
         return
     st["riwayat"].append(dict(it, R=round(R, 3), why=why, selesai=time.time()))
     st["riwayat"] = st["riwayat"][-300:]
@@ -375,9 +388,9 @@ def _tutup(st, m, key, it, R, why, out):
     _catat_ledger(it, R)
     ikon = "✅" if R > 0.05 else "🛑" if R < -0.05 else "➖"
     lt = it.get("lot", LOT)
-    out.append(f"{ikon} 🪰 <b>{it['sym']} {it['arah']}</b> selesai: {why}, hasil {R:+.2f}R (lot {lt:g}x, {R * lt:+.2f}R akun).")
+    out.append(f"{ikon} 🪰 <b>{it['sym']} {it['arah']}</b> selesai: {why}, hasil {R:+.2f}R (kelas {kelas_abdul(it).lower()}).")
     if cek_ketat(st):
-        out.append(f"🛡️ 🪰 Masuk Mode Berburu Ketat ({st['ketat_sebab']}). Lalat tetap makan tiap hari: lot 0.1x, "
+        out.append(f"🛡️ 🪰 Masuk Mode Berburu Ketat ({st['ketat_sebab']}). Lalat tetap makan tiap hari: kelas ringan, "
                    "ambang naik, hanya koin rasio menang tertinggi. Kembali 0.25x setelah 1 TP.")
 
 
@@ -413,14 +426,14 @@ def _kelola(st, m):
                 continue
             if tj <= isi:
                 continue
-            stop = it["entry"] if tp1k else it["sl"]
+            stop = harga_kunci(it) if tp1k else it["sl"]
             if (L and l[j] <= stop) or ((not L) and h[j] >= stop):
-                R, why = ((0.5 * r1, "TP1 sudah dikunci, sisa kena SL di entry") if tp1k else (-1.0, "SL kena"))
+                R, why = ((0.5 * r1 + 0.5 * KUNCI_TP1, f"TP1 sudah dikunci, sisa kena SL kunci +{KUNCI_TP1:g}R") if tp1k else (-1.0, "SL kena"))
                 R -= fee; break
             if not tp1k and ((L and h[j] >= it["tp1"]) or ((not L) and l[j] <= it["tp1"])):
                 tp1k = True
                 out.append(f"🪰💰 <b>{it['sym']} {it['arah']}</b>: TP1 Fix Profit kena di {SY.fp(it['tp1'], it.get('tick'))}. "
-                           "Tutup 50%, pindah SL ke entry. Lalat dapat dopamin.")
+                           f"Tutup 50%, pindah SL ke {SY.fp(harga_kunci(it), it.get('tick'))} (kunci +{KUNCI_TP1:g}R). Abdul dapat dopamin.")
                 st["DA"] = min(100.0, st["DA"] + 15)
             if tp1k and ((L and h[j] >= it["tp2"]) or ((not L) and l[j] <= it["tp2"])):
                 R, why = 0.5 * r1 + 0.5 * r2 - fee, "TP2 Fix Profit kena"; break
@@ -460,7 +473,7 @@ def cek_ketat(st, rem7=None):
         st["rem7_ep"] = False
     if baru:
         st["ketat_sebab"] = baru
-        st["kejadian"].append([time.time(), f"🛡️ Mode Berburu Ketat: {baru}. Lot 0.1x, hanya koin rasio menang tertinggi"])
+        st["kejadian"].append([time.time(), f"🛡️ Mode Berburu Ketat: {baru}. kelas ringan, hanya koin rasio menang tertinggi"])
     return baru
 
 
@@ -671,6 +684,11 @@ def _berburu(st, m, paksa=False):
     import qse_saya as SY
     cek_ketat(st)
     global MODE_LAPAR
+    if not st.get("v162"):
+        # QC 54: mode lapar koin umum dimatikan sekali saat update (uji koin umum 2025-2026 -0.078R per posisi, celah filter
+        # koin juga minus). Pengganti otomatis: antrean Limit medali tiap 8 jam tanpa sinyal (qse_rencana.antrean_teks).
+        st["v162"] = True
+        st["mode_lapar"] = False
     MODE_LAPAR = bool(st.get("mode_lapar", False)) or paksa
     maks_hari = MAKS_HARIAN if MODE_LAPAR else MAKS_HARIAN_PILIH
     hari = _hari()
@@ -712,8 +730,13 @@ def _berburu(st, m, paksa=False):
         st["harian"][hari] = st["harian"].get(hari, 0) + 1
         out.append(kartu(it, baru=True))
     st["harian"] = {k: v for k, v in st["harian"].items() if k >= _hari(time.time() - 7 * 86400)}
-    st["buru"] = f"tingkat lapar {tk}: memilih {len(out)} trade" + (" (mode ketat, lot 0.1x)" if st.get("ketat") else "")
+    st["buru"] = f"tingkat lapar {tk}: memilih {len(out)} trade" + (" (mode ketat, kelas ringan)" if st.get("ketat") else "")
     return out
+
+
+def kelas_abdul(it):
+    """Koin medali = KELAS UTAMA. Koin umum (mode lapar) dan Mode Berburu Ketat = KELAS RINGAN (permintaan user 9 Nov)."""
+    return "UTAMA" if it.get("medali") and not it.get("ketat") and not it.get("tingkat_umum") else "RINGAN"
 
 
 def kartu(it, baru=False):
@@ -721,26 +744,38 @@ def kartu(it, baru=False):
     t = it.get("tick")
     jenis_o = "MARKET" if it.get("sumber") else "LIMIT"
     blok = SY.blok_salin(it["entry"], it["sl"], it["tp1"], it["tp2"], jenis_o, t, sym=it["sym"], arah=it["arah"])
-    st_ = ("⏳ menunggu terisi" if not it.get("isi_t") else "✅ TP1 terkunci, SL di entry" if it.get("tp1k") else "🟢 jalan")
-    suka = [x.split(":", 1)[1] + " " + x.split(":", 1)[0] for x in it.get("tokens", [])[5:9]]
+    st_ = ("⏳ ANTREAN ABDUL, menunggu terisi" if not it.get("isi_t") else "✅ POSISI ABDUL AKTIF, TP1 terkunci, SL di entry"
+           if it.get("tp1k") else "🟢 POSISI ABDUL AKTIF (SEDANG BERJALAN)")
+    if it.get("tp1k"):
+        st_ = f"✅ POSISI ABDUL AKTIF, TP1 terkunci, SL di +{KUNCI_TP1:g}R"
+    suka = [html.escape(x.split(":", 1)[1] + " " + x.split(":", 1)[0]) for x in it.get("tokens", [])[5:9]]          # token '<0.5ATR' merusak HTML
     try:
         import qse_modal as MD
-        lot = MD.baris_lot(it["entry"], it["sl"], kali=it.get("lot", LOT))
+        lot = MD.baris_lot(it["entry"], it["sl"], kelas=kelas_abdul(it))
     except Exception:
         lot = ""
     lab = {1: "kenyang", 2: "lapar, ambang turun 15%", 3: "sangat lapar, wajib makan"}.get(it.get("tingkat"), "")
     asal = (f"🍽️ makan sinyal {it['sumber']}" if it.get("sumber") else ("🏅 koin medali" if it.get("medali") else "koin umum"))
     if it.get("sumber"):
-        cara = (f"\n📲 Masuk <b>Market</b> sekarang, isi SL. TP1 +0.5R tutup 50% lalu SL ke entry, sisa ke TP2. "
+        cara = (f"\n📲 Masuk <b>Market</b> sekarang, isi SL. TP1 +0.5R tutup 50% lalu SL kunci +0.2R, sisa ke TP2. "
                 f"Paling lama {it.get('tahan_jam', 30)} jam.")
     else:
-        cara = ("\n📲 Pasang <b>Limit</b> di entry, isi SL. TP1 = Fix Profit 0.5 ATR, tutup 50% lalu SL ke entry. TP2 0.8 ATR. "
+        cara = ("\n📲 Pasang <b>Limit</b> di entry, isi SL. TP1 = Fix Profit 0.5 ATR, tutup 50% lalu SL kunci +0.2R. TP2 0.8 ATR. "
                 "Order batal 24 jam, posisi terisi tutup paling lambat 24 jam.")
-    return ((f"🪰 <b>{'PILIHAN BARU' if baru else 'PILIHAN'} LALAT: {it['sym']} {it['arah']} {jenis_o}</b>  ·  {st_}\n")
+    r_now = ""
+    if it.get("isi_t"):
+        try:
+            px = SY.harga_live(it["sym"])
+            risk = abs(it["entry"] - it["sl"]) or 1e-12
+            rr = (px - it["entry"]) / risk * (1 if it["arah"] == "LONG" else -1)
+            r_now = f"\n📍 Harga {SY.fp(px, t)}  ·  sekarang <b>{(0.5 * abs(it['tp1'] - it['entry']) / risk + 0.5 * rr) if it.get('tp1k') else rr:+.2f}R</b>  ·  SL {SY.fp(harga_kunci(it) if it.get('tp1k') else it['sl'], t)}"
+        except Exception:
+            pass
+    return ((f"🪰 <b>{'PILIHAN BARU' if baru else 'PILIHAN'} LALAT ABDUL: {it['sym']} {it['arah']} {jenis_o}</b>  ·  {st_}\n")
             + f"{asal}" + (f"  ·  tingkat lapar {it['tingkat']} ({lab})" if it.get("tingkat") else "")
             + f"  ·  nilai pola {it.get('nilai', 0):+.3f}  ·  valensi otak asli {valensi_mb(it.get('tokens', [])):+.3f}"
-            + (f"  ·  {', '.join(suka)}" if suka else "") + "\n" + blok + cara
-            + f" Lot {it.get('lot', LOT):g}x" + (" (Mode Berburu Ketat)" if it.get("ketat") else "") + "." + ("\n" + lot if lot else ""))
+            + (f"  ·  {', '.join(suka)}" if suka else "") + r_now + "\n" + blok + cara
+            + f" {'🟦 KELAS UTAMA' if kelas_abdul(it) == 'UTAMA' else '🟨 KELAS RINGAN'}" + (" (Mode Berburu Ketat)" if it.get("ketat") else "") + "." + ("\n" + lot if lot else ""))
 
 
 # ---------- jalan tiap 15 menit dari listener ----------
@@ -769,7 +804,8 @@ def jalankan():
                 print("[WARN] lalat buru", ex)
                 st["buru"] = f"gagal memindai: {str(ex)[:80]}"
         _tulis(F_STATE, st); _tulis(F_MEMORI, m)
-        return out
+    simpan_aktif()
+    return out
 
 
 # ---------- Optic Lobe cepat: refleks 5 menit ----------
@@ -812,7 +848,8 @@ def tombol_refleks(it, jenis):
     if jenis == "isi":
         return [[("📝 Catat posisi ini", catat)], [be], [("📊 Posisi saya", "c:/status")]]
     if jenis == "tp1":
-        return [[be], [("💰 TP 50%", f"c:/tp {k} 50%"), ("📊 Posisi saya", "c:/status")]]
+        kn = (f"🛡️ SL kunci +{KUNCI_TP1:g}R", f"c:/modify {k} SL {_angka(harga_kunci(it))}")
+        return [[kn], [("💰 TP 50%", f"c:/tp {k} 50%"), ("📊 Posisi saya", "c:/status")]]
     if jenis == "keluar":
         return [[("✋ Tutup posisi saya", f"y:/tutup {k}")], [("📊 Posisi saya", "c:/status")]]
     return []
@@ -897,8 +934,8 @@ def refleks():
                     it["tp1k"] = True
                     st["DA"] = min(100.0, st["DA"] + 15); st["ACH"] = min(100.0, st["ACH"] + 10)
                     out.append((f"🚨 🪰 <b>TP1 KENA · {it['sym']} {it['arah']}</b>\nTP1 Fix Profit {SY.fp(it['tp1'], t)} tersentuh (candle 5 menit). "
-                                f"Tutup 50% dan geser SL ke entry {SY.fp(it['entry'], t)} sekarang. Satu tekan 🛡️ di bawah, posisi kamu jadi "
-                                "Break Even. Lalat dapat dopamin.", tombol_refleks(it, "tp1")))
+                                f"Tutup 50% dan geser SL ke {SY.fp(harga_kunci(it), t)} (kunci +{KUNCI_TP1:g}R) sekarang. Tekan 🛡️ di bawah. "
+                                "Abdul dapat dopamin.", tombol_refleks(it, "tp1")))
                     ubah = True
         if ubah:
             _tulis(F_STATE, st); _tulis(F_MEMORI, m)
@@ -923,7 +960,7 @@ def atur_refleks(args):
 # ---------- tampilan ----------
 def mood(st):
     if st.get("ketat"):
-        return f"🛡️ Mode Berburu Ketat ({st.get('ketat_sebab', '')}): lot 0.1x, hanya koin rasio menang tertinggi"
+        return f"🛡️ Mode Berburu Ketat ({st.get('ketat_sebab', '')}): kelas ringan, hanya koin rasio menang tertinggi"
     if st["lapar"] >= 80:
         return "🔥 Sangat haus profit, sedang memburu koin"
     if st["DA"] >= 65:
@@ -967,7 +1004,7 @@ def teks(lengkap=False):
     umur = (time.time() - st["lahir"]) / 86400
     tanpa = (time.time() - st.get("makan_t", time.time())) / JAM
     suka, benci, f = _sinapsis(m, 12 if lengkap else 5)
-    rows = [f"🪰 <b>QSE v150 | OTAK LALAT</b>",
+    rows = [f"🪰 <b>QSE v150 | LALAT ABDUL</b>",
             f"❤️ <b>Nyawa</b>: hidup {umur:.1f} hari  ·  makan profit {st['n_tp']}x  ·  luka SL {st['n_sl']}x  ·  impas {st['n_be']}x",
             f"🧠 <b>Mood</b>: {mood(st)}",
             "",
@@ -979,7 +1016,7 @@ def teks(lengkap=False):
             f"🩹 GABA    {_bar(st['GABA'])} {st['GABA']:.0f}  rem rasa sakit SL",
             f"👁️ ACh     {_bar(st['ACH'])} {st['ACH']:.0f}  perhatian, laju belajar",
             _baris_mb(),
-            f"🎚️ Ambang pilih {ambang(st):+.3f}  ·  lot {lot_sekarang(st):g}x" + ("  ·  🛡️ MODE BERBURU KETAT" if st.get("ketat") else "")
+            f"🎚️ Ambang pilih {ambang(st):+.3f}  ·  {'kelas ringan' if st.get('ketat') else 'kelas utama (medali)'}" + ("  ·  🛡️ MODE BERBURU KETAT" if st.get("ketat") else "")
             + f"  ·  status buru: {html.escape(st.get('buru', 'belum berburu'))}",
             "",
             "💚 <b>Sinapsis disukai</b> (sering memberi makan TP, atau untung di uji 2023-2024): " + (", ".join(f(z) for z in suka) or "belum ada"),
@@ -991,21 +1028,25 @@ def teks(lengkap=False):
         for t, x in st["kejadian"][-8:]:
             rows.append(f"• {time.strftime('%d/%m %H:%M', time.gmtime(t + 7 * 3600))} {html.escape(x)}")
     rows.append("")
-    if st["open"]:
-        rows.append("🎯 <b>Sinyal harian pilihan lalat</b>")
-        rows += [kartu(it) for it in st["open"].values()]
-    else:
+    jalan_ = [it for it in st["open"].values() if it.get("isi_t")]
+    antre_ = [it for it in st["open"].values() if not it.get("isi_t")]
+    rows.append("🟢 <b>BAGIAN 1 · POSISI ABDUL YANG SUDAH TERSENTUH / SEDANG JALAN</b> (tetap tampil sampai TP atau SL)")
+    rows += [kartu(it) for it in jalan_] or ["Belum ada posisi Abdul yang terisi."]
+    rows.append("")
+    rows.append("🎯 <b>BAGIAN 2 · ANTREAN SINYAL ABDUL HARI INI</b>")
+    rows += [kartu(it) for it in antre_]
+    if not antre_:
         try:
             calon = nilai_calon(st, m, maks=6)[:2]
         except Exception:
             calon = []
         if calon:
-            rows.append("🎯 <b>Calon pilihan lalat hari ini</b> (belum dipilih, nilai di bawah ambang atau masih kenyang)")
+            rows.append("Calon antrean Abdul (belum dipilih, nilai di bawah ambang atau masih kenyang):")
             for v, p, tok in calon:
                 it = dict(p, tokens=tok, nilai=v, tick=None)
                 rows.append(kartu(it))
         else:
-            rows.append("🎯 Belum ada koin likuid di dekat support/resistance. Lalat memindai lagi tiap jam.")
+            rows.append("Belum ada koin di dekat support/resistance. Abdul memindai lagi tiap jam.")
     sel = [x for x in st["riwayat"] if x.get("R") is not None][-10:]
     if sel:
         tot = sum(x["R"] for x in sel); wr = sum(1 for x in sel if x["R"] > 0) / len(sel) * 100
@@ -1021,8 +1062,9 @@ def perintah(args=None):
     if a and a[0] == "LAPAR":
         with _KUNCI:
             st = state(); st["mode_lapar"] = not st.get("mode_lapar", False); _tulis(F_STATE, st)
-        return ("🍽️ Lapar bertingkat " + ("NYALA: lalat wajib makan tiap hari dari 183 koin dan sinyal jalur lain." if st["mode_lapar"] else
-                "MATI: lalat hanya makan koin medali dari rencana 07:00 WIB (mode lama, lebih jarang).")
+        return ("🍽️ Lapar koin umum " + ("NYALA manual: Abdul juga makan koin umum, semua 🟨 KELAS RINGAN. Uji 2025-2026 koin umum "
+                "-0.078R per posisi, jadi ini menambah sinyal tapi menurunkan hasil." if st["mode_lapar"] else
+                "MATI (bawaan): Abdul hanya koin medali 🟦 KELAS UTAMA. Kalau 8 jam tanpa sinyal, robot kirim 2 antrean Limit medali terdekat.")
                 + "\nUji 2025-2026: nyala 1.58 trade per hari, +2.3R akun. Mati 1.35 trade per hari, +20.1R akun (QC 48).")
     if a and a[0] == "REFLEKS":
         return atur_refleks(a[1:])
@@ -1037,8 +1079,91 @@ def perintah(args=None):
 
 
 def pilihan_teks():
-    """Ringkas untuk tombol Sinyal 4J: posisi dan order lalat yang masih jalan."""
+    """Untuk tombol Sinyal 4J: dua bagian tetap, posisi Abdul yang jalan dan antrean Abdul."""
     st = state()
     if not st["open"]:
+        return "🪰 <b>LALAT ABDUL</b>\n🟢 Posisi jalan: belum ada.\n🎯 Antrean hari ini: belum ada, Abdul memindai tiap jam."
+    jalan_ = [kartu(it) for it in st["open"].values() if it.get("isi_t")]
+    antre_ = [kartu(it) for it in st["open"].values() if not it.get("isi_t")]
+    return ("🪰 <b>LALAT ABDUL</b>\n\n🟢 <b>POSISI ABDUL SEDANG JALAN</b>\n" + ("\n\n".join(jalan_) or "belum ada")
+            + "\n\n🎯 <b>ANTREAN SINYAL ABDUL</b>\n" + ("\n\n".join(antre_) or "belum ada"))
+
+
+def simpan_aktif():
+    """abdul_aktif.json: kunci semua sinyal Abdul yang sudah dikirim beserta statusnya (ANTREAN / AKTIF / SELESAI)."""
+    try:
+        st = state()
+        d = dict(t=time.time(), aktif=[dict(sym=it["sym"], arah=it["arah"], entry=it["entry"], sl=it["sl"], tp1=it["tp1"], tp2=it["tp2"],
+                                             status="POSISI ABDUL AKTIF" if it.get("isi_t") else "ANTREAN ABDUL", isi_t=it.get("isi_t"),
+                                             tp1k=it.get("tp1k", False), t=it["t"]) for it in st["open"].values()],
+                 selesai=[dict(sym=x["sym"], arah=x["arah"], R=x.get("R"), why=x.get("why"), selesai=x.get("selesai"))
+                          for x in st["riwayat"][-30:]])
+        _tulis(F_AKTIF, d)
+    except Exception as ex:
+        print("[WARN] abdul aktif", ex)
+
+
+# ---------- Hidung berita Abdul (9 Nov 2026): ledakan volume 1 menit serentak BTC dan altcoin ----------
+HIDUNG_KOIN = ("BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT", "BNBUSDT")
+HIDUNG_VOL, HIDUNG_RANGE, HIDUNG_JEDA = 4.0, 3.0, 1800
+
+
+def _k1m(sym):
+    """Candle 1 menit Bybit dengan volume: (ts, high, low, close, open, volume), urut waktu."""
+    try:
+        import requests
+        from config import BYBIT_URL
+        rows = requests.get(BYBIT_URL + "/v5/market/kline", params={"category": "linear", "symbol": sym, "interval": "1", "limit": 40},
+                            timeout=10).json().get("result", {}).get("list", [])
+        return sorted((int(x[0]), float(x[2]), float(x[3]), float(x[4]), float(x[1]), float(x[5])) for x in rows)
+    except Exception:
+        return []
+
+
+def hidung(data=None, now=None):
+    """Dipanggil tiap menit. Candle 1 menit terakhir yang sudah tutup: volume >= 4x rata 30 menit dan rentang >= 3x rata, di BTC
+    dan minimal 3 dari 5 altcoin besar, searah. Itu jejak berita besar atau aksi bandar sebelum situs berita menulisnya.
+    Hanya peringatan: belum ada data 1 menit 2023-2026 untuk menguji entry otomatis, jadi Abdul tidak membuka posisi dari sini."""
+    now = now or time.time()
+    try:
+        with open(os.path.join(STATE_DIR, "hidung.json")) as f:
+            hs = json.load(f)
+    except Exception:
+        hs = {}
+    if now - hs.get("t", 0) < HIDUNG_JEDA:
         return ""
-    return "🪰 <b>PILIHAN LALAT HARI INI</b>\n\n" + "\n\n".join(kartu(it) for it in st["open"].values())
+    if data is None:
+        data = {s: _k1m(s) for s in HIDUNG_KOIN}
+    meledak = {}
+    for s, k in data.items():
+        k = [x for x in k if x[0] + 60000 <= now * 1000] if len(k) and len(k[0]) >= 4 else []
+        if len(k) < 32:
+            continue
+        rg = np.array([x[1] - x[2] for x in k], float)
+        last = k[-1]
+        rata_rg = rg[-31:-1].mean()
+        vol = None
+        if len(last) >= 6:
+            v = np.array([x[5] for x in k], float)
+            vol = v[-1] / max(v[-31:-1].mean(), 1e-12)
+        arah = 1 if last[3] >= k[-2][3] else -1
+        if rata_rg > 0 and rg[-1] >= HIDUNG_RANGE * rata_rg and (vol is None or vol >= HIDUNG_VOL):
+            meledak[s] = (arah, rg[-1] / rata_rg, vol, (last[3] / k[-2][3] - 1) * 100)
+    if "BTCUSDT" not in meledak:
+        return ""
+    ab = meledak["BTCUSDT"][0]
+    alt = [s for s, x in meledak.items() if s != "BTCUSDT" and x[0] == ab]
+    if len(alt) < 3:
+        return ""
+    hs["t"] = now
+    try:
+        with open(os.path.join(STATE_DIR, "hidung.json"), "w") as f:
+            json.dump(hs, f)
+    except Exception:
+        pass
+    b = meledak["BTCUSDT"]
+    return (f"👃 <b>ABDUL MENCIUM BERITA BESAR / AKSI BANDAR: {'NAIK 🚀' if ab > 0 else 'TURUN 💥'}</b>\n"
+            f"Candle 1 menit BTC {b[3]:+.2f}%, rentang {b[1]:.1f}x rata-rata" + (f", volume {b[2]:.1f}x" if b[2] else "")
+            + f". Serentak di {len(alt)} altcoin besar ({', '.join(s.replace('USDT', '') for s in alt)}).\n"
+            "Uang sedang bergerak sebelum berita ditulis situs. Jangan kejar candle ini. Cek posisi kamu dan SL.\n"
+            "Info kilat saja, Abdul tidak membuka posisi otomatis dari ini (belum ada data 1 menit untuk menguji).")

@@ -179,6 +179,8 @@ def _tutup_candle(sym, tf, tf_ms):
 
 def _pesan_gzh(a, cl):
     import telegram_notify as TG
+    if os.environ.get("QSE_GZH", "0") != "1":
+        return None          # v150: GZH dimatikan (QC 53)
     L, t = a["L"], a["tick"]
     if not ((cl > a["harga"]) if L else (cl < a["harga"])):
         return (f"❌ <b>GZH BATAL  ·  {a['sym']} {'LONG' if L else 'SHORT'}</b>\n"

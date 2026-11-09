@@ -9,6 +9,7 @@ Yang lolos dan dipasang:
 Keluar (sama dengan Ichimoku): SL awal 2 ATR, tiap candle 4J tutup SL digeser ke puncak - 3 ATR, tutup paksa 60 candle. Angka per jalur bisa beda, lihat cfg sl_atr dan trail_atr.
 Yang gagal: Donchian 20/55, Supertrend, Bollinger squeeze, Bollinger dan RSI 2 mean reversion, pullback 3 candle,
 inside bar, momentum 30 hari, funding ekstrem (searah atau lawan), breakout volume (lolos per trade tapi tidak di portofolio)."""
+import qse_modal as MD          # kelas margin di kartu (9 Nov 2026)
 import fcntl
 import json
 import os
@@ -367,6 +368,13 @@ def btc_ema50_teks():
     if (c[-1] > e) != naik or abs(c[-1] / e - 1) * 100 <= BTC_BAND:
         teks += (f". Harga masih menempel EMA 50, arah belum berubah sampai 2 candle 4J tutup lebih dari "
                  f"{BTC_BAND:g}% di sisi lain")
+    try:
+        import qse_kompas as KP          # 9 Nov 2026: kompas pasar ikut tampil supaya semua menu sinkron dengan Cek BTC
+        k = KP.kompas()
+        if k:
+            teks = f"{k['ikon']} Kompas {k['status']} (15m/1J/4J + USDT.D)  ·  " + teks
+    except Exception:
+        pass
     return teks
 
 
@@ -1127,16 +1135,31 @@ def kartu(k, no, it, a):
                         f"(uji 2025-2026: disukai rata +0.21R, dijauhi +0.09R)")
     except Exception as ex:
         print("[WARN] lot MB jalur", ex)
+    kp_teks = ""
+    try:
+        import qse_kompas as KP          # 9 Nov 2026: LONG melawan kompas merah, lot 0.5x
+        kk, kp_teks = KP.label(it["arah"])
+        if kk != 1.0:
+            lot_b = "0.2x"          # kelas ringan
+    except Exception:
+        pass
     try:
         import qse_modal as MD
-        lot = MD.baris_lot(it["entry"], it["sl"], SY.lot_angka(lot_b))
+        lot = MD.baris_lot(it["entry"], it["sl"], kelas=MD.kelas_dari(SY.lot_angka(lot_b)))
     except Exception:
         lot = ""
     jarak = it.get("trail_atr", TRAIL_ATR) * a
+    try:
+        import qse_cuaca as CU          # 9 Nov 2026: cuaca pasar, kelas koin, rekam jejak teknik di koin ini
+        cuaca = CU.baris(k, it)
+    except Exception:
+        cuaca = ""
     return "\n".join([
         SY.GARIS,
         f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {it['arah']}</b>  ·  {cfg['nama']} 4J",
-        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  lot <b>{lot_b} lot normal</b> (ukuran posisi tiap orang di baris 💼)",
+        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  <b>{MD.teks_kelas(lot_b)}</b> (margin dan leverage tiap orang di baris bawah)",
+        *([cuaca] if cuaca else []),
+        *([kp_teks] if kp_teks else []),
         *combo_teks(it),
         *([cat_hari] if cat_hari else []),
         *([mb_baris] if mb_baris else []),

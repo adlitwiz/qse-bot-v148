@@ -773,7 +773,7 @@ def jarak_trailing(it, jp=None):
 def baris_kelas(arah, konteks=True, **kw):
     lb, ik, why, lot = kelas_setup(arah, **kw)
     import html
-    out = (f"{baris_konteks()}\n" if konteks else "") + f"{ik} <b>PENILAIAN: {lb}</b> | {html.escape(why)} | lot {lot}"
+    out = (f"{baris_konteks()}\n" if konteks else "") + f"{ik} <b>PENILAIAN: {lb}</b> | {html.escape(why)} | {__import__('qse_modal').teks_kelas(lot)}"
     if kw.get("jalur"):
         out += "\n" + baris_bukti(kw["jalur"], arah, kw.get("skor"))
     return out
@@ -790,7 +790,7 @@ BUKTI = {
     "saran GZH": ("TERBUKTI", "✅", "0.5x", "uji 6 tahun 111 koin, maks 8 posisi: 1825 trade, WR 40%, PF 1.24, aturan dipilih "
                   "dari 2020-2023 (PF 1.24), uji ulang 2024-2026 PF 1.23, turun terdalam 14%. Syarat: searah EMA 200 dan BTC 4J, "
                   "keluar dengan SL berjalan 3 ATR. GZH tanpa syarat PF 0.95, TP tetap 3R gagal di 2024-2026 (PF 0.96). "
-                  "Lot 0.5x karena paling lemah di antara jalur terbukti"),
+                  "Kelas utama dengan ukuran setengah karena paling lemah di antara jalur terbukti"),
     "saran 1J": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot (rapor 4J dan 1J A/B, searah bias 4J): "
                  "17 trade, WR 41%, -6.8R. Angka uji mundur 6 bulan di laporan memakai koin yang rapornya sedang bagus, jadi terlalu optimis"),
     "saran cadangan": ("BELUM TERBUKTI", "⚠️", "0.25x", "uji 2 tahun 30 koin aturan robot: 8 trade, WR 38%, PF 0.52, -2.4R"),
@@ -892,12 +892,12 @@ def layak(jalur, arah=None, skor=None):
     tk, ik, lot, _, lv = tingkat_bukti(jalur, arah, skor)
     live = f" (live {lv[0]} trade, PF {lv[2]:.2f})" if lv and lv[0] >= 3 else ""
     if tk in ("TERBUKTI", "TERBUKTI LIVE"):
-        return f"✅ Layak entry: <b>YA</b>  ·  lot {lot}{live}"
+        return f"✅ Layak entry: <b>YA</b>  ·  {__import__('qse_modal').teks_kelas(lot)}{live}"
     if tk == "SEDANG DIUJI":
-        return f"🧪 Layak entry: <b>BOLEH</b>  ·  lot {lot}, masih diuji{live}"
+        return f"🧪 Layak entry: <b>BOLEH</b>  ·  {__import__('qse_modal').teks_kelas(lot)}, masih diuji{live}"
     if tk == "MELEMAH DI LIVE":
-        return f"⚠️ Layak entry: <b>HATI-HATI</b>  ·  lot {lot}, hasil live melemah{live}"
-    return f"⚠️ Layak entry: <b>BOLEH COBA, RISIKO TINGGI</b>  ·  lot {lot}, belum terbukti{live}"
+        return f"⚠️ Layak entry: <b>HATI-HATI</b>  ·  {__import__('qse_modal').teks_kelas(lot)}, hasil live melemah{live}"
+    return f"⚠️ Layak entry: <b>BOLEH COBA, RISIKO TINGGI</b>  ·  {__import__('qse_modal').teks_kelas(lot)}, belum terbukti{live}"
 
 
 def baris_jadwal(tf_ms=4 * 3600000, tutup_ms=None, telat_menit=5):
@@ -983,7 +983,7 @@ def baris_bukti(jalur, arah=None, skor=None):
     tk, ik, lot, why, lv = tingkat_bukti(jalur, arah, skor)
     live = (f" | live {lv[0]} trade, WR {lv[1]:.0f}%, PF {lv[2]:.2f}, {lv[3]:+.1f}R" if lv else " | live belum ada trade")
     syarat = "" if tk.startswith("TERBUKTI") else f" | naik jadi TERBUKTI kalau live {NAIK_N} trade dengan PF {NAIK_PF}"
-    return f"{ik} <b>BUKTI {html.escape(jalur.upper())}: {tk}</b> | {html.escape(why)}{live}{syarat} | lot maks {lot}"
+    return f"{ik} <b>BUKTI {html.escape(jalur.upper())}: {tk}</b> | {html.escape(why)}{live}{syarat} | {__import__('qse_modal').teks_kelas(lot)}"
 
 
 # ---------------- konsultasi ----------------
@@ -1145,7 +1145,7 @@ def konsultasi(sym, arah=None, entry=None):
         rows = ["🎯 <b>SINYAL JALUR TERBUKTI DI KOIN INI</b>"]
         for j_ in ja:
             tk_, ik_, lot_, _, _ = tingkat_bukti(j_["jalur"], j_["arah"])
-            rows.append(f"{ik_} {j_['nama']} {j_['arah']}  ·  {tk_}  ·  lot {lot_}\n"
+            rows.append(f"{ik_} {j_['nama']} {j_['arah']}  ·  {tk_}  ·  {__import__('qse_modal').teks_kelas(lot_)}\n"
                         f"Entry {fp(j_['entry'], t)}  ·  SL sekarang {fp(j_['sl'], t)}"
                         + (f"  ·  TP {fp(j_['tp'], t)}" if j_.get("tp") else "  ·  tanpa TP, SL berjalan"))
         rows.append("Untuk posisi dari jalur ini, ikuti aturan jalur: SL, TP, dan pesan GESER SL. Penilaian umum di bawah "
@@ -1417,6 +1417,13 @@ def parse_entry(args):
             jam = a
         elif re.fullmatch(r"\d{1,2}/\d{1,2}(/\d{2,4})?", a):
             tgl = a
+        elif a in ("USDT", "UANG", "MARGIN", "$") and nxt is not None:
+            kv["USDT"] = nxt          # ukuran posisi (entry USDT di Bybit), 9 Nov malam
+            i += 1
+        elif re.fullmatch(r"\$[\d.,]+|[\d.,]+\$|[\d.,]+USDT", a) and _angka(a.replace("$", "").replace("USDT", "")) is not None:
+            kv["USDT"] = _angka(a.replace("$", "").replace("USDT", ""))
+        elif a in ("UTAMA", "RINGAN"):
+            kv["KELAS"] = a
         elif a in ("LEV", "LEVERAGE") and i + 1 < len(args) and _angka(args[i + 1].rstrip("X")) is not None:
             kv["LEV"] = _angka(args[i + 1].rstrip("X"))
             i += 1
@@ -1627,6 +1634,8 @@ def entry(args):
     lv_user = {k: kv[k] for k in ("SL", "TP1", "TP2") if kv.get(k) is not None}
     baru_isi = isi_ts is not None and now - isi_ts <= 5 * 60000      # terisi lampau: riwayat candle dicek dulu
 
+    uk = ukuran_entry(kv, uid_aktif())
+
     def simpan(d):
         d["seq"] += 1
         tid = f"{sym}#{d['seq']}"
@@ -1634,7 +1643,7 @@ def entry(args):
                               tp2=tp2, atr=a_now, tick=t, sumber=sumber, nilai=label,
                               created_ts=isi_ts or now, last_ts=isi_ts or now,
                               status="TERISI" if isi_ts is not None else "MENUNGGU",
-                              fill_ts=isi_ts or 0, alert=[], lev=kv.get("LEV"), risk0=abs(harga - sl),
+                              fill_ts=isi_ts or 0, alert=[], lev=uk["lev"], usdt=uk["usdt"], kelas=uk["kelas"], risk0=abs(harga - sl),
                               sisa=1.0, real=0.0, jalur=jalur, pola=pola_asal, skor=asal["skor"],
                               **(dict(skor_label=skor_lb, label_sinyal=label_lb) if jp else {}),
                               **(dict(ikut=jp["jalur"], tp_jalur=tp_user or jp.get("tp"), tp_cepat=bool(tp_user))
@@ -1662,7 +1671,7 @@ def entry(args):
             f"TP2   {fp(tp2, t)}  untung {abs(tp2 - harga) / harga * 100:.2f}%</pre>",
             f"Asal entry: {jalur}" + (f" ({pola_asal})" if pola_asal != "manual" else "") + sk_txt
             + (f" | Nilai: {teks_nilai(skor_lb)}" if jp else "") +
-            f" | lot disarankan {lot_jalur(jalur):g}x lot normal",
+            f" | {__import__('qse_modal').teks_kelas(lot_jalur(jalur))}",
             f"SL dan TP dari {sumber}. Fee pulang pergi sekitar {2 * FEE:.2f}% harga.",
             (f"✅ <b>JALUR TERBUKTI {jp['nama'].upper()}</b>\n" + TEKS_IKUT.format(sl=fp(sl, t), tp=_tp_teks(tp_j, t))
              + f"\nRobot menyamakan SL kamu dengan SL berjalan jalur tiap menit, dan mengabari saat jalur keluar.") if ikut else
@@ -1672,13 +1681,12 @@ def entry(args):
              "Kalau tetap masuk, pakai lot kecil dan pasang SL.")]
     try:
         import qse_modal as MD
-        bl = MD.baris_lot(harga, sl, lot_jalur(jalur), int(kv["LEV"]) if kv.get("LEV") else None)
+        bl = "" if uk.get("usdt") else MD.baris_lot(harga, sl, lot_jalur(jalur), int(kv["LEV"]) if kv.get("LEV") else None)
         if bl:
             rows.insert(4, bl)
     except Exception:
         pass
-    if kv.get("LEV"):
-        rows.insert(4, f"Leverage {kv['LEV']:g}x dicatat, /status menampilkan ROE.")
+    rows.insert(4, teks_ukuran(uk, harga, sl, sym))
     if jp and not kv.get("terisi"):
         try:
             import qse_strat as ST
@@ -1839,7 +1847,9 @@ def tutup(args, label="TUTUP"):
                 it = d["open"].pop(k)
                 it.update(status="SELESAI", why="TUTUP", result_r=round(_real(it), 3), exit=px, closed_ts=now)
                 d["closed"].append(it)
-                rows.append(f"{sym} {it['arah']} ditutup penuh di {fp(px, t)}\nHasil bagian ini {r:+.2f}R | total trade {it['result_r']:+.2f}R")
+                pu = __import__("qse_modal").pnl_usdt(it)
+                rows.append(f"{sym} {it['arah']} ditutup penuh di {fp(px, t)}\nHasil bagian ini {r:+.2f}R | total trade {it['result_r']:+.2f}R"
+                            + (f" = <b>{pu:+.2f} USDT</b>" if pu is not None else ""))
             else:
                 rows.append(f"{sym} {it['arah']} {label} {pct:g}% di {fp(px, t)}\nHasil bagian ini {r:+.2f}R | "
                             f"sisa posisi {it['sisa'] * 100:.0f}% | sudah direalisasi {_real(it):+.2f}R")
@@ -1958,6 +1968,9 @@ def ubah_level(args):
             key = {"TP": "tp1"}.get(k, k.lower())
             baru[key] = "ENTRY" if v in ("ENTRY", "BE") else _angka(v)
             i += 2
+        elif k in ("USDT", "UANG", "MARGIN", "LEV", "LEVERAGE"):
+            baru["lev" if k.startswith("LEV") else "usdt"] = _angka(v.rstrip("X").replace("$", ""))
+            i += 2
         else:
             i += 1
     if not baru or any(v is None for v in baru.values()):
@@ -1970,6 +1983,9 @@ def ubah_level(args):
             it["sisa"], it["real"] = _sisa(it), _real(it)
             L = it["arah"] == "LONG"
             for k, v in baru.items():
+                if k in ("usdt", "lev"):
+                    it[k] = v
+                    continue
                 val = it["entry"] if v == "ENTRY" else v
                 if k == "sl" and it["status"] == "MENUNGGU" and ((L and val >= it["entry"]) or ((not L) and val <= it["entry"])):
                     rows.append(f"{sym}: SL harus di bawah entry untuk LONG dan di atas entry untuk SHORT")
@@ -1981,6 +1997,11 @@ def ubah_level(args):
                         it["risk0"] = abs(it["entry"] - val)
             t = it["tick"]
             sl_now = it["entry"] if it["status"] == "TP1" and not it.get("sl_manual") else it["sl"]
+            if "usdt" in baru or "lev" in baru:
+                rows.append(f"{sym} {it['arah']}: " + teks_ukuran(dict(usdt=it.get("usdt"), lev=it.get("lev"), kelas=it.get("kelas")),
+                                                                    it["entry"], it.get("sl0", it["sl"]), sym))
+                if not any(k in baru for k in ("sl", "tp1", "tp2")):
+                    continue
             rows.append(f"{sym} {it['arah']} diperbarui\nSL {fp(it['sl'], t)} | TP1 {fp(it['tp1'], t)} | TP2 {fp(it['tp2'], t)}\n"
                         f"Kalau kena SL: total {_hasil_di(it, sl_now, 'SL'):+.2f}R"
                         + (f" | TP1: total {_hasil_di(it, it['tp1'], 'TP1'):+.2f}R" if it["status"] != "TP1" else "")
@@ -2153,9 +2174,54 @@ def aturan_jam8(it, px, now):
                     "Uji 2023-2026: jam ke-12 dinamis menurunkan drawdown 45R ke 29R.")
 
 
+def ukuran_entry(kv, uid=None):
+    """Ukuran posisi yang dicatat saat /entry: USDT dan leverage yang diketik, atau bawaan profil Modal orang itu
+    (entry utama, atau entry ringan kalau ditulis RINGAN). Return dict(usdt, lev, kelas)."""
+    try:
+        import qse_modal as MD
+        p = MD.profil(uid) or {}
+    except Exception:
+        p = {}
+    kelas = kv.get("KELAS") or "UTAMA"
+    usdt = kv.get("USDT")
+    if usdt is None and p.get("entry"):
+        usdt = p["entry"] if kelas == "UTAMA" else (p.get("ringan") or p["entry"] * 2 / 3)
+    lev = kv.get("LEV") or p.get("lev")
+    return dict(usdt=float(usdt) if usdt else None, lev=float(lev) if lev else None, kelas=kelas)
+
+
+def teks_ukuran(uk, entry, sl, sym=""):
+    if not uk.get("usdt"):
+        return ("💵 Ukuran belum dicatat. Tekan tombol 🟦 Utama atau 🟨 Ringan di bawah, atau isi profil di menu 💼 Modal "
+                "(entry 150, lev 10) supaya PNL USDT di Status valid.")
+    lev = uk.get("lev") or 1
+    sl_pct = abs(entry - sl) / entry * 100 if entry else 0
+    return (f"💵 <b>Ukuran dicatat: entry {uk['usdt']:,.0f} USDT, leverage {lev:g}x</b> ({'🟦 kelas utama' if uk.get('kelas', 'UTAMA') == 'UTAMA' else '🟨 kelas ringan'}). "
+            f"Uang terpakai {uk['usdt'] / lev:,.2f} USDT, rugi kalau SL kena {uk['usdt'] * sl_pct / 100:,.2f} USDT. "
+            "Status menampilkan PNL USDT dari angka ini. Salah? tekan tombol ukuran di bawah.")
+
+
+def mode_ringan(closed):
+    """QC 54: 3 SL beruntun (urut waktu tutup, hasil -0.5R atau lebih buruk) -> KELAS RINGAN dan SL ke entry di +0.3R sampai 1 TP.
+    Uji aliran Abdul medali + GZH 2025-2026: tanpa aturan +319R DD 27.5R, aturan ini +342R DD 19.2R (jeda 24 jam lama +345R DD 18.7R)."""
+    cl = sorted((c for c in closed if c.get("closed_ts") and c.get("result_r") is not None and c.get("status") != "BATAL"),
+                key=lambda c: c["closed_ts"])
+    n = 0
+    for c in cl:
+        r = float(c["result_r"])
+        if r > 0.05:
+            n = 0
+        elif r <= -0.5:
+            n += 1
+    return dict(aktif=n >= 3, n=n)
+
+
 def jeda_info(closed, now_ms=None):
     """Jeda entry per orang. 3 rugi beruntun (urut waktu tutup, hasil 0R atau kurang) -> berhenti entry baru 24 jam sejak
-    rugi ketiga. Setelah jeda selesai hitungan mulai dari 0. Return dict(aktif, sampai ms, beruntun)."""
+    rugi ketiga. Setelah jeda selesai hitungan mulai dari 0. Return dict(aktif, sampai ms, beruntun).
+    v150 (9 Nov 2026, permintaan user): jeda rugi beruntun MATI supaya sinyal tidak tertahan. Nyalakan lagi dengan env QSE_JEDA=1."""
+    if os.environ.get("QSE_JEDA", "0") != "1":
+        return dict(aktif=False, sampai=None, beruntun=0, dihitung=[])
     now_ms = now_ms or int(time.time() * 1000)
     cl = sorted((c for c in closed if c.get("why") in ("SL", "BE", "TP2", "TUTUP") and c.get("closed_ts")),
                 key=lambda c: c["closed_ts"])
@@ -2374,6 +2440,14 @@ def _jalan(it, rows, iv):
                                f"3. Sisa {100 - porsi}% biarkan, {sisa_tp}."
                                + ("\n✅ <b>Posisi sekarang aman</b>: tidak makan slot berisiko dan bebas batas waktu"
                                   if (pindah or not rugi_sisi) else "")))
+            tpb = it.get("tp_bybit")
+            if tpb and tpb != tpj and abs(tpb - e) < abs(e) * 5 and ((hi >= tpb) if L else (lo <= tpb)):
+                _tutup_bagian(it, 1.0, tpb)
+                res = _real(it)
+                it.update(status="SELESAI", why="TP2", result_r=round(res, 3), closed_ts=ts)
+                ev.append(("TP2", f"KENA TP penuh kartu (order TP di Bybit) {fp(tpb, it['tick'])}, posisi selesai {res:+.2f}R, "
+                                  "dipindah ke riwayat"))
+                return ev
             if tpj and ((hi >= tpj) if L else (lo <= tpj)):
                 _tutup_bagian(it, 1.0, tpj)
                 res = _real(it)
@@ -2494,6 +2568,7 @@ def pantau():
 
     def f(d):
         pesan = []
+        ringan = mode_ringan(d.get("closed", []))
         for k in list(d["open"].keys()):
             it = d["open"][k]
             kj = (it["sym"], it["arah"])
@@ -2506,6 +2581,8 @@ def pantau():
             ev = _jalan(it, [x for x in h1 if x[0] + JAM <= awal], JAM) if it["last_ts"] < awal else []
             ev += _jalan(it, m1, 60000)
             px = m1[-1][3] if m1 else 0
+            # candle 1 menit yang masih berjalan (harga terakhir): langsung tutup kalau sudah menyentuh SL atau TP penuh
+            ev += _cek_live(it, data.get(it["sym"], ([], []))[0], now)
             if it["status"] == "MENUNGGU":
                 if now - it["created_ts"] > 24 * JAM and "24j" not in it["alert"]:
                     it["alert"].append("24j")
@@ -2516,6 +2593,18 @@ def pantau():
                     ev.append(("INFO", f"LIMIT kejauhan, harga sudah {jauh:.1f} ATR dari entry. Peluang terisi hari ini kecil."))
             if it["status"] == "TP1" and px:
                 ev += _trailing(it, h1, px)
+            try:
+                if it["status"] == "TERISI" and px and ringan["aktif"] and "be03" not in it["alert"]:
+                    r_now = _r_at(it, px)
+                    L_ = it["arah"] == "LONG"
+                    if r_now >= 0.3 and ((it["sl"] < it["entry"]) if L_ else (it["sl"] > it["entry"])):
+                        it["alert"].append("be03")
+                        if not it.get("sl_manual"):
+                            it["sl"] = it["entry"]
+                        ev.append(("INFO", f"🧯 Mode ringan (3 SL beruntun): untung +{r_now:.2f}R. <b>Geser SL ke entry "
+                                           f"{fp(it['entry'], it['tick'])}</b> sekarang, trade ini tidak boleh jadi rugi"))
+            except Exception as ex:
+                print("[WARN] be ringan", ex)
             # aturan jam ke-12: belum kena TP 20% -> rugi 0.5R atau lebih tutup, melawan SL naik ke -0.5R, searah SL tetap
             try:
                 j8 = aturan_jam8(it, px, now)
@@ -2558,6 +2647,14 @@ def pantau():
             except Exception as ex:
                 print("[WARN] ingat SL", ex)
             if it["status"] == "SELESAI":
+                try:
+                    pu = __import__("qse_modal").pnl_usdt(it)
+                    if pu is not None:
+                        it["pnl_usdt"] = round(pu, 2)
+                        pesan.append(f"💵 <b>{it['sym']} {it['arah']}</b> selesai {it.get('result_r', 0):+.2f}R = <b>{pu:+.2f} USDT</b> "
+                                     f"(entry {it['usdt']:,.0f} USDT, {it.get('lev') or 1:g}x)")
+                except Exception as ex:
+                    print("[WARN] pnl usdt", ex)
                 d["closed"].append(d["open"].pop(k))
         for g in _gabung_semua(d):          # LIMIT yang baru terisi atau catatan ganda lama: jadikan satu posisi
             pesan.append(teks_gabung(g))
@@ -2567,6 +2664,27 @@ def pantau():
             print("[WARN] jeda", ex)
         return pesan
     return ubah(f)
+
+
+def _cek_live(it, m1raw, now):
+    """Bug ARC 9 Nov: posisi yang sudah kena TP penuh atau SL ditutup di menit yang sama, tanpa menunggu candle 1 menit tutup."""
+    if it["status"] not in ("TERISI", "TP1") or not m1raw:
+        return []
+    x = m1raw[-1]
+    if x[0] + 60000 <= now:
+        return []
+    L = it["arah"] == "LONG"
+    hi, lo = x[1], x[2]
+    lv = [it.get("sl"), it.get("tp2"), it.get("tp_bybit"), it.get("tp_jalur")]
+    kena = False
+    for j, v in enumerate(lv):
+        if not v:
+            continue
+        if j == 0:
+            kena |= (lo <= v) if L else (hi >= v)
+        else:
+            kena |= (hi >= v) if L else (lo <= v)
+    return _jalan(it, [x], 60000) if kena else []
 
 
 def JALUR_TERBUKTI():
@@ -2589,6 +2707,7 @@ def _sinkron_jalur(it, jp):
         if not jp:
             return out
         it["ikut"], it["tp_jalur"] = jp["jalur"], jp.get("tp")
+        it.setdefault("tp_bybit", it.get("tp2"))          # TP yang dipasang user di Bybit dari kartu (bug ARC 9 Nov)
         it["tp1"] = it["tp2"] = jp.get("tp") or it["entry"] * (100 if L else 0.01)
         out.append(f"🔄 <b>{it['sym']} {it['arah']}</b>\n↳ Posisi ini dari jalur {jp['nama']}. TP1 dan TP2 umum dihapus, "
                    f"sekarang ikut aturan jalur: SL berjalan {fp(jp['sl'], t)}, {_tp_teks(jp.get('tp'), t)}. "
@@ -2699,6 +2818,37 @@ def _trailing(it, h1, px):
                       f"Ketik /ubah {it['sym'].replace('USDT', '')} sl {fp(trail, t)}")]
 
 
+def _cek_limit_menunggu(it, r):
+    """Kasus untuk order Limit yang belum terisi. Return list (kunci, teks)."""
+    out = []
+    try:
+        import qse_strat as ST
+        df = ST._k4(it["sym"], 30)
+        if df is None or len(df) < 22:
+            return out
+        o, h, l, c, v = (df[x].values.astype(float)[:-1] for x in ("open", "high", "low", "close", "volume"))
+        L = it["arah"] == "LONG"
+        e, sl, t = it["entry"], it["sl"], it.get("tick")
+        if (L and c[-1] < sl) or ((not L) and c[-1] > sl):
+            out.append(("batal", f"candle 4J tutup {fp(c[-1], t)} menembus SL {fp(sl, t)} sebelum order terisi. <b>Batalkan order</b>, struktur rusak."))
+            return out
+        va = v[-21:-1].mean()
+        rng = max(h[-1] - l[-1], 1e-12)
+        ekor = ((min(o[-1], c[-1]) - l[-1]) if L else (h[-1] - max(o[-1], c[-1]))) / rng
+        tembus = (L and c[-1] < e) or ((not L) and c[-1] > e)
+        if va > 0 and v[-1] >= 3 * va and tembus and ekor < 0.2:
+            out.append(("batal", f"candle 4J volume {v[-1] / va:.1f}x rata-rata menembus entry tanpa ekor penolakan. "
+                                 "<b>Pertimbangkan batal</b>, tekanan terlalu kuat."))
+            return out
+        px = r.get("live") or r.get("close") or c[-1]
+        if px and abs(px - e) / e <= 0.01:
+            out.append(("dekat", f"harga {fp(px, t)} mendekati area Limit {it['arah']} {fp(e, t)} ({abs(px - e) / e * 100:.2f}% lagi). "
+                                  f"Bersiap pantulan, order tetap dipasang. Batal hanya kalau candle 4J tutup menembus SL {fp(sl, t)}."))
+    except Exception as ex:
+        print("[WARN] cek limit menunggu", ex)
+    return out
+
+
 @per_orang
 def cek_4j(res_map):
     """Dipanggil tiap scan 4 jam: kasus besar yang melawan trade kamu. Tiap kasus dikabari sekali."""
@@ -2709,6 +2859,14 @@ def cek_4j(res_map):
             if not r or it.get("ikut") or str(it.get("jalur", "")) in JALUR_TERBUKTI():
                 continue
             arah = it["arah"]
+            if it["status"] == "MENUNGGU":
+                # v150 9 Nov: order Limit belum terisi. Harga bergerak menjemput limit itu wajar (Limit SHORT di atas harus didatangi
+                # harga naik). Batal hanya kalau candle 4J tutup menembus SL, atau candle 4J volume 3x menembus entry tanpa ekor tolak.
+                for k, txt in _cek_limit_menunggu(it, r):
+                    if k not in it["alert"]:
+                        it["alert"].append(k)
+                        pesan.append(f"{'🛑' if k == 'batal' else '🎯'} <b>{it['sym']} {arah}</b>\n↳ {txt}")
+                continue
             kasus = []
             izin = r.get("izin", "LONG dan SHORT")
             if izin != "LONG dan SHORT" and not izin.startswith(arah):
@@ -2762,6 +2920,10 @@ def ringkas_rapi(judul, closed, why_ok=("SL", "BE", "TP2", "TUTUP")):
         up = sum(c["result_r"] for c in cl if c["result_r"] > 0)
         dn = sum(c["result_r"] for c in cl if c["result_r"] < 0)
         teks = f"{'🟩' if net > 0 else '🟥' if net < 0 else '⬜'} <b>{nama.capitalize()}</b>: {n} trade  ·  WR {w / n * 100 if n else 0:.0f}%  ·  {net:+.2f}R"
+        usd = [MD.pnl_usdt(c) for c in cl]
+        usd = [x for x in usd if x is not None]
+        if usd:
+            teks += f"\n     💵 PNL tercatat {sum(usd):+.2f} USDT ({len(usd)} dari {n} trade punya ukuran USDT)"
         teks += (f"\n     {'PROFIT' if net >= 0 else 'RUGI'} {pm(net):+.2f}% modal{MD.usd_r(net)}"
                  f"\n     untung +{up:.2f}R (+{pm(up):.2f}%)  ·  rugi -{abs(dn):.2f}R (-{pm(abs(dn)):.2f}%)")
         rows.append(teks)
@@ -2777,7 +2939,36 @@ def floating(it, px):
     sisa, real = _sisa(it), _real(it)
     r = real + sisa * _r_at(it, px)
     lev = it.get("lev")
-    return dict(pct=pct, r=r, real=real, sisa=sisa, roe=pct * lev if lev else None, lev=lev)
+    try:
+        import qse_modal as MD
+        usd = MD.pnl_usdt(it, r)
+    except Exception:
+        usd = None
+    return dict(pct=pct, r=r, real=real, sisa=sisa, roe=pct * lev if lev else None, lev=lev, usdt=it.get("usdt"), usd=usd)
+
+
+def baris_pnl(fl, uid=None):
+    """Tiga angka terpisah (permintaan user 9 Nov): PNL ROE seperti layar Bybit, PNL dolar, jarak harga asli."""
+    lev, usd = fl.get("lev"), fl.get("usd")
+    try:
+        import qse_modal as MD
+        p = MD.profil(uid)
+        if p and usd is None:
+            lev = lev or p["lev"]
+            usd = (p["entry"] * fl["pct"] / 100 * fl["sisa"] + fl["real"] * p["modal"] * p["risiko"] / 100) if p.get("entry") \
+                else fl["r"] * p["modal"] * p["risiko"] / 100
+    except Exception:
+        pass
+    untung = fl["r"] >= 0
+    rows = [f"{'🟩' if untung else '🟥'} <b>{'UNTUNG' if untung else 'RUGI'} {fl['r']:+.2f}R</b>"]
+    if lev:
+        rows.append(f"📊 PNL ROE: <b>{fl['pct'] * lev:+.2f}%</b> (pada {lev:g}x)")
+    if usd is not None:
+        rows.append(f"💵 PNL: <b>{'+' if usd >= 0 else '-'}{abs(usd):.2f} USDT</b>"
+                    + (f" (entry {fl['usdt']:,.0f} USDT dicatat)" if fl.get("usdt") else " (perkiraan dari profil Modal)"))
+    rows.append(f"📏 Harga bergerak {abs(fl['pct']):.2f}% {'searah' if fl['pct'] >= 0 else 'melawan arah'} entry"
+                + (f"  ·  sudah terkunci {fl['real']:+.2f}R" if abs(fl["real"]) > 0.005 else ""))
+    return rows
 
 
 NM_POS = {"MENUNGGU": "menunggu terisi", "TERISI": "posisi jalan", "TP1": "sudah TP1, SL di entry"}
@@ -2905,6 +3096,20 @@ def _alasan_sl(it, sl_now):
     return "SL berjalan jalur"
 
 
+def _teks_gurita(p):
+    """'🐙 Gurita bionik, 3 lengan aktif mendukung (...)' dari lengan yang benar-benar setuju, bukan teks mentah combo."""
+    lg = p.get("lengan") or []
+    nama = ""
+    try:
+        import qse_gurita as GR
+        nama = ", ".join(GR.NAMA_LENGAN.get(x, x) for x in lg)
+    except Exception:
+        nama = ", ".join(map(str, lg))
+    cb = p.get("combo")
+    n = len(lg) if lg else (len(cb) if isinstance(cb, (list, tuple)) else (int(cb) if str(cb).isdigit() else 0))
+    return f"🐙 Gurita bionik, {max(n, 1)} lengan aktif mendukung" + (f" ({nama})" if nama else "")
+
+
 def hewan_asal(sym, arah, harga):
     """Cocokkan entry dengan kartu 🪰 lalat, 🐙 gurita, atau 🎯 Sniper S/R yang masih aktif (entry dalam 0.5%)."""
     dekat = lambda e: e and abs(e - harga) <= abs(harga) * 0.005
@@ -2913,14 +3118,14 @@ def hewan_asal(sym, arah, harga):
         for it in LT.state().get("open", {}).values():
             if it["sym"] == sym and it["arah"] == arah and dekat(it.get("entry")):
                 lab = "medali" if it.get("medali") else "koin umum"
-                return dict(jalur="lalat", pola=f"🪰 Lalat bionik, Sniper S/R {lab} lot {it.get('lot', 0.25):g}x", skor=None)
+                return dict(jalur="lalat", pola=f"🪰 Lalat Abdul, Sniper S/R {lab}", skor=None)
     except Exception as ex:
         print("[WARN] asal lalat", ex)
     try:
         import qse_gurita as GR
         for p in GR._baca().get("pick", []):
             if p.get("R") is None and p["sym"] == sym and p["arah"] == arah and dekat(p.get("entry")):
-                return dict(jalur="gurita", pola=f"🐙 Gurita bionik, cincin saraf {p.get('combo')} lengan ({p.get('jalur')})", skor=None)
+                return dict(jalur="gurita", pola=_teks_gurita(p), skor=None)
     except Exception as ex:
         print("[WARN] asal gurita", ex)
     try:
@@ -3124,10 +3329,7 @@ def blok_posisi(no, it, px, r=None, pasar=None):
     # 2. untung rugi sekarang
     fl = floating(it, px)
     if fl:
-        bagian.append([f"{'🟩' if fl['r'] >= 0 else '🟥'} <b>{'UNTUNG' if fl['r'] >= 0 else 'RUGI'} {_rm(fl['r'])}</b>"
-                       f"  ·  harga {fl['pct']:+.2f}%"
-                       + (f"  ·  ROE {fl['roe']:+.1f}% di {fl['lev']:g}x" if fl["roe"] is not None else "")
-                       + (f"  ·  sudah terkunci {fl['real']:+.2f}R" if abs(fl["real"]) > 0.005 else "")])
+        bagian.append(baris_pnl(fl))
     elif it["status"] == "MENUNGGU" and px:
         bagian.append([f"⏳ Harga {fp(px, t)}, {abs(px - e) / e * 100:.2f}% lagi ke entry"])
     try:
@@ -3516,7 +3718,7 @@ def info_zona(r, px=None):
         tp2 = next((x for x in lv if 1.2 * dist <= (x - c if L else c - x) <= 3 * dist), c + 1.8 * dist if L else c - 1.8 * dist)
         out.update(siap=True, entry=c, sl=sl, tp1=tp1, tp2=tp2)
         teks += (f"\nCandle: {alasan_c}\nSaran MARKET manual: entry {fp(c, t)} | SL {fp(sl, t)} | TP1 {fp(tp1, t)} | "
-                 f"TP2 {fp(tp2, t)} | lot {lot_jalur('manual'):g}x")
+                 f"TP2 {fp(tp2, t)} | {__import__('qse_modal').teks_kelas(lot_jalur('manual'))}")
     else:
         teks += f"\nCandle: {alasan_c}" + ("" if p.get("btc_ok") else " | BTC belum mengizinkan arah ini")
         # rencana harga tetap diberikan supaya jelas: LIMIT di tengah golden pocket, SL di bawah batas batal
@@ -4051,6 +4253,8 @@ def sentuh_fib(min_skor=70):
     """Notif saat harga menyentuh 0.618 Golden Zone Hunter, hanya bila setup layak:
     sentuhan pertama di kaki fib itu, datang dari sisi 0, skor semua aspek minimal 70 dan backtest GZH koin ini untung.
     Satu koin paling sering sekali per 24 jam."""
+    if os.environ.get("QSE_GZH", "0") != "1":
+        return []          # v150: GZH dimatikan 5 Nov 2026. Uji 183 koin 2025-2026 sekitar impas sampai negatif (QC 44, 53). QSE_GZH=1 menyalakan
     try:
         with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
             lama = json.load(f)

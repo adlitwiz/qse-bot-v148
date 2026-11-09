@@ -19,6 +19,14 @@ KOIN_MIN_TURNOVER = 3e6
 SPESIALIS_MIN = 0.3        # nilai bawaan lalat minimal supaya koin+arah masuk daftar spesialis
 
 
+def _lapar_nyala():
+    try:
+        import qse_lalat as LT
+        return bool(LT.state().get("mode_lapar", False))
+    except Exception:
+        return False
+
+
 def daftar_spesialis():
     """Daftar spesialis bertingkat dari lalat_bawaan.json (tier 1 PSG/ACM/BAR, tier 2 cadangan). sym -> dict."""
     try:
@@ -140,8 +148,9 @@ def daftar(tk=None, maks=5, segar=False, semua=False):
     utama = {s for s, d in dft.items() if d["tier"] == 1}
     cadangan = {s for s, d in dft.items() if d["tier"] == 2}
     calon = [s for s in sp if s in tk and tk[s]["spread"] < 0.3]
-    calon += sorted((s for s in tk if s.endswith("USDT") and s not in sp and tk[s]["turnover"] >= KOIN_MIN_TURNOVER and tk[s]["spread"] < 0.2),
-                    key=lambda s: -tk[s]["turnover"])[:KOIN_MAKS]          # v150: mata lalat memindai 183 koin teratas
+    if _lapar_nyala():          # koin umum hanya dipindai untuk lalat mode lapar (Sniper koin umum dihapus dari tampilan)
+        calon += sorted((s for s in tk if s.endswith("USDT") and s not in sp and tk[s]["turnover"] >= KOIN_MIN_TURNOVER and tk[s]["spread"] < 0.2),
+                        key=lambda s: -tk[s]["turnover"])[:KOIN_MAKS]
     bn = _btc_naik()
     rows = []
     try:
@@ -202,10 +211,10 @@ def kartu(r, ringkas=False):
         return kepala + "\n" + blok
     try:
         import qse_modal as MD
-        lot = MD.baris_lot(r["entry"], r["sl"], kali=PARAM["lot"])
+        lot = MD.baris_lot(r["entry"], r["sl"], kelas="UTAMA" if (r.get("spesialis") or r.get("cadangan")) else "RINGAN")
     except Exception:
         lot = ""
-    return (kepala + "\n" + blok + f"\n📲 Pasang <b>Limit</b> di entry, isi SL. TP1 tutup 50% lalu SL ke entry. Order berlaku 24 jam, "
+    return (kepala + "\n" + blok + f"\n📲 Pasang <b>Limit</b> di entry, isi SL. TP1 tutup 50% lalu SL kunci +0.2R. Order berlaku 24 jam, "
             f"posisi terisi tutup paling lambat {PARAM['mx'] * 4} jam." + ("\n" + lot if lot else ""))
 
 
@@ -227,28 +236,19 @@ def blok_spesialis(maks=6):
     n2 = ", ".join(s.replace("USDT", "") for s, d in dft.items() if d["tier"] == 2)
     kep = (f"🏅 <b>SNIPER KOIN SPESIALIS</b>\n🥇 {n1}: uji 2025-2026 WR 75%, +0.12R per trade\n"
            f"🥈 Perak {n2}: uji 2025-2026 WR 71%, +0.045R per trade (dipilih memakai data uji)\n"
-           f"Order Limit antre di level 4J, lot {PARAM['lot']:g}x, berlaku 24 jam.")
+           f"Order Limit antre di level 4J, 🟦 KELAS UTAMA, berlaku 24 jam.")
     if not tampil:
         return kep + "\nData koin spesialis belum terbaca, dicoba lagi 30 menit.", sembunyi
     return kep + "\n\n" + "\n\n".join(kartu(r) for r in tampil), sembunyi
 
 
 def teks(mode="utama", maks=6):
-    """mode utama: koin spesialis saja, sisanya di balik tombol. mode UMUM: calon spesialis dan koin umum."""
-    if str(mode).upper() in ("UMUM", "SEMUA"):
-        med, um = bagi(daftar(maks=60))
-        um = [r for r in med if r.get("cadangan") and r.get("jauh")] + um          # cadangan yang levelnya jauh ikut di sini
-        kep = ("📂 <b>QSE v150 | SNIPER KOIN UMUM</b>\n⚠️ Uji 2025-2026 koin umum -0.08R per trade (WR 62%, rugi kecil tapi sering). "
-               "Angka cadangan, pakai lot paling kecil.")
-        if not um:
-            return kep + "\n\nBelum ada koin umum yang level S/R-nya dekat harga."
-        return kep + "\n\n" + "\n\n".join(kartu(r) for r in um[:maks])
-    isi, n_um = blok_spesialis()
+    """Sniper S/R koin medali. Sniper koin umum dihapus 5 Nov 2026 (uji 2025-2026 -0.08R per trade, QC 53)."""
+    isi, _ = blok_spesialis()
     kep = "🎯 <b>QSE v150 | RENCANA SNIPER S/R</b>\nTekan 📋 Salin Setup lalu pasang Limit di Bybit."
     if UJI:
         kep += "\n🧪 " + UJI
-    return kep + "\n\n" + isi + (f"\n\n📂 {n_um} rencana lain (cadangan yang levelnya jauh dan koin umum uji -0.08R) ada di tombol Koin umum."
-                                    if n_um else "")
+    return kep + "\n\n" + isi
 
 
 def baris_pantauan(tk=None, maks=3):
@@ -260,3 +260,26 @@ def baris_pantauan(tk=None, maks=3):
         print("[WARN] rencana pantauan", ex)
         return []
     return ["• 🎯 Sniper " + kartu(r, ringkas=True) for r in rows]
+
+
+def antrean_teks(n=2, tk=None):
+    """QC 54: 2 rencana Limit koin medali yang levelnya paling dekat dengan harga (dipakai saat 8 jam tanpa sinyal).
+    Aturan sama dengan Sniper medali yang diuji (S/R 4J, SL 1 ATR, TP1 0.5 ATR 50% lalu SL kunci +0.2R, TP2 0.8 ATR, 24 jam):
+    medali + NEXO uji 2025-2026 WR 73%, +0.085R per posisi."""
+    med, _ = bagi(daftar(tk=tk, maks=60, semua=True))
+    med = sorted(med, key=lambda r: r["dist"])
+    pilih, sudah = [], set()
+    for r in med:
+        if r["sym"] in sudah:
+            continue
+        sudah.add(r["sym"]); pilih.append(r)
+        if len(pilih) >= n:
+            break
+    if not pilih:
+        return ""
+    rows = ["📌 <b>ANTREAN LIMIT ABDUL</b> (8 jam tanpa sinyal baru, robot tidak memaksa entry, ini antrean di level terdekat)",
+            "Koin medali, 🟦 KELAS UTAMA. Uji 2025-2026 aturan ini WR 73%, +0.085R per posisi."]
+    for r in pilih:
+        jarak = abs(r["px"] - r["entry"]) / r["px"] * 100
+        rows.append(f"\n⏳ Jarak harga ke entry {jarak:.2f}%\n" + kartu(r))
+    return "\n".join(rows)

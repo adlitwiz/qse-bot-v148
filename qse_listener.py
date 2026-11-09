@@ -64,7 +64,7 @@ def _tugas_berkala():
     Tiap jam menit ke-2: jalankan main.py (cadangan jadwal GitHub yang sering telat). Ganda dicegah oleh main.py."""
     now = time.time()
     st = _st()
-    if now - st.get("tnews", 0) >= 300:          # news tiap 5 menit (dulu 15 menit) supaya tidak terlalu telat
+    if now - st.get("tnews", 0) >= 60:           # v150 9 Nov: news tiap 60 detik (dulu 5 menit), berita besar maksimal 1 menit telat
         _st({"tnews": now})
         try:
             import qse_news as NW
@@ -776,6 +776,48 @@ def _gerak_serentak():
     TG.send(["\n".join(rows)])
 
 
+def waktu_sinyal_terakhir():
+    """Waktu (detik) kartu sinyal terakhir dari semua agen: jalur (posisi robot), ditahan, lalat, gurita, GZH pantulan."""
+    t = [0.0]
+    try:
+        import qse_strat as ST
+        for k in ST.STRAT:
+            d = ST.lihat(k)
+            t += [float(x.get("t", 0)) for x in d.get("open", {}).values()] + [float(x.get("t", 0)) for x in d.get("closed", [])[-20:]]
+    except Exception as ex:
+        print("[WARN] sinyal terakhir jalur", ex)
+    try:
+        import qse_lalat as LT
+        s = LT.state()
+        t += [float(x.get("t", 0)) for x in s.get("open", {}).values()] + [float(x.get("t", 0)) for x in s.get("riwayat", [])[-20:]
+                                                                            if x.get("R") is not None]
+    except Exception:
+        pass
+    try:
+        import qse_gzh2 as GZ2
+        g = GZ2._baca()
+        t += [float(x.get("t", 0)) for x in g.get("open", {}).values()] + [float(x.get("t", 0)) for x in g.get("closed", [])[-20:]]
+    except Exception:
+        pass
+    try:
+        import qse_gurita as GR
+        t += [float(p.get("t", 0)) for p in GR._baca().get("pick", [])[-20:]]
+    except Exception:
+        pass
+    return max(t)
+
+
+def _antrean_8j(now=None):
+    """QC 54: 8 jam tanpa kartu sinyal baru -> kirim 2 antrean Limit koin medali terdekat. Paling sering sekali per 8 jam."""
+    now = now or time.time()
+    if now - _st().get("antrean_t", 0) < 8 * 3600 or now - waktu_sinyal_terakhir() < 8 * 3600:
+        return []
+    import qse_rencana as RC
+    teks = RC.antrean_teks(2)
+    _st({"antrean_t": now})
+    return [teks] if teks else []
+
+
 def _slot_terbuka():
     """v150: orang yang tadi slotnya penuh (4 posisi jalan) dan sekarang punya slot: kirim 1 sinyal terbaik yang masih valid untuknya."""
     import qse_modal as MD
@@ -816,7 +858,7 @@ def _lalat():
     import qse_lalat as LT
     pesan = LT.jalankan()
     for m in pesan:            # v150: tiap makanan lalat satu pesan, pilihan baru dan order terisi disematkan
-        ids = TG.send(["🪰 <b>QSE v150 | LALAT BIONIK</b>\n\n" + m])
+        ids = TG.send(["🪰 <b>QSE v150 | LALAT ABDUL</b>\n\n" + m])
         if any(k in m for k in ("PILIHAN BARU", "terisi", "TP1")):
             _pin_sinyal(ids or [])
 
@@ -843,6 +885,28 @@ def _tugas_menit():
     except Exception as ex:
         print("[WARN] ditahan", ex)
     try:
+        import qse_gzh2 as GZ2          # 9 Nov 2026: GZH pantulan pendek (QC 53), sekali sesudah candle 4J tutup
+        for m in GZ2.jalankan():
+            ids = TG.send(["🟡 <b>QSE v150 | GZH PANTULAN</b>\n\n" + m])
+            if "GZH PANTULAN PENDEK:" in m:
+                _pin_sinyal(ids or [])
+    except Exception as ex:
+        print("[WARN] gzh2", ex)
+    try:
+        import qse_lalat as LT          # 9 Nov 2026: hidung berita lalat Abdul, ledakan volume 1 menit serentak
+        hb = LT.hidung()
+        if hb:
+            TG.send(["👃 <b>QSE v150 | HIDUNG ABDUL</b>\n\n" + hb])
+    except Exception as ex:
+        print("[WARN] hidung", ex)
+    try:
+        import qse_overmind as OM          # 9 Nov 2026: evolusi harian 00:05 WIB
+        m = OM.jalankan()
+        if m:
+            TG.send([m])
+    except Exception as ex:
+        print("[WARN] overmind", ex)
+    try:
         _gurita()
     except Exception as ex:
         print("[WARN] gurita", ex)
@@ -859,6 +923,11 @@ def _tugas_menit():
                 _pin_sinyal(ids or [])
     except Exception as ex:
         print("[WARN] refleks lalat", ex)
+    try:
+        for m in _antrean_8j():
+            _pin_sinyal(TG.send(["📌 <b>QSE v150 | ANTREAN LIMIT 8 JAM</b>\n\n" + m]) or [])
+    except Exception as ex:
+        print("[WARN] antrean 8 jam", ex)
     try:
         for m in _slot_terbuka():
             TG.send([m])

@@ -186,7 +186,7 @@ def _catat_ledger(it, R):
     def f(d):
         d["closed"].append(dict(jalur="sektor", sym=it["sym"], arah=it["arah"], entry=it["entry"], sl=it["sl0"],
                                 tp1=0.0, tp2=0.0, t=it["t"], status="SELESAI", R=round(R, 2), isi=it["t"],
-                                selesai=time.time(), ket="pelengkap lot 0.5x"))
+                                selesai=time.time(), ket="pelengkap kelas utama"))
     CT._ubah(f)
 
 
@@ -218,7 +218,7 @@ def _kelola():
         if sel:
             it = d["open"][key]
             _catat_ledger(it, R)
-            out.append(f"{'✅' if R > 0 else '🛑'} <b>PELENGKAP SEKTOR SELESAI  ·  {it['sym']} {it['arah']}  ·  {R * LOT:+.2f}R (lot {LOT}x)</b>\n"
+            out.append(f"{'✅' if R > 0 else '🛑'} <b>PELENGKAP SEKTOR SELESAI  ·  {it['sym']} {it['arah']}  ·  {R * LOT:+.2f}R</b>\n"
                        f"Ditutup aturan v150 setelah {jam} jam. Kalau posisi Kamu masih terbuka, tutup sekarang.")
     return out
 
@@ -241,7 +241,7 @@ def _kartu(no, it, tick):
     return "\n".join([
         garis,
         f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {it['arah']}</b>  ·  🧩 SINYAL PELENGKAP Sektor 4J",
-        f"✅ <b>BISA DIIKUTI</b>  ·  kantong kedua, tidak memakan slot v150  ·  lot <b>{LOT}x lot normal</b>",
+        f"✅ <b>BISA DIIKUTI</b>  ·  kantong kedua, tidak memakan slot v150  ·  <b>🟦 KELAS UTAMA</b>",
         garis,
         blok,
         "💡 <b>Kenapa</b>",
@@ -337,7 +337,7 @@ def status_singkat():
 
 def teks():
     d = lihat()
-    rows = [f"<b>🧩 Sinyal Pelengkap: Pemimpin-Pengikut Sektor 4J</b>\nLot {LOT}x, maksimal {MAKS_BUKA} posisi, tidak memakan slot v150.\nBacktest: {BT}"]
+    rows = [f"<b>🧩 Sinyal Pelengkap: Pemimpin-Pengikut Sektor 4J</b>\nKelas utama, maksimal {MAKS_BUKA} posisi, tidak memakan slot v150.\nBacktest: {BT}"]
     if d["open"]:
         rows.append(f"\nPosisi berjalan ({len(d['open'])}):")
         for it in d["open"].values():
@@ -349,7 +349,7 @@ def teks():
     if rs:
         w = sum(x for x in rs if x > 0); lo = -sum(x for x in rs if x < 0)
         rows.append(f"\nSelesai {len(rs)} trade | WR {sum(x > 0 for x in rs) / len(rs) * 100:.0f}% | PF {w / lo if lo > 0 else 9.99:.2f} | "
-                    f"total {sum(rs):+.1f}R (lot penuh) = {sum(rs) * LOT:+.1f}R di lot {LOT}x")
+                    f"total {sum(rs):+.1f}R per posisi = {sum(rs) * LOT:+.1f}R akun")
     jd = _jeda(d["closed"])
     if jd:
         rows.append(f"⏸ {jd}")

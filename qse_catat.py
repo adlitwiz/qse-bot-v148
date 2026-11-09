@@ -18,7 +18,7 @@ NAMA = {"momentum": "Momentum 15/30 menit", "news_searah": "News searah engine",
         "mcginley": "McGinley 34 + Volume 4J (TP 4R)",
         "GZH": "GZH Golden Zone 4J (trailing)", "snr_vol": "SnR Pantul + Volume 4J (TP 3R)",
         "msb_hpz": "MSB LuxAlgo HPZ 4J (trailing)", "smc_choch": "SMC CHoCH 4J (TP 3R)",
-        "sektor": "Pelengkap Sektor 4J (lot 0.5x)"}
+        "sektor": "Pelengkap Sektor 4J"}
 BIAYA = 0.08
 TAHAN_JAM = 24
 TAHAN_JALUR = {"gzh": 240}          # GZH diuji dengan tahan maksimal 10 hari
@@ -210,6 +210,8 @@ _REM7 = {"t": 0, "v": None}
 
 def rem7(maks_umur=300):
     """dict(aktif, total_r, n): jumlah R trade kertas yang selesai 7 hari terakhir (NILAI 8+, tidak disaring otak). Gagal = tidak aktif."""
+    if os.environ.get("QSE_REM7", "0") != "1":        # v150 9 Nov: rem 7 hari mati bawaan, sinyal tidak ditahan
+        return dict(aktif=False, total_r=0.0, n=0)
     now = time.time()
     if _REM7["v"] is not None and now - _REM7["t"] < maks_umur:
         return _REM7["v"]

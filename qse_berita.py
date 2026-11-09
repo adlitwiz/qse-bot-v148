@@ -449,6 +449,66 @@ def pesan_agenda(posisi_fn=None, now_ms=None):
             print("[WARN] posisi pengingat berita", ex)
     for x in due:
         out.append(teks_tahap(x["e"], x["jam"], now_ms, pos))
+    try:
+        out += rilis_kilat(now_ms)
+    except Exception as ex:
+        print("[WARN] rilis kilat", ex)
+    return out
+
+
+def _btc_sejak(ms):
+    """Persen gerak BTC sejak waktu ms (candle 1 menit Bybit)."""
+    from qse_saya import _kline
+    k = _kline("BTCUSDT", "1", 30)
+    awal = next((x for x in k if x[0] >= ms - 60000), None)
+    if not k or not awal:
+        return None
+    return (k[-1][3] / awal[3] - 1) * 100
+
+
+def rilis_kilat(now_ms=None):
+    """v150 9 Nov: berita 🔴/🟠 USD yang baru rilis. Pesan pertama maksimal 1 menit sesudah rilis (dipanggil tiap menit),
+    pesan kedua menit ke-15 dengan arah tembusan. Arah dari harga dan kompas USDT.D, bukan tebakan isi berita."""
+    now_ms = now_ms or int(time.time() * 1000)
+    c = _load()
+    sudah = set(c.get("rilis", []))
+    out = []
+    for e in kalender():
+        if dampak(e["judul"], "USD") not in ("🔴", "🟠"):
+            continue
+        lewat = now_ms - e["ts"]
+        nm = nama_berita(e["judul"], "USD")
+        for tahap, a, b in (("R0", 0, 3 * 60000), ("R15", 15 * 60000, 20 * 60000)):
+            kunci = f"{e['ts']}|{e['judul']}|{tahap}"
+            if not (a <= lewat <= b) or kunci in sudah:
+                continue
+            sudah.add(kunci)
+            g = _btc_sejak(e["ts"])
+            ks = ""
+            try:
+                import qse_kompas as KP
+                k = KP.kompas(maks_umur=30)
+                u = k["usdt"]
+                ks = (f"USDT.D {'🔺 NAIK (uang ke tunai)' if u['naik'] else '🔻 TURUN (uang masuk kripto)' if u['turun'] else '➖ datar'}"
+                      f"  ·  kompas {k['ikon']} {k['status']}")
+            except Exception:
+                pass
+            ang = _angka(e)
+            if tahap == "R0":
+                out.append(f"⚡ <b>BERITA BARU RILIS: {nm}</b> {dampak(e['judul'], 'USD')}\n"
+                           + f"Rilis {jam_wib(e['ts'])}" + (f"  ·  {ang}" if ang else "") + "\n"
+                           + (f"BTC sejak rilis {g:+.2f}%\n" if g is not None else "") + (ks + "\n" if ks else "")
+                           + "Menit pertama paling liar. Robot kirim arah tembusan 15 menit setelah rilis.")
+            else:
+                arah = "" if g is None or abs(g) < 0.3 else ("NAIK" if g > 0 else "TURUN")
+                out.append(f"🧭 <b>15 MENIT SESUDAH {nm}</b>\n" + (f"BTC {g:+.2f}% sejak rilis. " if g is not None else "")
+                           + (f"Arah tembusan: <b>{arah}</b>. " if arah else "Belum ada tembusan jelas (gerak di bawah 0.3%). ")
+                           + (ks + ". " if ks else "")
+                           + "Info arah saja. Uji BTC 5 menit: arah 15 menit pertama lanjut 4 jam 71% di 2022-2024 tapi hanya 44% "
+                           "di 2025-2026, jadi robot tidak membuka posisi dari berita.")
+    if out:
+        c["rilis"] = list(sudah)[-200:]
+        _save(c)
     return out
 
 

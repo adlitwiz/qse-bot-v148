@@ -75,7 +75,7 @@ BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "🔎 <b>Cek Koin</b>: analisa lengkap koin apa pun\n"
            "📰 <b>Berita</b>: kabar terbaru dan yang viral 6 jam dalam satu pesan\n"
            "📈 <b>Laporan</b>: mingguan, evaluasi, uji mundur, laporan 4J\n"
-           "🪰 <b>Otak Lalat</b>: lapar, dopamin, serotonin, GABA, pola disukai dan dibenci, pilihan trade harian lalat\n"
+           "🪰 <b>Lalat Abdul</b>: lapar, dopamin, serotonin, GABA, pola disukai dan dibenci, pilihan trade harian lalat\n"
            "😴 <b>Mode Tidur</b>: posisi dijaga otomatis saat kamu tidur\n\n"
            "Perintah ketik lama tetap jalan untuk yang sudah hafal.")
 BANTUAN_SEMUA = BANTUAN
@@ -139,7 +139,7 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/slall", "/slsemua"):
         return SY.tutup_semua("cut loss")
     if cmd == "/tutup":
-        return SY.tutup(args)
+        return SY.tutup(args) + _sisa_posisi()
     if cmd == "/mode":
         import qse_strat as ST
         if args:
@@ -155,9 +155,9 @@ def balas(cmd, args, dari_main=False):
     if cmd == "/pindah":
         return SY.pindah(args)
     if cmd == "/tp":
-        return SY.tutup(args, "ambil profit")
+        return SY.tutup(args, "ambil profit") + _sisa_posisi()
     if cmd == "/sl":
-        return SY.tutup(args, "cut loss")
+        return SY.tutup(args, "cut loss") + _sisa_posisi()
     if cmd == "/tespin":
         ids = TG.send(["📌 <b>QSE v150 | TES PIN</b>\nKalau pesan ini tersemat, izin pin bot sudah benar."]) or []
         if not ids:
@@ -183,35 +183,45 @@ def balas(cmd, args, dari_main=False):
         # 3 Sniper S/R koin medali
         isi = SY.sinyal_jalur()
         try:
+            import qse_kompas as KP          # 9 Nov 2026: kompas yang sama dengan Cek BTC, di bawah judul
+            kp = KP.kompas()
+            if kp:
+                j1, _, sisa = isi.partition("\n")
+                isi = j1 + "\n" + KP.blok(kp, singkat=True) + "\n" + sisa
+        except Exception as ex:
+            print("[WARN] sinyal4j kompas", ex)
+        try:
             import qse_ditahan as DT
+            import qse_cuaca as CU
             now = time.time()
             kuat, tahan = [], []
             for k, nama, it in DT._sumber():
                 if now - it.get("t", 0) > 12 * 3600:
                     continue
-                lab = ("👑 COMBO RAJA" if it.get("combo_raja") else "💎 COMBO FIX" if it.get("combo_fix") else
-                       "🏆 COMBO EMAS" if it.get("combo_emas") else "")
-                try:
-                    import qse_strat as ST
-                    nl = ST.prioritas(ST.kunci_jalur(k), it)[0]
-                except Exception:
-                    nl = None
-                baris = f"• {it['sym']} {it['arah']} · {nama}" + (f" · {lab}" if lab else "") + f" · entry {it['entry']:.6g} SL {it['sl']:.6g}"
-                if lab or (isinstance(nl, (int, float)) and nl >= 9):
-                    kuat.append(baris + ("" if not it.get("otak_saring") else " · 🧠 ditahan otak"))
+                prio, nm_p = DT.prioritas_live(k, it)
+                cu = CU.NAMA[CU.jenis(k)].split(" ", 1)[1]
+                kl_ = DT.kelas(k, it, prio)[0]
+                baris = (f"• {it['sym']} {it['arah']} · {nama} · {cu}" + (f" · {nm_p}" if nm_p else "")
+                         + f" · {'🟦 UTAMA' if kl_ == 'UTAMA' else '🟨 RINGAN'} · entry {it['entry']:.6g} SL {it['sl']:.6g}")
+                if prio:
+                    kuat.append(baris)
                 elif it.get("otak_saring"):
                     tahan.append(baris)
             if kuat:
-                isi += "\n\n🔥 <b>SINYAL TERKUAT 12 JAM TERAKHIR</b> (combo raja, fix, emas, NILAI 9-10)\n" + "\n".join(kuat[:10])
+                isi += ("\n\n🔥 <b>SINYAL TERKUAT 12 JAM TERAKHIR</b> (combo raja, fix, emas, EMA Cross SHORT, BTC.D TURUN SHORT, "
+                        "NILAI 9-10, dikirim tanpa ditahan)\n" + "\n".join(kuat[:10]))
             if tahan:
-                isi += "\n\n🧠 <b>DITAHAN OTAK, tetap dicatat Jalur Live</b> (lot 0.1x, kartu lengkap sudah dikirim)\n" + "\n".join(tahan[:10])
+                isi += "\n\n🧠 <b>EKS-TAHANAN OTAK, tetap dikirim 🟨 KELAS RINGAN</b>\n" + "\n".join(tahan[:10])
         except Exception as ex:
             print("[WARN] sinyal4j kuat", ex)
         try:
+            import qse_gzh2 as GZ2
+            isi += "\n\n" + GZ2.teks()
+        except Exception as ex:
+            print("[WARN] sinyal4j gzh2", ex)
+        try:
             import qse_rencana as RC
-            sp, n_um = RC.blok_spesialis()          # koin medali di bagian ketiga, koin umum di balik tombol
-            if n_um:
-                sp += f"\n\n📂 {n_um} rencana lain (cadangan yang levelnya jauh dan koin umum uji -0.08R) ada di tombol Koin umum."
+            sp, _ = RC.blok_spesialis()          # koin medali di bagian ketiga
             isi += "\n\n" + sp
         except Exception as ex:
             print("[WARN] sinyal4j rencana", ex)
@@ -292,7 +302,12 @@ def balas(cmd, args, dari_main=False):
         return RC.teks(args[0] if args else "utama")
     if cmd in ("/gurita", "/octopus"):
         import qse_gurita as GR
-        return GR.teks()
+        try:
+            import qse_overmind as OM
+            om = OM.ringkas() + "\n\n"
+        except Exception:
+            om = ""
+        return om + GR.teks()
     if cmd in ("/lalat", "/otak"):
         import qse_lalat as LT
         return LT.perintah(args)
@@ -339,12 +354,29 @@ def balas(cmd, args, dari_main=False):
                 + ("" if SY._peng().get("pemilik") else "\n\nℹ️ Ketik /milikku supaya catatan trade lama jadi milik kamu. "
                    "Trade orang lain di grup tercatat terpisah."))
     if cmd in ("/bantuan", "/help", "/start"):
-        return BANTUAN_SEMUA if args and args[0] in ("SEMUA", "ALL", "LENGKAP") else BANTUAN
+        try:
+            import qse_overmind as OM
+            om = OM.ringkas() + "\n\n"
+        except Exception:
+            om = ""
+        return om + (BANTUAN_SEMUA if args and args[0] in ("SEMUA", "ALL", "LENGKAP") else BANTUAN)
     return ""
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "OTAK LALAT", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/bantuan": "INFO"}
+
+
+def _sisa_posisi():
+    """Daftar posisi aktif sesudah tutup, supaya layar status langsung terbarui (bug ARC 9 Nov)."""
+    try:
+        import qse_saya as SY
+        op = list(SY.lihat()["open"].values())
+        if not op:
+            return "\n\n📭 Posisi aktif kamu sekarang: kosong."
+        return "\n\n📋 Posisi aktif kamu sekarang: " + ", ".join(f"{v['sym'].replace('USDT', '')} {v['arah']}" for v in op[:10])
+    except Exception:
+        return ""
 
 
 def proses(cmds, dari_main=False):

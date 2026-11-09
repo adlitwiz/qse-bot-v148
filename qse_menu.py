@@ -16,14 +16,14 @@ VERSI = 5                 # naikkan kalau tata letak berubah, keyboard dikirim u
 UTAMA = [["📊 Status", "📡 Sinyal 4J", "₿ Cek BTC"],
          ["💼 Modal", "📝 Entry", "🎯 Kelola Posisi"],
          ["🔔 Alarm", "🧩 Jalur Sinyal", "🔎 Cek Koin"],
-         ["📰 Berita", "📈 Laporan", "🪰 Otak Lalat"],
+         ["📰 Berita", "📈 Laporan", "🪰 Lalat Abdul"],
          ["🐙 Otak Gurita", "😴 Mode Tidur", "❓ Info"]]
 # label -> perintah. None = buka sub menu inline
 LABEL = {"📊 Status": "/status", "📡 Sinyal 4J": "/sinyal4j", "₿ Cek BTC": "/cek BTC", "💼 Modal": None, "📝 Entry": None,
          "🎯 Kelola Posisi": None, "🔔 Alarm": None, "🧩 Jalur Sinyal": None, "🔎 Cek Koin": None,
-         "📰 Berita": "/berita", "📈 Laporan": None, "🪰 Otak Lalat": "/lalat", "🐙 Otak Gurita": "/gurita", "😴 Mode Tidur": "/tidur", "❓ Info": "/bantuan"}
+         "📰 Berita": "/berita", "📈 Laporan": None, "🪰 Lalat Abdul": "/lalat", "🐙 Otak Gurita": "/gurita", "😴 Mode Tidur": "/tidur", "❓ Info": "/bantuan"}
 # label lama v150 awal, tetap dikenali kalau keyboard lama masih tampil
-LAMA = {"🧠 Otak Lalat": "🪰 Otak Lalat", "Cek BTC": "₿ Cek BTC"}
+LAMA = {"🧠 Otak Lalat": "🪰 Lalat Abdul", "🪰 Otak Lalat": "🪰 Lalat Abdul", "Cek BTC": "₿ Cek BTC"}
 
 # sub menu inline: (teks tombol, data maks 64 byte). "c:/perintah" = jalankan, "t:/perintah" = minta ketik (petunjuk di TANYA),
 # "m:nama" = sub menu, "y:/perintah" = konfirmasi dulu
@@ -180,7 +180,8 @@ def _posisi_rows(uid, nama=""):
         if v.get("status") == "MENUNGGU":
             rows.append([("❌ Batal order", f"y:/batal {k}"), ("✏️ Ubah", f"t:/ubah {k}")])
         else:
-            rows.append([("💰 TP 50%", f"c:/tp {k} 50%"), ("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY"), ("✋ Tutup", f"y:/tutup {k}")])
+            rows.append([("💰 TP 50%", f"c:/tp {k} 50%"), ("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY")])
+            rows.append([("🏆 TP penuh", f"y:/tp {k} 100%"), ("✋ Tutup", f"y:/tutup {k}")])
     if not rows:
         rows.append([("📭 Belum ada posisi. Lihat sinyal", "c:/sinyal4j")])
     else:
@@ -193,6 +194,7 @@ def _modal_rows():
     return [[("✏️ Isi / ganti modal", "t:/modal")],
             [("⚙️ 3x", "c:/modal LEV 3"), ("5x", "c:/modal LEV 5"), ("10x", "c:/modal LEV 10"), ("20x", "c:/modal LEV 20")],
             [("💵 $50", "c:/modal ENTRY 50"), ("$100", "c:/modal ENTRY 100"), ("$150", "c:/modal ENTRY 150"), ("$200", "c:/modal ENTRY 200")],
+            [("🟨 Ringan $50", "c:/modal RINGAN 50"), ("$75", "c:/modal RINGAN 75"), ("$100", "c:/modal RINGAN 100"), ("✍️ Ringan lain", "t:/modal RINGAN")],
             [("✍️ Entry lain", "t:/modal ENTRY"), ("✍️ Leverage lain", "t:/modal LEV"), ("🤖 Entry otomatis", "c:/modal ENTRY 0")],
             [("🎚️ Risiko 0.5%", "c:/modal RISIKO 0.5"), ("1%", "c:/modal RISIKO 1"), ("2%", "c:/modal RISIKO 2")],
             [("📋 Detail slot dan rem", "c:/modal"), ("🔄 Segarkan", "m:💼 Modal")]]
@@ -259,10 +261,7 @@ def tombol_untuk(cmd, args, isi, uid=None, nama=""):
     if cmd in ("/status", "/milikku", "/punyaku"):
         extra = _posisi_rows(uid, nama)
     elif cmd in ("/sinyal4j", "/sinyal4", "/sinyal", "/scan", "/rencana"):
-        um = ("📂 Koin umum (uji -0.08R)", "c:/rencana UMUM")
-        if cmd == "/rencana" and args and str(args[0]).upper() in ("UMUM", "SEMUA"):
-            um = ("🏅 Kembali ke spesialis", "c:/rencana")
-        extra = [[um], [("🔄 Segarkan", f"c:{cmd}"), ("📝 Catat entry", "m:📝 Entry"), ("🪰 Pilihan lalat", "c:/lalat")]]
+        extra = [[("🔄 Segarkan", f"c:{cmd}"), ("📝 Catat entry", "m:📝 Entry"), ("🪰 Pilihan lalat", "c:/lalat")]]
     elif cmd in ("/cek", "/cekdetail", "/arah") and k:
         extra = [[("🔄 Segarkan", f"c:/cek {k}"), ("🧐 Detail", f"c:/cekdetail {k}")], [("🧭 Arah", f"c:/arah {k}"), ("📡 Sinyal 4J", "c:/sinyal4j")]]
     elif cmd == "/modal":
@@ -273,6 +272,20 @@ def tombol_untuk(cmd, args, isi, uid=None, nama=""):
         extra = [[("🔄 Segarkan", "c:/lalat"), ("🧬 Sinapsis lengkap", "c:/lalat SINAPSIS")], [("🍽️ Paksa cari makan", "c:/lalat BURU")],
                  [("⚡ Refleks masuk", "y:/lalat REFLEKS MASUK"), ("⚡ Refleks keluar", "y:/lalat REFLEKS KELUAR")],
                  [("🍽️ Lapar bertingkat nyala/mati", "y:/lalat LAPAR")]]
+    elif cmd == "/entry" and "TERCATAT" in (isi or ""):
+        import re
+        g = re.search(r"([A-Z0-9]+)USDT (LONG|SHORT)", isi)
+        try:
+            import qse_modal as MD
+            p = MD.profil(uid) or {}
+        except Exception:
+            p = {}
+        if g:
+            kd, ar = g.group(1), g.group(2)
+            u1, u2 = int(p.get("entry") or 150), int(p.get("ringan") or 100)
+            extra = [[(f"🟦 Utama {u1} USDT", f"c:/ubah {kd} {ar} USDT {u1}"), (f"🟨 Ringan {u2} USDT", f"c:/ubah {kd} {ar} USDT {u2}")],
+                     [("✍️ Isi USDT sendiri", f"t:/ubah {kd} {ar} USDT"), ("⚙️ Leverage", f"t:/ubah {kd} {ar} LEV")],
+                     [("🎯 Kelola Posisi", "m:🎯 Kelola Posisi"), ("📊 Status", "c:/status")]]
     elif cmd in ("/tp", "/tutup", "/modify", "/modif", "/sl", "/batal", "/entry", "/ubah", "/serok", "/tpall", "/slall"):
         extra = [[("🎯 Kelola Posisi", "m:🎯 Kelola Posisi"), ("📊 Status", "c:/status")]]
     return _inline(extra) if extra else None
@@ -312,6 +325,8 @@ def dari_tombol(cq):
     _api("answerCallbackQuery", callback_query_id=cq.get("id"), chat_id=None)
     jenis, isi = data[:1], data[2:]
     if jenis == "c":
+        if mid and isi.split(" ")[0] in ("/tutup", "/tp", "/sl", "/batal", "/tpall", "/slall") and "Yakin" in str((cq.get("message") or {}).get("text", "")):
+            _api("deleteMessage", message_id=mid)          # hapus pesan konfirmasi, status dikirim ulang oleh perintah
         return _cmd(isi)
     if jenis == "m":
         buka_sub(isi, mid, uid, nm)

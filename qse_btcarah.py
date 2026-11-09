@@ -145,6 +145,14 @@ def analisa():
             return "Data BTC dari Bybit belum bisa diambil. Coba lagi sebentar."
         tf[nm] = _teknik(df)
     rows = [f"<b>ARAH BTC</b>  ·  harga {fp(px, 0.1)}", ""]
+    # 0. KOMPAS PASAR (9 Nov 2026): satu sumber arah yang sama dengan gerbang sinyal robot, ditaruh paling atas
+    kp = None
+    try:
+        import qse_kompas as KP
+        kp = KP.kompas()
+        rows += [KP.blok(kp), ""]
+    except Exception as ex:
+        print("[WARN] kompas cek", ex)
 
     # 1. teknikal per timeframe
     ik = lambda x: "▲" if x > 0 else "▼" if x < 0 else "•"
@@ -316,6 +324,14 @@ def analisa():
         aksi += " Kalau ambil SHORT altcoin, pilih yang berlabel BTC.D TURUN."
     if oi.get("gerak"):
         aksi += " Peluang gerak besar 24 jam lebih tinggi dari biasa, pasang SL."
+    if kp:
+        # Jam-jam ini kompas yang memutuskan (sama dengan gerbang sinyal). Tebakan 24 jam lama tidak boleh melawan kompas.
+        if kp["blok_long"]:
+            akhir, aksi = f"{kp['ikon']} {kp['status']}", kp["aksi"]
+        elif kp["status"] in ("FOKUS LONG", "CONDONG LONG") and "TURUN" not in akhir:
+            akhir, aksi = f"{kp['ikon']} {kp['status']}", kp["aksi"]
+        elif kp["status"] in ("FOKUS LONG", "CONDONG LONG"):
+            akhir = f"🟡 CAMPUR: kompas {kp['status']}, tebakan 24 jam {akhir}"
     rows += [f"➡️ <b>ARAH AKHIR BTC: {akhir}</b>", f"🎯 {aksi}",
              "Ini arah, bukan sinyal entry. Entry tetap dari sinyal robot. Arah teknikal 4J saja tidak bisa menebak 1 sampai 3 hari "
              "(uji 49 sampai 55%, sama dengan acak)."]

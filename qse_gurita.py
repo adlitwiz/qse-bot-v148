@@ -21,6 +21,7 @@ Arsitektur dari fakta otak gurita (Octopus vulgaris):
 Gurita MENAMBAH sinyal (buru): sinyal 8 jalur yang ditahan robot tapi didukung 3+ lengan lain. Sinyal jalur, combo, dan lalat
 tetap semua jalan. Uji: riset/upgrade/run_v158_gurita.py (penyaring, QC 49) dan run_v158_gurita3.py (penambah, QC 50).
 State: STATE_DIR/gurita.json."""
+import qse_modal as MD          # kelas margin di kartu (9 Nov 2026)
 import json
 import math
 import os
@@ -280,14 +281,14 @@ def buru(o, d):
         status = ("✅ AKTIF" if rp["aktif"] else f"🧪 UJI KERTAS (rapor {rp['n']}/{RAPOR_N}, WR {rp['wr'] * 100:.0f}%)")
         try:
             import qse_modal as MD
-            lotb = MD.baris_lot(px, p["sl"], kali=lot)
+            lotb = MD.baris_lot(px, p["sl"], kelas="UTAMA" if lot >= 0.25 else "RINGAN")
         except Exception:
             lotb = ""
         out.append(f"🐙 <b>SINYAL GURITA: {p['sym']} {p['arah']} MARKET</b>  ·  {status}\n"
                    f"🔗 Cincin saraf: {p['combo']} lengan setuju ({k} dan {n_combo} jalur lain). Sinyal ini ditahan robot v150, "
                    f"gurita mengambilnya sebagai makanan tambahan.\n"
                    + SY.blok_salin(px, p["sl"], tp1, tp2, "MARKET", t, sym=p["sym"], arah=p["arah"])
-                   + f"\n📲 TP1 tutup 50% lalu SL ke entry, sisa ke TP2. Paling lama {TAHAN_JAM} jam. Lot {lot:g}x."
+                   + f"\n📲 TP1 tutup 50% lalu SL ke entry, sisa ke TP2. Paling lama {TAHAN_JAM} jam. {MD.teks_kelas(1.0 if lot >= 0.25 else 0.1)}."
                    + ("\n" + lotb if lotb else ""))
     d["pick"] = pick[-400:]
     return out
@@ -575,14 +576,14 @@ def kartu_8lengan(d, pr, s, arah, r):
     status = "✅ AKTIF" if rp["aktif"] else f"🧪 UJI KERTAS (rapor {rp['n']}/{RAPOR_N}, WR {rp['wr'] * 100:.0f}%)"
     try:
         import qse_modal as MD
-        lotb = MD.baris_lot(e, sl, kali=lot)
+        lotb = MD.baris_lot(e, sl, kelas="UTAMA" if rp["aktif"] else "RINGAN")
     except Exception:
         lotb = ""
     return (f"🐙 <b>SINYAL GURITA 8 LENGAN: {s} {arah} MARKET</b>  ·  {status}\n"
             f"🦑 Lengan setuju: {', '.join(NAMA_LENGAN[x] for x in lg)}  ·  rezim {r['rezim']}\n"
             f"🔮 Peta 3 candle 4J ke depan (analog 50 potongan memori): peluang TP1 sebelum SL {pc * 100:.0f}%, rata hasil analog {pr:+.2f}R\n"
             + SY.blok_salin(e, sl, tp1, tp2, "MARKET", SY.tick_of(None, e), sym=s, arah=arah)
-            + f"\n📲 SL 1.5 ATR, TP1 1 ATR tutup 50% lalu SL ke entry, TP2 2 ATR, maks 48 jam. Lot {lot:g}x."
+            + f"\n📲 SL 1.5 ATR, TP1 1 ATR tutup 50% lalu SL ke entry, TP2 2 ATR, maks 48 jam. {'🟦 KELAS UTAMA' if rp['aktif'] else '🟨 KELAS RINGAN'}."
             + ("\n" + lotb if lotb else ""))
 
 
@@ -697,7 +698,7 @@ def teks():
         on = [k.split("|", 1)[1] for k, v in ed.items() if k.startswith(li + "|") and v]
         rows.append(f"• Lengan {li[1]} {nm}: {akt.get(li, 0)} koin  ·  " + (f"aktif di {', '.join(on)}" if on else "dibisukan (rugi di latih atau live)"))
     pk = [p for p in d.get("pick", []) if p.get("R") is None]
-    rows.append(f"\n🍽️ <b>Sinyal gurita</b>: " + ("✅ AKTIF lot 0.25x" if rp["aktif"] else "🧪 UJI KERTAS lot 0.1x")
+    rows.append(f"\n🍽️ <b>Sinyal gurita</b>: " + ("✅ AKTIF, kelas utama" if rp["aktif"] else "🧪 UJI KERTAS, kelas ringan")
                 + f". Rapor {rp['n']} terakhir WR {rp['wr'] * 100:.0f}%, total {rp['tot']:+.2f}R. Aktif kalau {RAPOR_N} sinyal WR >= "
                 f"{RAPOR_WR * 100:.0f}% dan total positif. Jalan sekarang {len(pk)}.")
     pt = d.get("peta") or []

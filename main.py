@@ -1785,7 +1785,7 @@ def _tanda_baris(r, x):
     ok, tk, ik, lot = SY.boleh_ikut(jl, x["arah"], x.get("skor"))
     rs = SY.risiko_sekarang(x["arah"], bool(x.get("longgar")))
     lot_n = SY.lot_angka(lot) * (0.5 if rs else 1.0)
-    return (f"{ik if ok else '⛔'} <b>{'BISA DIIKUTI' if ok else 'TIDAK DISARANKAN'}</b>  ·  {tk}  ·  lot {lot_n:g}x"
+    return (f"{ik if ok else '⛔'} <b>{'BISA DIIKUTI' if ok else 'TIDAK DISARANKAN'}</b>  ·  {tk}  ·  {MD.teks_kelas(lot_n)}"
             + (f"\n⚠️ {TG.e('; '.join(rs))}" if rs else ""))
 
 
@@ -1793,7 +1793,7 @@ def _tanda(r, s):
     """Tanda bukti singkat untuk baris ringkasan."""
     j = "saran 1J" if r.get("tf") == "60" else "saran utama"
     tk, ik, lot = SY.tingkat_bukti(j, s["arah"], s.get("skor"))[:3]
-    return f"{ik} {tk} lot {lot}"
+    return f"{ik} {tk} {MD.teks_kelas(lot)}"
 
 
 def _kelas(r, x, tambahan=None, konteks=True):
@@ -1832,12 +1832,12 @@ def _kartu(no, r, x, jalur, status="", led=None, kenapa=None, cara=None, catatan
                 + f"\n   {TG.e(SY.bukti_pendek(jalur, arah, skor))}")
     risiko = SY.risiko_sekarang(arah, bool(x.get("longgar")))
     lot_n = SY.lot_angka(lot) * (0.5 if risiko else 1.0) * MK.kali_lot(arah)
-    lot_txt = f"{lot_n:g}x lot normal"
+    lot_txt = MD.teks_kelas(lot_n)
     head = "BISA DIIKUTI" if ok else "TIDAK DISARANKAN"
     rows = [SY.GARIS,
             f"{IKON.get(arah, '')} <b>{no}. {TG.e(sym)} {arah}</b>  ·  {nama}" + ("" if nama.endswith("J") else f" {tf}")
             + ("  ·  🌟 GOLDEN" if x.get("golden") else ""),
-            f"{ik if ok else '⛔'} <b>{head}</b>  ·  {tk}  ·  lot <b>{lot_txt}</b>",
+            f"{ik if ok else '⛔'} <b>{head}</b>  ·  {tk}  ·  <b>{lot_txt}</b> (margin dan leverage di baris bawah)",
             SY.GARIS,
             _tabel(x, t, r['symbol'], x['arah'])]
     k = list(kenapa or [])
@@ -1853,9 +1853,9 @@ def _kartu(no, r, x, jalur, status="", led=None, kenapa=None, cara=None, catatan
     k.append("Bukti: " + TG.e(SY.bukti_pendek(jalur, arah, skor)))
     rows.append("💡 <b>Kenapa</b>\n" + "\n".join(f"• {z}" for z in k))
     if risiko:
-        rows.append("⚠️ <b>Waspada</b> (lot sudah dipotong setengah)\n" + "\n".join(f"• {TG.e(z)}" for z in risiko))
+        rows.append("⚠️ <b>Waspada</b> (ukuran sudah dipotong setengah)\n" + "\n".join(f"• {TG.e(z)}" for z in risiko))
     if MK.kali_lot(arah) < 1:
-        rows.append("⚠️ Tekanan makro AS untuk LONG, lot dipotong setengah")
+        rows.append("⚠️ Tekanan makro AS untuk LONG, ukuran dipotong setengah")
     if cara is None:
         key = "%s|%s|%s|%s" % (sym, r["tf"], x["pola"], arah)
         it = (led or {}).get("open", {}).get(key)
@@ -2308,7 +2308,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             for sym, arah, ket, it_, kartu_, lv in ring:
                 pr = ST_.prioritas(kunci, it_)
                 ring_rb.append((sym, arah, pendek, ik, lot, ket, pr, ST_.label_nama(it_), lv))
-                kartu_rb.append((pr, f"{GARIS}\n🔹 <b>{nama}</b>  ·  {ik} {tk}  ·  lot {lot}  ·  PF jalur {pr[1]:.2f}\n" + kartu_))
+                kartu_rb.append((pr, f"{GARIS}\n🔹 <b>{nama}</b>  ·  {ik} {tk}  ·  {MD.teks_kelas(lot)}  ·  PF jalur {pr[1]:.2f}\n" + kartu_))
         try:
             import qse_ichimoku as IC
             d_ = IC.lihat()["open"]
@@ -2351,7 +2351,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         for no_, (sym, arah, nama, ik, lot, ket, pr, lb, lv) in enumerate(ring_rb, 1):
             rows.append(f"{ST_m.medali(no_)} <b>{no_}. {TG.e(sym)} {arah}</b>  ·  "
                         + (f"<b>{ST_m.kelas(pr[0]).split(' (')[0]}</b>  ·  " if ST_m.kelas(pr[0]) else "") + f"{TG.e(nama)}  ·  "
-                        f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  lot {lot}")
+                        f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  {MD.teks_kelas(lot)}")
             lvl = lv.get("blok") or _baris_level(lv)          # blok sama dengan kartu: tekan lama untuk salin, tempel setelah /entry
             if lvl:
                 rows.append(lvl)
@@ -2359,7 +2359,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         for jl, r, x, _, _ in ikut:
             ok, tk, ik, lot = SY.boleh_ikut(jl, x["arah"], x.get("skor"))
             rows.append(f"{IKON.get(x['arah'], '')} {TG.e(r['symbol'])} {x['arah']}  ·  {SY.NAMA_JALUR.get(jl, jl)}  ·  "
-                        f"{x['order']}  ·  {ik} lot {lot}")
+                        f"{x['order']}  ·  {ik} {MD.teks_kelas(lot)}")
         try:
             rows += MD.baris_slot()          # batas 5 posisi dan risiko SL dihitung per orang dari entry masing-masing
         except Exception as ex:
@@ -2438,8 +2438,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         try:
             import qse_lalat as LT          # v150: ringkasan lalat bionik di laporan 4 jam
             _lt = LT.state()
-            out.append(f"{GARIS}\n🪰 <b>LALAT BIONIK</b>: {LT.mood(_lt)}  ·  lapar {_lt['lapar']:.0f}%  ·  DA {_lt['DA']:.0f}  ·  "
-                       f"5-HT {_lt['SER']:.0f}  ·  GABA {_lt['GABA']:.0f}  ·  posisi {len(_lt['open'])}/2. Detail di tombol 🪰 Otak Lalat."
+            out.append(f"{GARIS}\n🪰 <b>LALAT ABDUL</b>: {LT.mood(_lt)}  ·  lapar {_lt['lapar']:.0f}%  ·  DA {_lt['DA']:.0f}  ·  "
+                       f"5-HT {_lt['SER']:.0f}  ·  GABA {_lt['GABA']:.0f}  ·  posisi {len(_lt['open'])}/2. Detail di tombol 🪰 Lalat Abdul."
                        + ("\n\n" + LT.pilihan_teks() if _lt["open"] else ""))
         except Exception as ex:
             print("[WARN] lalat laporan", ex)

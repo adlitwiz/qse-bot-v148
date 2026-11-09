@@ -1234,7 +1234,7 @@ def _kartu(v, tr, SY, tick=None, d=None):
     _, ms, kl = bagian(v["spec"])
     lb = m.get("label") or label_paruh()
     rows = [f"{'🟢' if L else '🔴'} <b>{tr['sym']} {arah}</b>  ·  {'✅ TERBUKTI LAB' if v['status'] == 'TERBUKTI LAB' else '🧪 KANDIDAT'}"
-            f"  ·  lot {lot}" + ("  ·  ⭐ UTAMA" if kel == "UTAMA" else ""),
+            f"  ·  {__import__('qse_modal').teks_kelas(lot)}" + ("  ·  ⭐ UTAMA" if kel == "UTAMA" else ""),
             f"🏷️ Teknik: {html.escape(nama(v['spec']))}",
             baris_rapor(d or _baca(), tr["id"]) + f" {why_kel}.",
             f"📐 Cara masuk: {html.escape(ms)}.",
