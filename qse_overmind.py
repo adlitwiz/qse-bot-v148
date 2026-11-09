@@ -1,14 +1,18 @@
-"""QSE v150 OVERMIND (9 Nov 2026, permintaan user). Dewan hakim di atas agen Gurita, Lalat Abdul, Jalur v150, Sektor, dan GZH pantulan.
-Berjalan sendiri tiap hari 00:05 WIB di VPS (dipanggil listener tiap menit, kerja sekali sehari).
-1. Rapor agen: 20 trade selesai terakhir tiap agen (WR, total R). Agen dengan WR tertinggi jadi PEMIMPIN.
-   Bobot lot: pemimpin 1x, agen dengan 20 trade terakhir minus 0.5x sampai kembali positif. Bobot hanya dipakai kartu kalau env
-   QSE_OVERMIND_LOT=1, karena pengalokasian dinamis ini belum bisa diuji mundur (catatan live agen baru beberapa minggu).
-2. Evolusi koin 14 hari: koin x jalur x arah yang 14 hari terakhir live-nya naik kelas (PF rekam jejak gabungan backtest + live >= 1.3)
-   atau turun kelas dicatat. profil_koin.json sendiri sudah otomatis menggabungkan catatan live (qse_otak.profil), jadi tidak ditimpa.
-3. Calon combo baru: pasangan jalur yang menunjuk koin dan arah sama dalam 8 jam dan menang >= 75% dengan minimal 15 kejadian
-   (90 hari) dicatat sebagai CALON. Tidak langsung live: uji v161 menunjukkan memilih dari sampel kecil (koin x teknik WR >= 68%)
-   jatuh ke WR 63% dan -0.04R di data berikutnya. Calon naik live hanya lewat uji data lokal di riset.
-4. Ringkasan tampil di atas menu Otak Gurita dan Info."""
+"""QSE v150 OVERMIND (9 Nov 2026, QC 57, uji jalan-maju riset/upgrade/hasil_v164_overmind.txt). Dewan hakim di atas agen Gurita,
+Lalat Abdul, Jalur v150, Sektor, dan GZH pantulan. Jalan sendiri tiap hari 00:05 WIB di VPS.
+Uji pakai hasil asli 8 jalur v150 2021-2026, hasil trade baru dianggap diketahui 2 hari sesudah sinyal (tanpa intip masa depan):
+1. KELAS A KOIN. Usulan awal jendela 14 hari GAGAL: Kelas A 14 hari 2025-2026 rata -0.019R (PF 0.93) vs lainnya +0.072R,
+   jendela 30 hari juga lebih jelek. Jendela 365 hari LULUS di dua periode: 2023-2024 +0.086R PF 1.33 vs +0.053R PF 1.20,
+   2025-2026 +0.100R PF 1.37 vs +0.059R PF 1.22. DIPASANG: tiap malam Kelas A = koin x teknik x arah dengan sinyal selesai
+   365 hari terakhir minimal 3 dan WR >= 70%. Koin yang naik ke Kelas A dan yang dibuang dilaporkan. Kartu menampilkan label Kelas A.
+2. DEWAN AGEN (8 jalur sebagai agen). Jalur yang 20 trade terakhirnya minus: 2023-2024 rata -0.029R vs normal +0.167R,
+   2025-2026 +0.038R vs +0.154R. Bobot 0.5x untuk jalur minus menaikkan R per unit risiko di dua periode
+   (+0.0615 -> +0.0934 dan +0.0711 -> +0.0846). DIPASANG: kartu jalur yang sedang minus turun ke KELAS RINGAN sampai 20 trade
+   terakhirnya kembali positif. Pemimpin WR tidak lebih bagus dari jalur normal, jadi tidak diberi tambahan.
+   Lalat, gurita, sektor, GZH: rapor saja (catatan live belum cukup untuk diuji).
+3. COMBO GENETIK GAGAL: pasangan jalur WR >= 75% (n >= 15, 90 hari) yang dipromosikan tiap bulan, bulan berikutnya
+   2023-2024 rata -0.083R PF 0.68, 2025-2026 -0.103R PF 0.67 (lebih jelek dari semua pasangan). Calon hanya dilaporkan, tidak live.
+4. Ringkasan di atas menu Otak Gurita dan Info. Matikan aksi kelas: QSE_OVERMIND_LOT=0."""
 import json
 import os
 import time
@@ -141,13 +145,81 @@ def calon_combo(hasil=None, hari=90, n_min=15, wr_min=75.0):
     return sorted(out, key=lambda x: -x["wr"])[:5]
 
 
+def _seri(now=None):
+    """Semua hasil jalur: list (sym, jalur, arah, t detik sinyal, R). Riwayat profil_koin.json + catatan live sesudahnya."""
+    import qse_otak as O
+    d = O._profil_data()
+    rows = [(k.split("|")[0], k.split("|")[1], k.split("|")[2], t / 1000, float(r)) for k, v in d.get("sinyal", {}).items() for t, r in v]
+    try:
+        import qse_strat as ST
+        for c in O._ledger():
+            tt = float(c.get("selesai") or c["t"])
+            if tt * 1000 > d.get("akhir_ms", 0) and c.get("sym"):
+                rows.append((c["sym"], c.get("jalur"), c.get("arah"), float(c["t"]), float(ST.r_hasil(c))))
+    except Exception as ex:
+        print("[WARN] overmind seri live", ex)
+    return rows
+
+
+def kelas_a(rows=None, now=None, hari=365, n_min=3, wr_min=0.70):
+    """Set 'SYM|jalur|ARAH' Kelas A: sinyal yang hasilnya sudah diketahui (2 hari) dalam 365 hari terakhir n >= 3, WR >= 70%."""
+    now = now or time.time()
+    rows = _seri() if rows is None else rows
+    g = {}
+    for s_, j, a, t, r in rows:
+        if now - hari * 86400 <= t + 2 * 86400 < now:
+            g.setdefault(f"{s_}|{j}|{a}", []).append(r)
+    return {k for k, v in g.items() if len(v) >= n_min and sum(1 for x in v if x > 0) / len(v) >= wr_min}
+
+
+def jalur_minus(rows=None, now=None):
+    """Jalur yang 20 trade terakhir (hasil sudah diketahui) totalnya negatif dan bukan pemimpin WR."""
+    now = now or time.time()
+    rows = _seri() if rows is None else rows
+    per = {}
+    for s_, j, a, t, r in sorted(rows, key=lambda x: x[3]):
+        if t + 2 * 86400 < now:
+            per.setdefault(j, []).append(r)
+    last = {j: v[-20:] for j, v in per.items() if len(v) >= 20}
+    if not last:
+        return {}, None
+    wr = {j: sum(1 for x in v if x > 0) / len(v) for j, v in last.items()}
+    pem = max(wr, key=wr.get)
+    info = {j: dict(wr=round(wr[j] * 100, 1), tot=round(sum(v), 2), minus=bool(sum(v) < 0 and j != pem)) for j, v in last.items()}
+    return info, pem
+
+
+def kelas_jalur(jalur):
+    """(True, alasan) kalau dewan menurunkan jalur ini ke KELAS RINGAN malam tadi."""
+    if os.environ.get("QSE_OVERMIND_LOT", "1") != "1":
+        return False, ""
+    j = str(jalur).replace("saran ", "")
+    x = (_baca().get("jalur") or {}).get(j)
+    if x and x.get("minus"):
+        return True, f"🧬 Dewan Overmind: jalur ini 20 trade terakhir {x['tot']:+.1f}R (WR {x['wr']:.0f}%), turun ke kelas ringan sampai positif lagi"
+    return False, ""
+
+
+def label_kelas_a(sym, jalur, arah):
+    k = f"{sym}|{jalur}|{arah}"
+    return "🏅 KELAS A (365 hari: minimal 3 sinyal, WR 70%+)" if k in set(_baca().get("kelas_a") or []) else ""
+
+
 def evolusi():
+    lama = _baca()
     hasil = _hasil_agen()
     rap = rapor_agen(hasil)
-    naik, turun = evolusi_koin()
+    rows = _seri()
+    ka = kelas_a(rows)
+    ka_lama = set(lama.get("kelas_a") or [])
+    nm = lambda k: f"{k.split('|')[0].replace('USDT', '')} {k.split('|')[1]} {k.split('|')[2]}"
+    naik = [nm(k) for k in sorted(ka - ka_lama)] if ka_lama else []
+    turun = [nm(k) for k in sorted(ka_lama - ka)]
+    jl, pem = jalur_minus(rows)
     cb = calon_combo(hasil)
     d = dict(t=time.time(), tanggal=time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 3600)), rapor=rap,
-             naik=naik[:10], turun=turun[:10], combo=cb)
+             naik=naik[:10], n_naik=len(naik), turun=turun[:10], n_turun=len(turun), kelas_a=sorted(ka), combo=cb,
+             jalur=jl, pemimpin_jalur=pem)
     _tulis(d)
     return d
 
@@ -155,6 +227,11 @@ def evolusi():
 def jalankan(now=None):
     """Tiap menit dari listener. Sekali sehari antara 00:05 dan 00:20 WIB. Return pesan atau ''."""
     now = now or time.time()
+    if not _baca():          # pertama kali jalan sesudah deploy: isi dewan dan Kelas A tanpa menunggu 00:05
+        try:
+            evolusi()
+        except Exception as ex:
+            print("[WARN] overmind awal", ex)
     w = time.gmtime(now + 7 * 3600)
     hari = time.strftime("%Y-%m-%d", w)
     if not (w.tm_hour == 0 and 5 <= w.tm_min <= 20) or _baca().get("tanggal") == hari:
@@ -171,11 +248,17 @@ def ringkas(d=None):
     for x in d.get("rapor", []):
         rows.append(f"{'👑' if x['pemimpin'] else '•'} {x['agen']}: {x['n']} trade terakhir, WR {x['wr']:.0f}%, {x['tot']:+.2f}R"
                     + (f", lot dewan {x['lot']:g}x" if x["lot"] != 1 else ""))
-    rows.append("⬆️ Naik kelas tadi malam: " + (", ".join(d.get("naik") or []) or "belum ada"))
-    rows.append("⬇️ Dibuang tadi malam: " + (", ".join(d.get("turun") or []) or "belum ada"))
+    jl = d.get("jalur") or {}
+    if jl:
+        rows.append("🧠 Jalur v150 (20 trade terakhir): " + ", ".join(
+            f"{'👑 ' if j == d.get('pemimpin_jalur') else ''}{j} WR {x['wr']:.0f}% {x['tot']:+.1f}R{' 🟨 RINGAN' if x['minus'] else ''}"
+            for j, x in sorted(jl.items(), key=lambda kv: -kv[1]["wr"])))
+    rows.append(f"🏅 Kelas A (365 hari): {len(d.get('kelas_a') or [])} kombinasi koin x teknik x arah")
+    rows.append("⬆️ Naik ke Kelas A tadi malam: " + (", ".join(d.get("naik") or []) or "belum ada")
+                + (f" (+{d['n_naik'] - 10} lagi)" if d.get("n_naik", 0) > 10 else ""))
+    rows.append("⬇️ Dibuang dari Kelas A: " + (", ".join(d.get("turun") or []) or "belum ada")
+                + (f" (+{d['n_turun'] - 10} lagi)" if d.get("n_turun", 0) > 10 else ""))
     if d.get("combo"):
-        rows.append("🧪 Calon combo baru (belum live, perlu uji data lokal): "
+        rows.append("🧪 Calon combo baru (tidak live, uji combo genetik PF 0.67): "
                     + "; ".join(f"{c['nama']} WR {c['wr']:.0f}% n {c['n']}" for c in d["combo"]))
-    if os.environ.get("QSE_OVERMIND_LOT", "0") != "1":
-        rows.append("Bobot lot dewan: info saja (nyalakan dengan QSE_OVERMIND_LOT=1).")
     return "\n".join(rows)

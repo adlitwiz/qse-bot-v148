@@ -142,6 +142,13 @@ def kelas(k, it, prio=None):
                 return "RINGAN", "LONG saat kompas merah"
         except Exception:
             pass
+    try:
+        import qse_overmind as OM
+        r_, why_ = OM.kelas_jalur(k)
+        if r_:
+            return "RINGAN", why_
+    except Exception:
+        pass
     pr = it.get("profil") or {}
     lab_kuat = it.get("combo_raja") or it.get("combo_fix") or it.get("combo_emas")
     if k == "ema_short" and not lab_kuat and (pr.get("n", 0) < 10):

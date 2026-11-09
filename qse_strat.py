@@ -1139,6 +1139,10 @@ def kartu(k, no, it, a):
     try:
         import qse_kompas as KP          # 9 Nov 2026: LONG melawan kompas merah, lot 0.5x
         kk, kp_teks = KP.label(it["arah"])
+        import qse_overmind as OM          # QC 57: alasan kelas ringan dari dewan
+        r_, why_ = OM.kelas_jalur(k)
+        if r_:
+            kp_teks = (kp_teks + "\n" if kp_teks else "") + why_
         if kk != 1.0:
             lot_b = "0.2x"          # kelas ringan
     except Exception:

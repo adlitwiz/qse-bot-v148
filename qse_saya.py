@@ -81,8 +81,60 @@ def _path_uid(uid):
     return os.path.join(STATE_DIR, f"saya_{uid}.json")
 
 
+_KEMBAR = {"t": 0.0}
+
+
+def gabung_kembar():
+    """10 Nov 2026: dua catatan dengan nama sama beda huruf besar/kecil (Adli dan adli) digabung ke catatan yang paling banyak
+    trade-nya. Posisi jalan dan riwayat dipindah, file lama disimpan sebagai .digabung. Return list (dari, ke)."""
+    p = _peng()
+    uids = [str(p["pemilik"]) if p.get("pemilik") else ""]
+    for f in sorted(glob.glob(os.path.join(STATE_DIR, "saya_*.json"))):
+        u = os.path.basename(f)[5:-5]
+        if u and u not in uids:
+            uids.append(u)
+    grup = {}
+    for u in uids:
+        grup.setdefault(str(nama_pengguna(u)).strip().lower(), []).append(u)
+    hasil = []
+    for nm, us in grup.items():
+        if len(us) < 2 or nm in ("", "pemilik"):
+            continue
+        isi = {u: _baca(_path_uid(u)) for u in us}
+        utama = max(us, key=lambda u: (len(isi[u].get("open", {})) + len(isi[u].get("closed", [])),
+                                       str(nama_pengguna(u))[:1].isupper()))
+        d0 = isi[utama]
+        for u in us:
+            if u == utama:
+                continue
+            d1 = isi[u]
+            for k, it in d1.get("open", {}).items():
+                kk = k if k not in d0["open"] else f"{k}_g{u}"
+                d0["open"][kk] = it
+            d0["closed"] = sorted(d0.get("closed", []) + d1.get("closed", []), key=lambda c: c.get("closed_ts") or 0)
+            src = _path_uid(u)
+            try:
+                os.replace(src, src + ".digabung")
+            except Exception as ex:
+                print("[WARN] gabung kembar", ex)
+            hasil.append((u, utama))
+        if hasil:
+            path = _path_uid(utama)
+            with open(path + ".tmp", "w") as f:
+                json.dump(d0, f)
+            os.replace(path + ".tmp", path)
+    return hasil
+
+
 def daftar_pengguna():
-    """Semua pemilik catatan: pemilik saya.json ('' kalau belum ada yang /milikku) lalu tiap saya_<id>.json."""
+    """Semua pemilik catatan: pemilik saya.json ('' kalau belum ada yang /milikku) lalu tiap saya_<id>.json.
+    Nama kembar beda huruf besar/kecil digabung dulu (gabung_kembar)."""
+    if time.time() - _KEMBAR["t"] > 600:
+        _KEMBAR["t"] = time.time()
+        try:
+            gabung_kembar()
+        except Exception as ex:
+            print("[WARN] gabung kembar", ex)
     p = _peng()
     out = [str(p["pemilik"]) if p.get("pemilik") else ""]
     for f in sorted(glob.glob(os.path.join(STATE_DIR, "saya_*.json"))):
@@ -576,7 +628,7 @@ def kelas_setup(arah, skor=None, wr=None, rr2=None, rapor=None, golden=False, lo
         risiko.append("setup lemah")          # saran 4J: uji 5 tahun, skor 55 ke bawah justru lebih baik
     risiko += tambahan or []
     if risiko:
-        return "BERISIKO", "🟠", "; ".join(risiko), "0.25x sampai 0.5x lot, atau lewati"
+        return "BERISIKO", "🟠", "; ".join(risiko), "0.2x sampai 0.5x lot, atau lewati"
     if wr is not None and wr < 45 and (rr2 or 0) >= 2:
         return ("HIGH RISK HIGH RETURN", "🎲", f"WR sekitar {wr:.0f}%, target sampai {rr2:.1f}R, sering rugi kecil dan sesekali untung besar",
                 "1x lot, siap rugi beruntun" if jalur and tingkat_bukti(jalur, arah, skor)[0].startswith("TERBUKTI")
@@ -925,6 +977,12 @@ NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadang
 def boleh_ikut(jalur, arah=None, skor=None):
     """Return (boleh, tingkat, ikon, lot). Boleh diikuti = TERBUKTI, TERBUKTI LIVE, atau SEDANG DIUJI."""
     tk, ik, lot, _, _ = tingkat_bukti(jalur, arah, skor)
+    try:
+        import qse_overmind as OM          # QC 57: jalur yang 20 trade terakhirnya minus -> kelas ringan
+        if OM.kelas_jalur(jalur)[0]:
+            lot = "0.2x"
+    except Exception:
+        pass
     return tk in IKUT, tk, ik, lot
 
 
@@ -975,7 +1033,7 @@ def lot_angka(lot):
     try:
         return float(str(lot).split("x")[0].replace(",", "."))
     except Exception:
-        return 0.25
+        return 0.2
 
 
 def baris_bukti(jalur, arah=None, skor=None):

@@ -67,6 +67,13 @@ def baris(k, it):
     t = f"🌦 Cuaca: <b>{NAMA[j]}</b> ({KELUAR[j]})"
     if e is not None:
         t += f"  ·  koin sekarang {kd} (ER {e:.2f})"
+    try:
+        import qse_overmind as OM
+        ka = OM.label_kelas_a(it["sym"], k, it["arah"])
+        if ka:
+            t += f"\n{ka}"
+    except Exception:
+        pass
     if pr:
         src = f"gabungan {pr['gabungan']} sinyal semua koin" if pr.get("gabungan") else f"{pr['n']} sinyal koin ini"
         t += f"\n🏅 Kelas koin {kl or '-'}  ·  rekam jejak teknik ini: WR {pr['wr']:.0f}%, PF {pr['pf']:.2f} ({src})"

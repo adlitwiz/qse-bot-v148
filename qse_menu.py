@@ -239,7 +239,7 @@ _RX_PRE = re.compile(r"<pre>(.*?)</pre>", re.S)
 _RX_JUDUL = re.compile(r"^\s*([A-Z0-9]{2,20}USDT)\s+(LONG|SHORT)", re.M)
 
 
-def baris_salin(teks, maks=6):
+def baris_salin(teks, maks=8):
     """Tombol 📋 Salin Setup untuk tiap blok <pre> berjudul 'KOINUSDT LONG/SHORT'. Sekali tekan, teks setup tersalin."""
     rows, sudah = [], set()
     for blk in _RX_PRE.findall(teks or ""):

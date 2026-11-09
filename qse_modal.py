@@ -486,8 +486,10 @@ def lev_saran(sl_pct):
 
 
 def kelas_dari(kali):
-    """Peta angka lama ke kelas: 0.5x ke atas = UTAMA, di bawahnya = RINGAN."""
-    return "UTAMA" if (kali or 0) >= 0.5 else "RINGAN"
+    """Peta angka lama ke kelas (10 Nov 2026, bug sinkron ringkasan vs kartu): 0.25x ke atas = UTAMA, di bawahnya = RINGAN.
+    Ukuran yang dipotong setengah karena risiko, makro, atau akhir pekan (0.5x -> 0.25x) tetap UTAMA. RINGAN hanya dari keputusan
+    kelas: 0.2x (dewan Overmind, kompas merah, eks-tahanan otak, sinyal belum terbukti) dan 0.1x."""
+    return "UTAMA" if (kali or 0) >= 0.25 else "RINGAN"
 
 
 def _baris_lot_netral(sl_pct, kelas, lev=None):

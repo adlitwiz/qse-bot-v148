@@ -184,9 +184,11 @@ def send(blocks, token=None, chat_id=None, markup=None):
     if cur.strip():
         msgs.append(cur)
     ids = []
+    semua = "\n".join(msgs)
     for q, m in enumerate(msgs):
         data = {"chat_id": chat_id, "text": m, "parse_mode": "HTML", "disable_web_page_preview": True}
-        mk = _markup(m, markup if q == len(msgs) - 1 else None, q == len(msgs) - 1)
+        # 10 Nov: potongan terakhir membawa tombol Salin Setup semua koin di pesan (dulu hanya koin di potongan itu)
+        mk = _markup(semua if (q == len(msgs) - 1 and len(msgs) > 1) else m, markup if q == len(msgs) - 1 else None, q == len(msgs) - 1)
         if mk:
             data["reply_markup"] = json.dumps(mk, ensure_ascii=False)
         for k in range(4):

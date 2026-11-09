@@ -2341,8 +2341,16 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             sepi.append(f"{n_sembunyi} sinyal nilai di bawah 8 disembunyikan otomatis")
         for no_, (pr, kt) in enumerate(kartu_rb, 1):
             robot_blok.append(f"{GARIS}\n{ST_p.medali(no_)} <b>PRIORITAS {no_}</b>  ·  {ST_p.label_prioritas(pr)}{kt[len(GARIS):]}")
+        if not kartu_rb:
+            try:
+                import qse_kandidat as KD          # 10 Nov: 8 teknik kosong -> 2 kandidat terdekat ke garis pemicu
+                kd = KD.teks(harga, rs)
+                if kd:
+                    robot_blok.append(f"{GARIS}\n{kd}")
+            except Exception as ex:
+                print("[WARN] kandidat terdekat", ex)
         if sepi:
-            robot_blok.append(f"{GARIS}\n⚪ Belum ada sinyal yang bisa diikuti sekarang: {TG.e(', '.join(sepi))}")
+            robot_blok.append(f"{GARIS}\n⚪ Teknik indikator tanpa sinyal di candle ini: {TG.e(', '.join(sepi))}")
     prio = ""
     if ikut or ring_rb:
         import qse_strat as ST_m
@@ -2369,17 +2377,16 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                         "Tanda: 👑 NILAI 10 (PF uji 2.2), 🔥 NILAI 9 (PF 1.7), ✅ NILAI 8 (PF 1.3)")
         prio = "\n".join(rows)
     # dipisah menurut sumber: DASBOR (mesin QSE, sama dengan TradingView) dan robot Telegram
-    BAGIAN = [("📊", "DARI DASBOR", [
+    BAGIAN = [("🎯", "KARTU SINYAL YANG BISA DIIKUTI", [
         ("saran utama", "SARAN VALID 4J", "saran EKSEKUSI di DASBOR yang lolos semua saringan robot"),
         ("saran 1J", "SARAN VALID 1J", "saran EKSEKUSI di chart 1 jam, searah bias 4J"),
         ("saran cadangan", "SARAN CADANGAN", "zona emas searah bias, skill tambahan minimal 5 dari 8"),
         ("saran fib", "GOLDEN ZONE (fib 0.618-0.65)", "harga di golden pocket, skill dan candle konfirmasi searah"),
         ("saran trendline", "TEMBUS TRENDLINE SEARAH TREN", "pola Tembus Trendline di DASBOR, SHORT, harga di bawah EMA 200, skor dari uji ulang 30 koin dan arah BTC"),
-        ("saran cadangan 2", "POLA RAPOR A/B, DIPILIHKAN ROBOT", "pola mutu A/B yang di DASBOR masih TAHAN, entry dipilih robot")]),
-        ("🤖", "KARTU SINYAL, URUT PRIORITAS", [
+        ("saran cadangan 2", "POLA RAPOR A/B, DIPILIHKAN ROBOT", "pola mutu A/B yang di DASBOR masih TAHAN, entry dipilih robot"),
         ("saran siklus", "SIKLUS POLA KEMBAR", "pola harga mirip di sejarah koin")])]
     if not dasbor:
-        BAGIAN = [("📊", "DARI DASBOR", [z for z in BAGIAN[0][2] if z[0] == "saran trendline"]), ("🤖", "KARTU SINYAL, URUT PRIORITAS", [])]
+        BAGIAN = [("🎯", "KARTU SINYAL YANG BISA DIIKUTI", [z for z in BAGIAN[0][2] if z[0] == "saran trendline"])]
     kosong = []
     for ikon_b, judul_b, isi_b in BAGIAN:
         blok = [f"{GARIS}\n{ikon_b} <b>{judul_b}</b>"]
@@ -2393,7 +2400,9 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             ok_n = sum(1 for z in item if z in ikut)
             blok.append(f"{GARIS}\n🔹 <b>{nama_j} ({len(item)})</b>  ·  bisa diikuti {ok_n}\n<i>{ket}</i>")
             blok += [f(i, r, x, st, led) for i, (j_, r, x, st, f) in enumerate(item, 1)]
-        if judul_b == "KARTU SINYAL, URUT PRIORITAS":
+        if judul_b == "KARTU SINYAL YANG BISA DIIKUTI":
+            if robot_blok:
+                blok.append(f"{GARIS}\n🤖 <b>8 TEKNIK INDIKATOR, URUT PRIORITAS</b>")
             blok += robot_blok
         if len(blok) > 1:
             so.append("\n".join(blok))
