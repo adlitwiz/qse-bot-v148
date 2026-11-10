@@ -288,10 +288,32 @@ def profil(sym, jalur, arah, live=None):
 BLOKIR_N = 5
 
 
+# QC 59 (riset/upgrade/hasil_v166_racun.txt): daftar hitam 40 koin dengan total R terburuk 2023-2025 (min 10 sinyal) di
+# profil_koin.json kunci "daftar_hitam". Semua teknik di koin itu diblokir. Pilih 2023-2024 nilai 2025-2026: PF 1.26 -> 1.32,
+# +1496R -> +1585R. Pilih 2023-2025 nilai 2026: -229R -> -118R. Diblokir lebih baik dari kelas ringan 0.2 di kedua uji.
+def hitam(sym):
+    """dict n, total_r kalau koin ada di daftar hitam, selain itu None."""
+    try:
+        dh = (_profil_data().get("daftar_hitam") or {}).get("koin") or {}
+        for nm in _nama_uji(sym):
+            if nm in dh:
+                return dh[nm]
+    except Exception as ex:
+        print("[WARN] daftar hitam", ex)
+    return None
+
+
 def tandai_profil(it, kunci):
     """Isi it['profil'] dan tahan sinyal yang profil koinnya belum lulus. Gagal = tidak menahan."""
     try:
         if os.environ.get("QSE_PROFIL", "1") != "1":
+            return it
+        hb = hitam(it["sym"]) if os.environ.get("QSE_DAFTAR_HITAM", "1") == "1" else None
+        if hb:
+            it["otak_saring"] = True
+            it["blokir_koin"] = True
+            it["otak_why"] = f"koin daftar hitam: total {hb['total_r']:+.1f}R dari {hb['n']} sinyal 2023-2025, semua teknik diblokir"
+            print(f"[PROFIL] {kunci} {it['sym']} {it['arah']} DIBLOKIR: {it['otak_why']}")
             return it
         pr = profil(it["sym"], kunci, it["arah"])
         it["profil"] = pr

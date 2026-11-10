@@ -14,6 +14,26 @@ PARAM = dict(off=0.0, sk=1.0, t1=0.5, t2=0.8, mx=6, dist=2.0, fil="semua", lot=0
 UJI = ("Uji 183 koin, latih 2023-2024, uji 2025-2026: koin umum -0.08R per trade (WR 62%). Spesialis 🥇 PSG/ACM/BAR +0.12R, "
        "WR 75%. Perak 🥈 CITY/NEXO/PORTO/LAZIO uji +0.045R, WR 71% (dipilih memakai data uji). Rincian hasil_v158_spesialis.txt.")
 CACHE_DETIK = 1800
+# v170 QC 66 (riset/upgrade/run_v170_fan.py, hasil_v170_fan.txt): token klub turun rutin Minggu 15:00 UTC sampai Senin 00:00 UTC
+# (Minggu 22:00 sampai Senin 07:00 WIB). 12 dari 12 token klub negatif di latih DAN uji, rata -0.68% dalam 9 jam, uji -0.9%, turun 60%.
+# Senin-Jumat di jam yang sama +0.00%. Rencana LONG token klub ditunda 2 jam sebelum jendela itu sampai jendela selesai.
+TOKEN_KLUB = {"PSGUSDT", "ACMUSDT", "BARUSDT", "CITYUSDT", "LAZIOUSDT", "PORTOUSDT", "JUVUSDT", "SANTOSUSDT", "ATMUSDT", "ASRUSDT", "OGUSDT",
+              "ALPINEUSDT"}
+
+
+def jeda_minggu(now=None):
+    """True saat Minggu 13:00 UTC sampai Senin 00:00 UTC (Minggu 20:00 sampai Senin 07:00 WIB). Matikan: QSE_JEDA_MINGGU=0."""
+    if os.environ.get("QSE_JEDA_MINGGU", "1") == "0":
+        return False
+    g = time.gmtime(now if now is not None else time.time())
+    return g.tm_wday == 6 and g.tm_hour >= 13
+
+
+def _ditunda(r, now=None):
+    return r.get("arah") == "LONG" and r.get("sym") in TOKEN_KLUB and jeda_minggu(now)
+
+
+SPREAD_SPESIALIS = 0.6     # v170: token klub memang berspread lebar, order Limit antre tetap bisa (koin umum tetap 0.3)
 KOIN_MAKS = 183            # jumlah koin yang dipindai (sama dengan riset)
 KOIN_MIN_TURNOVER = 3e6
 SPESIALIS_MIN = 0.3        # nilai bawaan lalat minimal supaya koin+arah masuk daftar spesialis
@@ -99,16 +119,19 @@ def fitur(d4, a):
                 atrp=float(a / c[-1] * 100))
 
 
-def hitung(sym, px=None, p=None, semua_jarak=False):
+def hitung(sym, px=None, p=None, semua_jarak=False, alasan=None):
     """Rencana LONG dan SHORT satu koin dari candle 4J yang sudah tutup. Return list dict.
     semua_jarak=True (koin spesialis): level jauh tetap dihitung, ditandai jauh=True (lalat tidak memakainya)."""
     import bybit_fetch as B
     import qse_btcmap as BM
     p = p or PARAM
     ms = int(time.time() * 1000)
-    d4 = B._raw(sym, "240", 220)
+    d4 = B._raw(sym, "240", 220)          # v170: berantai Bybit Perpetual -> Bybit Spot -> Binance Spot, dengan salinan terakhir
+    pasar = d4.attrs.get("sumber") or B.sumber(sym) or "linear"
     d4 = d4[d4.index + 14400000 <= ms]
     if len(d4) < 160:
+        if alasan is not None:
+            alasan.append(f"candle 4J baru {len(d4)} (butuh 160)")
         return []
     h, l, c = (d4[x].values.astype(float) for x in ("high", "low", "close"))
     a = float(BM._atr(h, l, c)[-1])
@@ -125,13 +148,17 @@ def hitung(sym, px=None, p=None, semua_jarak=False):
             continue
         e = lv + p["off"] * a if L else lv - p["off"] * a
         if (L and e >= px) or ((not L) and e <= px):
+            if alasan is not None:
+                alasan.append(f"harga sudah {'di bawah support' if L else 'di atas resistance'} {lv:.6g}, level {'LONG' if L else 'SHORT'} lewat")
             continue
         sl = lv - p["sk"] * a if L else lv + p["sk"] * a
         d_ = 1 if L else -1
         lv, e, sl, a, dist, px = (float(x) for x in (lv, e, sl, a, dist, px))
         out.append(dict(sym=sym, arah="LONG" if L else "SHORT", level=lv, entry=e, sl=sl, tp1=e + d_ * p["t1"] * a,
                         tp2=e + d_ * p["t2"] * a, atr=a, dist=dist, distp=abs(px - lv) / px * 100, px=px, tren=bool((e200 is None) or ((px > e200) == L)),
-                        jauh=bool(dist > p["dist"]), **fit))
+                        jauh=bool(dist > p["dist"]), pasar=pasar, **fit))
+    if alasan is not None and not out and not alasan:
+        alasan.append("belum ada level S/R 4J yang sah")
     return out
 
 
@@ -141,13 +168,25 @@ def daftar(tk=None, maks=5, segar=False, semua=False):
     st = _baca()
     if not segar and st.get("t", 0) > time.time() - CACHE_DETIK and st.get("rows") is not None:
         return (st.get("semua") or st["rows"])[:maks] if semua else st["rows"][:maks]
-    tk = tk or B.get_tickers()
+    tk = dict(tk or B.get_tickers())
     sp = spesialis(0.0001)          # semua koin+arah yang disukai bekal lalat
     dft = daftar_spesialis()
     sp.update({s: d["arah"] for s, d in dft.items()})
     utama = {s for s, d in dft.items() if d["tier"] == 1}
     cadangan = {s for s, d in dft.items() if d["tier"] == 2}
-    calon = [s for s in sp if s in tk and tk[s]["spread"] < 0.3]
+    diag = {}          # v170: alasan per koin spesialis yang tidak tampil (ganti pesan "belum terbaca")
+    try:               # v170: koin spesialis tanpa kontrak Perpetual (token klub) dibaca dari Bybit Spot atau Binance Spot
+        tk.update(B.ticker_multi([s for s in sp if s not in tk], tk))
+    except Exception as ex:
+        print("[WARN] rencana ticker spesialis", ex)
+    calon = []
+    for s in sp:
+        if s not in tk:
+            diag[s] = "ticker tidak terbaca di Bybit Perpetual, Bybit Spot, maupun Binance"
+        elif tk[s]["spread"] >= (SPREAD_SPESIALIS if s in dft else 0.3):
+            diag[s] = f"spread {tk[s]['spread']:.2f}% terlalu lebar"
+        else:
+            calon.append(s)
     if _lapar_nyala():          # koin umum hanya dipindai untuk lalat mode lapar (Sniper koin umum dihapus dari tampilan)
         calon += sorted((s for s in tk if s.endswith("USDT") and s not in sp and tk[s]["turnover"] >= KOIN_MIN_TURNOVER and tk[s]["spread"] < 0.2),
                         key=lambda s: -tk[s]["turnover"])[:KOIN_MAKS]
@@ -160,11 +199,19 @@ def daftar(tk=None, maks=5, segar=False, semua=False):
         pass
     from concurrent.futures import ThreadPoolExecutor
 
+    gagal = set()
+
     def _h(s):
+        al = []
         try:
-            return s, hitung(s, tk[s]["last"], semua_jarak=s in dft)
+            hs = hitung(s, tk[s]["last"], semua_jarak=s in dft, alasan=al)
+            if not hs and al:
+                diag[s] = "; ".join(al)
+            return s, hs
         except Exception as ex:
             print("[WARN] rencana", s, ex)
+            diag[s] = f"candle 4J gagal diambil ({type(ex).__name__}), dicoba lagi 5 menit"
+            gagal.add(s)
             return s, []
     with ThreadPoolExecutor(8) as ex_:
         hasil = list(ex_.map(_h, calon))
@@ -173,6 +220,10 @@ def daftar(tk=None, maks=5, segar=False, semua=False):
             for r in hs:
                 if s in sp and r["arah"] != sp[s]:
                     continue
+                if r["arah"] == "SHORT" and r.get("pasar") in ("spot", "binance"):
+                    diag[s] = "SHORT tidak bisa dipasang di pasar Spot"
+                    continue
+                r["spread"] = tk[s]["spread"]
                 r["spesialis"] = s in utama
                 r["cadangan"] = s in cadangan
                 r["calon"] = s in sp and s not in dft
@@ -190,8 +241,20 @@ def daftar(tk=None, maks=5, segar=False, semua=False):
         if r["sym"] in sudah:
             continue
         sudah.add(r["sym"]); satu.append(r)
-    _tulis(dict(t=time.time(), rows=satu, semua=rows))
+    ada = {r["sym"] for r in rows}
+    diag = {s: v for s, v in diag.items() if s in dft and s not in ada}
+    for s in dft:
+        if s not in ada and s not in diag:
+            diag[s] = f"level {dft[s]['arah']} belum ada di sisi yang benar dari harga"
+    # v170: kalau ada koin spesialis yang gagal diambil, cache hanya 5 menit (bukan 30) supaya cepat dicoba lagi
+    t_simpan = time.time() - (CACHE_DETIK - 300 if gagal & set(dft) else 0)
+    _tulis(dict(t=t_simpan, rows=satu, semua=rows, diag=diag))
     return rows[:maks] if semua else satu[:maks]
+
+
+def diagnosa():
+    """Alasan per koin spesialis yang tidak punya rencana saat ini (dict sym -> teks)."""
+    return _baca().get("diag") or {}
 
 
 def kartu(r, ringkas=False):
@@ -207,6 +270,14 @@ def kartu(r, ringkas=False):
                  f"{_ex(r['sym'])} per trade" if r.get("cadangan") else
                  "\n🥈 Calon spesialis: uji 2025-2026 sekitar impas, dipantau lalat" if r.get("calon") else
                  "\n⚠️ Koin umum: uji 2025-2026 -0.08R per trade. Angka cadangan, lot paling kecil"))
+    if r.get("pasar") == "spot":
+        kepala += "\n🏦 Koin ini tidak punya kontrak Perpetual di Bybit. Pasang di <b>Bybit Spot</b> (beli Limit, tanpa leverage)"
+    elif r.get("pasar") == "binance":
+        kepala += "\n🏦 Data dari Binance Spot (tidak terbaca di Bybit). Cek dulu koin ini ada di Bybit Spot sebelum pasang"
+    if r.get("sym") in TOKEN_KLUB and r.get("arah") == "LONG" and time.gmtime().tm_wday in (5, 6):
+        kepala += "\n⏰ Batalkan order ini kalau belum terisi sebelum Minggu 20:00 WIB (token klub rutin turun Minggu malam sampai Senin pagi)"
+    if r.get("spread", 0) >= 0.3:
+        kepala += f"\n↔️ Spread {r['spread']:.2f}% lebar: pakai Limit saja, jangan Market"
     if ringkas:
         return kepala + "\n" + blok
     try:
@@ -218,18 +289,73 @@ def kartu(r, ringkas=False):
             f"posisi terisi tutup paling lambat {PARAM['mx'] * 4} jam." + ("\n" + lot if lot else ""))
 
 
-def bagi(rows):
+# v170 QC 67 (permintaan user): robot fokus futures. Saran Spot (koin tanpa Perpetual) dibatasi SPOT_MINGGU kartu per minggu.
+SPOT_MINGGU = int(os.environ.get("QSE_SPOT_MINGGU", "2"))
+PATH_SPOT = os.path.join(STATE_DIR, "rencana_spot.json")
+
+
+def B_sumber(sym):
+    try:
+        import bybit_fetch as B
+        return B.sumber(sym)
+    except Exception:
+        return None
+
+
+def _spot(r):
+    return r.get("pasar") in ("spot", "binance")
+
+
+def _kuota_spot(rows, now=None, catat=True):
+    """Dari rencana Spot, pilih yang boleh tampil: yang sudah tercatat hari ini, lalu yang baru selama jatah minggu ini belum habis.
+    Return (boleh, terpakai). Kunci jatah = koin + tanggal UTC, minggu = minggu ISO."""
+    g = time.gmtime(now if now is not None else time.time())
+    import datetime as _dt
+    iso = _dt.date(g.tm_year, g.tm_mon, g.tm_mday).isocalendar()
+    mg, hari = f"{iso[0]}-W{iso[1]:02d}", f"{g.tm_year}{g.tm_mon:02d}{g.tm_mday:02d}"
+    try:
+        with open(PATH_SPOT) as f:
+            st = json.load(f)
+    except Exception:
+        st = {}
+    if st.get("minggu") != mg:
+        st = {"minggu": mg, "kartu": []}
+    boleh = []
+    for r in rows:
+        key = f"{r['sym']}|{hari}"
+        if key in st["kartu"]:
+            boleh.append(r)
+        elif len(st["kartu"]) < SPOT_MINGGU and not r.get("jauh"):
+            st["kartu"].append(key); boleh.append(r)
+    if catat:
+        try:
+            os.makedirs(STATE_DIR, exist_ok=True)
+            with open(PATH_SPOT + ".tmp", "w") as f:
+                json.dump(st, f)
+            os.replace(PATH_SPOT + ".tmp", PATH_SPOT)
+        except Exception:
+            pass
+    return boleh, len(st["kartu"])
+
+
+def bagi(rows, spot=False):
     """Pisah rencana: medali (spesialis tier 1 dan cadangan tier 2, tampil langsung) dan umum (calon + koin umum, di balik tombol)."""
+    rows = [r for r in rows if not _ditunda(r)]          # v170 QC 66: LONG token klub ditunda Minggu malam WIB
+    if not spot:
+        rows = [r for r in rows if not _spot(r)]          # v170 QC 67: pantauan dan antrean hanya futures
     med = [r for r in rows if r.get("spesialis") or r.get("cadangan")]
     return med, [r for r in rows if not (r.get("spesialis") or r.get("cadangan"))]
 
 
 def blok_spesialis(maks=6):
     """Kartu medali paling atas Sinyal 4J: semua tier 1, lalu tier 2 yang levelnya dekat. Return (teks, jumlah yang disembunyikan)."""
-    med, um = bagi(daftar(maks=60))
+    med, um = bagi(daftar(maks=60), spot=True)
     t1 = [r for r in med if r.get("spesialis")]
     t2 = [r for r in med if r.get("cadangan") and not r.get("jauh")]
-    tampil = (t1 + t2)[:maks]
+    semua_ = t1 + t2
+    spot_ok, terpakai = _kuota_spot([r for r in semua_ if _spot(r)])          # v170 QC 67: fokus futures, Spot maks SPOT_MINGGU per minggu
+    n_spot_sembunyi = sum(1 for r in semua_ if _spot(r)) - len(spot_ok)
+    tampil = [r for r in semua_ if not _spot(r) or r in spot_ok][:maks]
     sembunyi = len(um) + len(med) - len(tampil)
     dft = daftar_spesialis()
     n1 = ", ".join(s.replace("USDT", "") for s, d in dft.items() if d["tier"] == 1)
@@ -237,9 +363,20 @@ def blok_spesialis(maks=6):
     kep = (f"🏅 <b>SNIPER KOIN SPESIALIS</b>\n🥇 {n1}: uji 2025-2026 WR 75%, +0.12R per trade\n"
            f"🥈 Perak {n2}: uji 2025-2026 WR 71%, +0.045R per trade (dipilih memakai data uji)\n"
            f"Order Limit antre di level 4J, 🟦 KELAS UTAMA, berlaku 24 jam.")
+    dg = diagnosa()
+    ket = ""
+    kep += (f"\n🎯 Robot fokus futures. Saran Spot dibatasi {SPOT_MINGGU} kartu per minggu (terpakai {terpakai})"
+            + (f", {n_spot_sembunyi} rencana Spot disembunyikan." if n_spot_sembunyi > 0 else "."))
+    dg = {s_: v for s_, v in dg.items() if not (B_sumber(s_) in ("spot", "binance"))}
+    if jeda_minggu():
+        kep += ("\n⏸ <b>LONG token klub ditunda sampai Senin 07:00 WIB.</b> Tiap Minggu 22:00 sampai Senin 07:00 WIB token klub turun rata 0.7% "
+                "(12 dari 12 koin, 2022-2024 dan 2025-2026). Batalkan order Limit token klub yang belum terisi.")
+        dg = {s_: v for s_, v in dg.items() if s_ not in TOKEN_KLUB}
+    if dg:          # v170: tidak ada lagi "data belum terbaca", tiap koin yang tidak tampil ditulis alasannya
+        ket = "\n\nℹ️ Belum ada rencana untuk: " + "  ·  ".join(f"{s.replace('USDT', '')} ({v})" for s, v in dg.items())
     if not tampil:
-        return kep + "\nData koin spesialis belum terbaca, dicoba lagi 30 menit.", sembunyi
-    return kep + "\n\n" + "\n\n".join(kartu(r) for r in tampil), sembunyi
+        return kep + "\nSaat ini tidak ada level koin spesialis yang dekat dengan harga." + ket, sembunyi
+    return kep + "\n\n" + "\n\n".join(kartu(r) for r in tampil) + ket, sembunyi
 
 
 def teks(mode="utama", maks=6):

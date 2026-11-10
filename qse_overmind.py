@@ -68,7 +68,14 @@ def _hasil_agen():
         print("[WARN] overmind sektor", ex)
     try:
         import qse_gzh2 as GZ
-        out["🟡 GZH pantulan"] = [(c.get("selesai", 0), c["R"], c["sym"], "LONG", "gzh2") for c in GZ._baca().get("closed", [])]
+        out["🟡 GZH pantulan"] = [(c.get("selesai", 0), c["R"], c["sym"], c.get("arah", "LONG"), "gzh2") for c in GZ._baca().get("closed", [])]
+    except Exception:
+        pass
+    try:
+        import qse_whip as WP          # v170 QC 65: mesin news Whip-Fade
+        tutup = WP._baca().get("closed", [])
+        if tutup:
+            out["⚡ Whip-Fade news"] = [(c.get("selesai", 0), c["R"], c["sym"], "LONG", "whip") for c in tutup]
     except Exception:
         pass
     return out

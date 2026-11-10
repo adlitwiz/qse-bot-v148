@@ -399,7 +399,7 @@ def kartu_ringkas(m, pr=None, nama=""):
         lv = level_dari_kartu(m)
         it_ = ki[1] if ki else {}
         trail = None if lv["tp"] else (it_.get("trail_atr", 3.0) / it_.get("sl_atr", 2.0) * abs(lv["entry"] - lv["sl"]) if lv["entry"] and lv["sl"] else None)
-        rows.append(SY.cara_pasang(sym, arah, lv["entry"], lv["sl"], it_.get("tick"), tp=lv["tp"], trail=trail, ringkas=True))
+        rows.append(SY.cara_pasang(sym, arah, lv["entry"], lv["sl"], it_.get("tick"), tp=lv["tp"], trail=trail, ringkas=True, be=it_.get("be_r")))
     except Exception as ex:
         print("[WARN] langkah ringkas", ex)
     for awal in ("⛔", "🛡 <b>Rem", "🔓", "📅", "↔️ Lawan", "💼", "🟦", "🟨"):
@@ -431,7 +431,7 @@ def cara_dari_kartu(rk):
     ki = _cari_it(sym, arah)
     it_ = ki[1] if ki else {}
     trail = None if lv["tp"] else it_.get("trail_atr", 3.0) / it_.get("sl_atr", 2.0) * abs(lv["entry"] - lv["sl"])
-    return f"<b>{sym} {arah}</b>\n" + SY.cara_pasang(sym, arah, lv["entry"], lv["sl"], it_.get("tick"), tp=lv["tp"], trail=trail)
+    return f"<b>{sym} {arah}</b>\n" + SY.cara_pasang(sym, arah, lv["entry"], lv["sl"], it_.get("tick"), tp=lv["tp"], trail=trail, be=it_.get("be_r"))
 
 
 def level_dari_kartu(rk):

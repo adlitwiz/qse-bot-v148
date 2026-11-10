@@ -220,6 +220,11 @@ def balas(cmd, args, dari_main=False):
         except Exception as ex:
             print("[WARN] sinyal4j gzh2", ex)
         try:
+            import qse_whip as WP
+            isi += "\n\n" + WP.teks()
+        except Exception as ex:
+            print("[WARN] sinyal4j whip", ex)
+        try:
             import qse_rencana as RC
             sp, _ = RC.blok_spesialis()          # koin medali di bagian ketiga
             isi += "\n\n" + sp
@@ -262,6 +267,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/ichimoku", "/ichi"):
         import qse_ichimoku as IC
         return IC.teks()
+    if cmd in ("/jagoan", "/koinjagoan"):
+        import qse_jagoan as JG
+        return JG.teks()
     if cmd in ("/altseason", "/alt"):
         import qse_altseason as AS
         return AS.teks() or "Data altcoin gagal diambil, coba lagi nanti."
@@ -399,7 +407,7 @@ def proses(cmds, dari_main=False):
             SY.pakai(None)
         if isi:
             ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
-                    "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/ichimoku": "📈", "/pelengkap": "🧩", "/lab": "🧪", "/papan": "🧪", "/menu": "🤖", "/sektor": "🧩", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
+                    "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/jagoan": "👑", "/koinjagoan": "👑", "/ichimoku": "📈", "/pelengkap": "🧩", "/lab": "🧪", "/papan": "🧪", "/menu": "🤖", "/sektor": "🧩", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/mode": "🎚️", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v150 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v150 | {JUDUL.get(cmd, cmd.upper()[1:])}</b>\n\n{isi}"

@@ -998,6 +998,13 @@ def _blok_tt(no, r, x, tag, led):
         teks = "\n".join(rows)
     except Exception as ex:
         print("[WARN] nilai trendline", ex)
+    try:
+        import qse_jagoan as JG          # QC 62: label mahkota Jagoan / 🌱 Berpotensi di kartu Tembus Trendline
+        jg = JG.tandai("trendline", dict(sym=r["symbol"], arah=x["arah"]), mesin=(x.get("win", 0), x.get("loss", 0)))
+        if jg:
+            teks = "\n".join(jg) + "\n" + teks
+    except Exception as ex:
+        print("[WARN] jagoan trendline", ex)
     return teks
 
 

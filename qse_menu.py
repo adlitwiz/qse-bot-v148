@@ -41,7 +41,8 @@ SUB = {
         [("⭐ Order Block", "c:/ob"), ("📈 EMA/RSI/SMC", "c:/strategi")],
         [("📒 Jalur live", "c:/jalur"), ("🌈 Altseason", "c:/altseason")],
         [("🧪 Papan Lab", "c:/lab"), ("📡 Sinyal 1J", "c:/sinyal1j")],
-        [("🎯 Rencana Sniper S/R", "c:/rencana"), ("🎚️ Mode sinyal", "c:/mode")]]),
+        [("🎯 Rencana Sniper S/R", "c:/rencana"), ("🎚️ Mode sinyal", "c:/mode")],
+        [("👑 Daftar Koin Jagoan", "c:/jagoan")]]),
     "🔎 Cek Koin": ("🔎 <b>CEK KOIN</b>", [
         [("₿ BTC", "c:/cek BTC"), ("Ξ ETH", "c:/cek ETH"), ("◎ SOL", "c:/cek SOL")],
         [("🧐 Koin lain", "t:/cek"), ("🧭 Arah dan pola", "t:/arah")],

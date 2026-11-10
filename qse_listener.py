@@ -893,6 +893,18 @@ def _tugas_menit():
     except Exception as ex:
         print("[WARN] gzh2", ex)
     try:
+        import qse_whip as WP          # v170 QC 65: mesin news Whip-Fade, sekali sesudah tiap candle 15 menit tutup, tetap jalan saat jeda berita
+        for m in WP.jalankan():
+            TG.send(["⚡ <b>QSE v170 | MESIN NEWS</b>\n\n" + m])
+    except Exception as ex:
+        print("[WARN] whip", ex)
+    try:
+        import qse_advisor as AD          # v170 QC 66: Advisor Mode, sekali tiap candle 4J tutup
+        for m in AD.jalankan():
+            TG.send([m])
+    except Exception as ex:
+        print("[WARN] advisor", ex)
+    try:
         import qse_lalat as LT          # 9 Nov 2026: hidung berita lalat Abdul, ledakan volume 1 menit serentak
         hb = LT.hidung()
         if hb:

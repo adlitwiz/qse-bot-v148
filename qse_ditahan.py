@@ -71,8 +71,64 @@ def prioritas_live(k, it):
     return False, ""
 
 
+LIMIT_ATR = 0.25          # v170 QC 64: jarak Pending Limit alternatif dari harga tutup sinyal
+JALUR_LIMIT = ("ema_short", "mcginley", "rsi_vol")          # jalur yang cara masuknya diuji di run_v170_tahan.py
+
+
+def rincian_skor(k, it):
+    """v170: baris rincian skor sinyal (label terbukti, peluang otak, profil koin) supaya alasan kelas dan penahanan terbaca."""
+    try:
+        import qse_strat as ST
+        import qse_btcmap as BM
+        n = ST.prioritas(k, it)[0]
+        z = next(x for x in BM.SKOR if n >= x[0])
+        bag = [f"💯 Skor <b>{z[1]}/100</b> ({z[2]}, uji PF {z[4]}, WR {z[5]})"]
+        lab = ST.label_nama(it)
+        bag.append("label: " + (", ".join(lab) if lab else "tidak ada"))
+    except Exception:
+        bag = []
+    if it.get("otak") is not None:
+        bag.append(f"peluang otak {it['otak'] * 100:.0f}% (batas {it.get('otak_batas', 0) * 100:.0f}%)")
+    pr = it.get("profil") or {}
+    if pr.get("n"):
+        bag.append(f"profil koin {pr['n']} sinyal" + (f", PF {pr['pf']:.2f}" if pr.get("pf") is not None else ""))
+    return "🧮 " + "  ·  ".join(bag) if bag else ""
+
+
+def alternatif_limit(k, it):
+    """v170: saran Pending Limit di harga lebih baik untuk sinyal eks-tahanan. Uji run_v170_tahan.py (pasangan koin+teknik yang latihnya
+    negatif, dinilai 2025-2026): Limit 0.25 ATR terisi 86%, PF 1.20, +0.055R per sinyal. Market PF 1.19, +0.052R. Setara, bukan lebih
+    unggul (di latih Market lebih baik), jadi ini pilihan, bukan pengganti. Stop Trap PF 1.15, +0.035R: tidak disarankan."""
+    if k not in JALUR_LIMIT:
+        return ""
+    try:
+        import qse_saya as SY
+        import qse_strat as ST
+        e, sl = it["entry"], it.get("sl0", it["sl"])
+        risk = abs(e - sl)
+        slk = it.get("sl_atr") or ST.STRAT.get(k, {}).get("sl_atr", ST.SL_ATR)
+        a = risk / slk if slk else 0
+        if a <= 0:
+            return ""
+        d = 1 if it["arah"] == "LONG" else -1
+        lv = e - d * LIMIT_ATR * a
+        t = it.get("tick") or SY.tick_of(None, e)
+        return (f"🪤 <b>Pilihan Pending Limit</b> (harga lebih baik): antre di <b>{SY.fp(lv, t)}</b>, SL tetap {SY.fp(sl, t)}, berlaku 24 jam. "
+                f"Uji sinyal lemah 2025-2026: terisi 86%, PF 1.20 (Market PF 1.19). Stop Trap tidak disarankan (PF 1.15)")
+    except Exception as ex:
+        print("[WARN] alternatif limit", ex)
+        return ""
+
+
 def kartu(k, nama, it):
     import qse_saya as SY
+    jg = []
+    try:
+        import qse_jagoan as JG          # QC 60: label koin jagoan di baris paling atas
+        jg = JG.tandai(k, it)
+    except Exception as ex:
+        print("[WARN] jagoan", ex)
+    atas = "\n".join(jg) + "\n" if jg else ""
     t = it.get("tick")
     L = it["arah"] == "LONG"
     e, sl = it["entry"], it["sl"]
@@ -113,19 +169,38 @@ def kartu(k, nama, it):
     except Exception:
         lot = ""
     ik = "🟦 KELAS UTAMA" if kl == "UTAMA" else "🟨 KELAS RINGAN"
+    import qse_strat as ST
+    be = ST.be_r(k)
+    if be:          # QC 61: EMA Cross tanpa TP sebagian, SL ke entry di +0.4R lalu SL berjalan
+        lv = e + d * be * risk
+        blok = (SY.blok_salin(e, sl, order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=it["sym"], arah=it["arah"])
+                + f"\n📲 Tanpa TP sebagian. Harga sampai {SY.fp(lv, t)} (+{be:g}R): SL ke entry. Sisa ikut SL berjalan (pesan GESER SL). "
+                "Tanpa jam ke-12 dan batas 30 jam.")
+    else:
+        blok = (SY.blok_salin(e, sl, tp1, tp2, "MARKET", t, sym=it["sym"], arah=it["arah"])
+                + "\n📲 TP1 tutup 50% lalu SL ke entry.")
+    skor = rincian_skor(k, it)
+    try:
+        import qse_klaster as KS          # v170 QC 66: skor klaster Tren (satu-satunya klaster yang lolos uji 2025 dan 2026)
+        _kt = KS.baris(k, it)
+        if _kt:
+            skor = (skor + "\n" if skor else "") + _kt
+    except Exception as ex:
+        print("[WARN] klaster", ex)
     if prio:
-        return (f"🚀 <b>SINYAL JALUR LIVE: {it['sym']} {it['arah']}</b>  ·  {nama}" + (f"  ·  {' '.join(lab)}" if lab else "")
+        return (atas + f"🚀 <b>SINYAL JALUR LIVE: {it['sym']} {it['arah']}</b>  ·  {nama}" + (f"  ·  {' '.join(lab)}" if lab else "")
                 + f"\n✅ Masuk daftar terbukti ({nm_prio}), dikirim tanpa ditahan. Catatan otak: {why}."
                 + f"\n<b>{ik}</b>" + (f" ({alasan_kl})" if alasan_kl else "")
+                + (f"\n{skor}" if skor else "")
                 + (f"\n{cuaca}" if cuaca else "") + "\n"
-                + SY.blok_salin(e, sl, tp1, tp2, "MARKET", t, sym=it["sym"], arah=it["arah"])
-                + "\n📲 TP1 tutup 50% lalu SL ke entry." + ("\n" + lot if lot else ""))
-    return (f"🧠 <b>SINYAL JALUR EKS-TAHANAN OTAK: {it['sym']} {it['arah']}</b>  ·  {nama}" + (f"  ·  {' '.join(lab)}" if lab else "")
+                + blok + ("\n" + lot if lot else ""))
+    alt = alternatif_limit(k, it)
+    return (atas + f"🧠 <b>SINYAL JALUR EKS-TAHANAN OTAK: {it['sym']} {it['arah']}</b>  ·  {nama}" + (f"  ·  {' '.join(lab)}" if lab else "")
             + f"\n⚠️ Catatan otak: {why}. Tetap dikirim, kamu yang memilih. Uji: sinyal yang lolos otak PF 1.35, semua sinyal PF 1.23."
             + f"\n<b>{ik}</b> ({alasan_kl})"
+            + (f"\n{skor}" if skor else "")
             + (f"\n{cuaca}" if cuaca else "") + "\n"
-            + SY.blok_salin(e, sl, tp1, tp2, "MARKET", t, sym=it["sym"], arah=it["arah"])
-            + "\n📲 TP1 tutup 50% lalu SL ke entry." + ("\n" + lot if lot else ""))
+            + blok + (f"\n{alt}" if alt else "") + ("\n" + lot if lot else ""))
 
 
 def kelas(k, it, prio=None):
@@ -133,8 +208,21 @@ def kelas(k, it, prio=None):
     dan sinyal eks-tahanan otak. Sisanya yang masuk daftar terbukti UTAMA."""
     if prio is None:
         prio = prioritas_live(k, it)[0]
+    if it.get("jagoan"):
+        try:
+            import qse_jagoan as JG
+            if JG.kelas_utama(it["jagoan"]):
+                return "UTAMA", "👑 koin jagoan sejati"
+        except Exception:
+            pass
     if not prio:
         return "RINGAN", "sinyal eks-tahanan otak"
+    try:
+        import qse_klaster as KS
+        if KS.lemah(KS.skor(k, it)):
+            return "RINGAN", "skor Tren di bawah 20 (BTC, EMA 50, EMA 200 tidak mendukung arah ini)"
+    except Exception:
+        pass
     if it["arah"] == "LONG":
         try:
             import qse_kompas as KP
@@ -151,8 +239,8 @@ def kelas(k, it, prio=None):
         pass
     pr = it.get("profil") or {}
     lab_kuat = it.get("combo_raja") or it.get("combo_fix") or it.get("combo_emas")
-    if k == "ema_short" and not lab_kuat and (pr.get("n", 0) < 10):
-        return "RINGAN", "EMA Cross SHORT di koin baru, rekam jejak koin kurang dari 10 sinyal"
+    if k == "ema_short":          # QC 62: EMA Cross SHORT rugi 2026 (-128R) dan tidak ada saringan latih yang membaliknya
+        return "RINGAN", "EMA Cross SHORT, rugi di 2026 (uji -128R), semua sinyalnya kelas ringan"
     return "UTAMA", ""
 
 
