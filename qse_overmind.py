@@ -168,15 +168,39 @@ def _seri(now=None):
     return rows
 
 
-def kelas_a(rows=None, now=None, hari=365, n_min=3, wr_min=0.70):
-    """Set 'SYM|jalur|ARAH' Kelas A: sinyal yang hasilnya sudah diketahui (2 hari) dalam 365 hari terakhir n >= 3, WR >= 70%."""
+def kelas_a(rows=None, now=None, hari=365, n_min=4, wr_min=0.68, pf_min=1.6):
+    """Set 'SYM|jalur|ARAH' Kelas A: sinyal yang hasilnya sudah diketahui (2 hari) dalam 365 hari terakhir.
+    v172 QC 70 (permintaan user): syarat n >= 4, WR >= 68%, PF >= 1.6 (dulu n >= 3, WR >= 70%). Sumber: riwayat profil_koin.json
+    2023-2026 ditambah catatan live, bukan log live saja. Uji jalan maju (run_v172_qc70.py): Kelas A syarat baru 2025 +0.161R
+    (bukan +0.163R), 2026 +0.018R PF 1.07 (bukan -0.030R). Syarat lama 2026 -0.001R. Pembeda kecil, jadi tetap hanya label."""
     now = now or time.time()
     rows = _seri() if rows is None else rows
     g = {}
     for s_, j, a, t, r in rows:
         if now - hari * 86400 <= t + 2 * 86400 < now:
             g.setdefault(f"{s_}|{j}|{a}", []).append(r)
-    return {k for k, v in g.items() if len(v) >= n_min and sum(1 for x in v if x > 0) / len(v) >= wr_min}
+    def _pf(v):
+        u, r_ = sum(x for x in v if x > 0), -sum(x for x in v if x < 0)
+        return u / r_ if r_ > 0 else (99.0 if u > 0 else 0.0)
+    return {k for k, v in g.items() if len(v) >= n_min and sum(1 for x in v if x > 0) / len(v) >= wr_min and _pf(v) >= pf_min}
+
+
+_KA = {"t": 0.0, "s": set()}
+
+
+def kelas_a_aktif():
+    """Daftar Kelas A yang dipakai: hasil evolusi tersimpan, atau dihitung langsung dari riwayat (cache 1 jam) kalau yang tersimpan kosong.
+    Ini memperbaiki tampilan '0 kombinasi' saat file evolusi kosong atau dibuat versi lama."""
+    s = set(_baca().get("kelas_a") or [])
+    if s:
+        return s
+    if time.time() - _KA["t"] > 3600:
+        try:
+            _KA.update(t=time.time(), s=kelas_a())
+        except Exception as ex:
+            print("[WARN] overmind kelas A", ex)
+            _KA["t"] = time.time()
+    return _KA["s"]
 
 
 def jalur_minus(rows=None, now=None):
@@ -209,7 +233,7 @@ def kelas_jalur(jalur):
 
 def label_kelas_a(sym, jalur, arah):
     k = f"{sym}|{jalur}|{arah}"
-    return "🏅 KELAS A (365 hari: minimal 3 sinyal, WR 70%+)" if k in set(_baca().get("kelas_a") or []) else ""
+    return "🏅 KELAS A (365 hari: minimal 4 sinyal, WR 68%+, PF 1.6+)" if k in kelas_a_aktif() else ""
 
 
 def evolusi():
@@ -253,6 +277,9 @@ def ringkas(d=None):
         return "🧬 Overmind belum jalan. Evolusi pertama 00:05 WIB."
     rows = [f"🧬 <b>OVERMIND</b> · evaluasi {d.get('tanggal', '-')}"]
     for x in d.get("rapor", []):
+        if not x["n"]:
+            rows.append(f"• {x['agen']}: belum ada trade live yang selesai (pencatat sudah tersambung, terisi begitu ada posisi tutup)")
+            continue
         rows.append(f"{'👑' if x['pemimpin'] else '•'} {x['agen']}: {x['n']} trade terakhir, WR {x['wr']:.0f}%, {x['tot']:+.2f}R"
                     + (f", lot dewan {x['lot']:g}x" if x["lot"] != 1 else ""))
     jl = d.get("jalur") or {}
@@ -260,7 +287,8 @@ def ringkas(d=None):
         rows.append("🧠 Jalur v150 (20 trade terakhir): " + ", ".join(
             f"{'👑 ' if j == d.get('pemimpin_jalur') else ''}{j} WR {x['wr']:.0f}% {x['tot']:+.1f}R{' 🟨 RINGAN' if x['minus'] else ''}"
             for j, x in sorted(jl.items(), key=lambda kv: -kv[1]["wr"])))
-    rows.append(f"🏅 Kelas A (365 hari): {len(d.get('kelas_a') or [])} kombinasi koin x teknik x arah")
+    rows.append(f"🏅 Kelas A (365 hari, minimal 4 sinyal, WR 68%+, PF 1.6+): {len(d.get('kelas_a') or kelas_a_aktif())} kombinasi koin x teknik x arah "
+                "(dari riwayat 2025-2026 dan catatan live)")
     rows.append("⬆️ Naik ke Kelas A tadi malam: " + (", ".join(d.get("naik") or []) or "belum ada")
                 + (f" (+{d['n_naik'] - 10} lagi)" if d.get("n_naik", 0) > 10 else ""))
     rows.append("⬇️ Dibuang dari Kelas A: " + (", ".join(d.get("turun") or []) or "belum ada")

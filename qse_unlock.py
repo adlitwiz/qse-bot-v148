@@ -257,3 +257,42 @@ def umur_data():
     """Jam sejak data terakhir disegarkan, atau None."""
     ts = _load().get("ts")
     return (time.time() - ts) / 3600 if ts else None
+
+
+RADAR_MIN_PCT = 2.0          # unlock "besar": 2% pasokan beredar ke atas, atau koin yang sedang dipegang (ambang biasa MIN_PCT)
+
+
+def radar(now=None, posisi_fn=None):
+    """v172 QC 70: kartu RADAR PRA-UNLOCK 4 sampai 6 jam sebelum token unlock. Tiap kejadian sekali. Dikirim untuk unlock >= 2% pasokan,
+    atau >= ambang biasa kalau koinnya sedang dipegang (posisi_fn mengembalikan baris posisi jalan). Return list pesan."""
+    now = now or time.time()
+    c = _load()
+    sudah = set(c.get("radar", []))
+    pos = []
+    if posisi_fn:
+        try:
+            pos = list(posisi_fn() or [])
+        except Exception as ex:
+            print("[WARN] radar unlock posisi", ex)
+    teks_pos = " ".join(str(x) for x in pos)
+    out, baru = [], []
+    for e in kalender(hari=1, now=now):
+        sisa = e["t"] - now
+        kunci = f"{e['sym']}|{int(e['t'])}"
+        dipegang = e["sym"] in teks_pos or e["sym"].replace("USDT", "") + " " in teks_pos
+        if not (4 * 3600 <= sisa <= 6 * 3600) or kunci in sudah or not (e["pct"] >= RADAR_MIN_PCT or dipegang):
+            continue
+        baru.append(kunci)
+        rows = [f"🛰 <b>RADAR PRA-UNLOCK · {sisa / 3600:.0f} JAM LAGI</b>",
+                f"🔓 <b>{e['sym']}</b>: unlock {e['pct']:.1f}% pasokan beredar, {_jam(e['t'])}",
+                "Uji 2021-2026: 7 hari sebelum unlock koin rata-rata -3% lawan BTC, LONG di masa itu PF 0.28."]
+        if dipegang:
+            rows.append("🛡 <b>Kamu memegang koin ini</b>: kalau LONG dan sudah untung, pindahkan SL ke entry sekarang. Kalau masih rugi, biarkan SL "
+                        "bekerja dan jangan tambah posisi. SHORT searah dengan tekanan unlock, ikuti SL berjalan.")
+        else:
+            rows.append("LONG baru di koin ini ditahan robot sampai unlock lewat.")
+        out.append("\n".join(rows))
+    if baru:
+        c["radar"] = (list(sudah) + baru)[-300:]
+        _save(c)
+    return out

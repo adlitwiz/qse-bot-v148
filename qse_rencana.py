@@ -175,14 +175,16 @@ def daftar(tk=None, maks=5, segar=False, semua=False):
     utama = {s for s, d in dft.items() if d["tier"] == 1}
     cadangan = {s for s, d in dft.items() if d["tier"] == 2}
     diag = {}          # v170: alasan per koin spesialis yang tidak tampil (ganti pesan "belum terbaca")
-    try:               # v170: koin spesialis tanpa kontrak Perpetual (token klub) dibaca dari Bybit Spot atau Binance Spot
-        tk.update(B.ticker_multi([s for s in sp if s not in tk], tk))
-    except Exception as ex:
-        print("[WARN] rencana ticker spesialis", ex)
+    if getattr(B, "SUMBER_SPOT", False):          # v172 QC 70: bawaan MATI, robot hanya Futures (QSE_SUMBER_SPOT=1 untuk menyalakan)
+        try:
+            tk.update(B.ticker_multi([s for s in sp if s not in tk], tk))
+        except Exception as ex:
+            print("[WARN] rencana ticker spesialis", ex)
     calon = []
     for s in sp:
         if s not in tk:
-            diag[s] = "ticker tidak terbaca di Bybit Perpetual, Bybit Spot, maupun Binance"
+            diag[s] = ("ticker tidak terbaca di Bybit Perpetual, Bybit Spot, maupun Binance" if getattr(B, "SUMBER_SPOT", False)
+                       else "tidak ada kontrak Futures (USDT Perpetual) di Bybit, dilewati")
         elif tk[s]["spread"] >= (SPREAD_SPESIALIS if s in dft else 0.3):
             diag[s] = f"spread {tk[s]['spread']:.2f}% terlalu lebar"
         else:
@@ -360,9 +362,11 @@ def blok_spesialis(maks=6):
     dft = daftar_spesialis()
     n1 = ", ".join(s.replace("USDT", "") for s, d in dft.items() if d["tier"] == 1)
     n2 = ", ".join(s.replace("USDT", "") for s, d in dft.items() if d["tier"] == 2)
-    kep = (f"🏅 <b>SNIPER KOIN SPESIALIS</b>\n🥇 {n1}: uji 2025-2026 WR 75%, +0.12R per trade\n"
-           f"🥈 Perak {n2}: uji 2025-2026 WR 71%, +0.045R per trade (dipilih memakai data uji)\n"
-           f"Order Limit antre di level 4J, 🟦 KELAS UTAMA, berlaku 24 jam.")
+    _st1 = "  ·  ".join(f"{s.replace('USDT', '')} {d['arah']} uji WR {d.get('wr_uji', 0) * 100:.0f}%, {d.get('ex_uji', 0):+.3f}R" for s, d in dft.items() if d["tier"] == 1)
+    kep = (f"🏅 <b>SNIPER KOIN SPESIALIS (Futures)</b>\n🥇 {_st1 or n1}\n"
+           + (f"🥈 Perak {n2}\n" if n2 else "")
+           + "Order Limit antre di level 4J, 🟦 KELAS UTAMA, berlaku 24 jam. Token klub (PSG, ACM, BAR, dll) dicoret: hanya ada di Spot. "
+             "Dari 140 koin lain, hanya NEXO SHORT yang lolos uji aturan ini.")
     dg = diagnosa()
     ket = ""
     kep += (f"\n🎯 Robot fokus futures. Saran Spot dibatasi {SPOT_MINGGU} kartu per minggu (terpakai {terpakai})"

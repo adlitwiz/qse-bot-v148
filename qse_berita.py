@@ -321,6 +321,8 @@ def pengingat(now_ms=None):
 # ---------------- 1c. pengingat bertahap dan perubahan jadwal (otomatis, tidak dadakan) ----------------
 # 🔴 FOMC dan CPI: H-24 dan H-6 (H-1 sudah ada: pengingat 75 menit dan SIAGA CPI/FOMC untuk posisi jalan). 🟠 dan ⚪ hanya H-1.
 TAHAP = {"🔴": (24 * JAM, 6 * JAM)}
+NFP_KATA = ("NON-FARM", "NONFARM", "NFP")
+RADAR_JAM = 6          # v172 QC 70: pengingat H-6 ke bawah tampil sebagai RADAR PRA-BERITA dengan saran pengamanan posisi
 JENDELA_TAHAP = 40 * 60000           # pengingat dikirim sampai 40 menit setelah waktunya, supaya bot yang mati sebentar tetap mengirim
 LIPAT = (("FOMC", "FOMC 2.6x"), ("FEDERAL FUNDS", "FOMC 2.6x"), ("CPI", "CPI 2.4x"))          # gerak BTC di jam rilis, uji 2021-2026
 UTC = dt.timezone.utc
@@ -364,7 +366,8 @@ def teks_tahap(e, jam, now_ms=None, posisi=None):
     lipat = next((t for k, t in LIPAT if k in u), "")
     c = _load()
     diambil = c.get("kal_ts")
-    rows = [f"📅 <b>PENGINGAT BERITA H-{jam} JAM</b>",
+    radar = jam <= RADAR_JAM
+    rows = [f"🛰 <b>RADAR PRA-BERITA · {jam} JAM LAGI</b>" if radar else f"📅 <b>PENGINGAT BERITA H-{jam} JAM</b>",
             f"{dampak(e['judul'], 'USD')} <b>{nm}</b>",
             f"Mulai: {HARI_ID[w.weekday()]} {w.strftime('%d/%m %H:%M')} WIB ({_jam_utc(e['ts'])}), {_hitung_mundur(e['ts'] - now_ms)}"]
     ang = _angka(e)
@@ -376,9 +379,13 @@ def teks_tahap(e, jam, now_ms=None, posisi=None):
     if posisi:
         rows.append("Posisi jalan sekarang:")
         rows += list(posisi)
+        if radar:
+            rows.append("🛡 <b>Amankan sebelum rilis</b>: posisi yang sudah untung, pindahkan SL ke entry sekarang (tombol 🛡 SL ke entry di Kelola Posisi). "
+                        "Posisi yang masih rugi biarkan SL bekerja, jangan ditutup lebih awal (uji: keluar lebih awal menurunkan profit). "
+                        "Jangan buka posisi baru sampai rilis lewat.")
         rows.append("SL di Bybit tetap melindungi. Robot kirim SIAGA 1 jam sebelum rilis.")
     else:
-        rows.append("Tidak ada posisi jalan.")
+        rows.append("Tidak ada posisi jalan." + (" Tunda entry baru sampai rilis lewat." if radar else ""))
     return "\n".join(rows)
 
 
@@ -390,7 +397,10 @@ def tahap_jatuh_tempo(now_ms=None):
     out = []
     for e in kalender():
         sisa = e["ts"] - now_ms
-        for h in TAHAP.get(dampak(e["judul"], "USD"), ()):
+        tahap = TAHAP.get(dampak(e["judul"], "USD"), ())
+        if not tahap and any(k in e["judul"].upper() for k in NFP_KATA):
+            tahap = (6 * JAM,)          # v172 QC 70: NFP ikut radar pra-berita H-6
+        for h in tahap:
             kunci = f"{e['ts']}|{e['judul']}|H{h // JAM}"
             if h - JENDELA_TAHAP < sisa <= h and kunci not in sudah:
                 out.append(dict(e=e, jam=h // JAM, kunci=kunci))
@@ -453,6 +463,11 @@ def pesan_agenda(posisi_fn=None, now_ms=None):
         out += rilis_kilat(now_ms)
     except Exception as ex:
         print("[WARN] rilis kilat", ex)
+    try:
+        import qse_unlock as UL          # v172 QC 70: radar pra-unlock 4 sampai 6 jam sebelum token unlock besar
+        out += UL.radar(now_ms / 1000, posisi_fn)
+    except Exception as ex:
+        print("[WARN] radar unlock", ex)
     return out
 
 

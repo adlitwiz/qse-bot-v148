@@ -228,11 +228,17 @@ def buka_sub(nama, mid=None, uid=None, nm=""):
         teks, rows = SUB[nama]
     else:
         return
-    if mid:
+    pribadi = nama in ("🎯 Kelola Posisi", "💼 Modal")
+    if pribadi and uid:
+        teks = f"👤 <b>Menu milik {html.escape(_nama(uid, nm))}</b>\n" + teks
+    if mid and not (pribadi and not pemilik(mid)):          # menu pribadi tidak menimpa pesan bersama, dikirim sebagai pesan sendiri
         js = _api("editMessageText", message_id=mid, text=teks, parse_mode="HTML", reply_markup=_inline(rows))
         if js.get("ok") or "not modified" in str(js.get("description", "")):
             return
-    _api("sendMessage", text=teks, parse_mode="HTML", reply_markup=_inline(rows))
+    if pribadi and uid:
+        _kirim_milik(uid, nm, text=teks, parse_mode="HTML", reply_markup=_inline(rows))
+    else:
+        _api("sendMessage", text=teks, parse_mode="HTML", reply_markup=_inline(rows))
 
 
 # ---------- tombol di bawah balasan perintah ----------
@@ -316,6 +322,36 @@ def dari_pesan(txt, uid, nama=""):
     return None
 
 
+# ---------- v172 QC 70: tombol milik masing-masing orang ----------
+# Pesan balasan perintah dan menu pribadi dicatat pemiliknya. Tombol di pesan itu hanya bisa ditekan pemiliknya.
+# Kartu siaran robot (sinyal, refleks lalat, laporan) tidak punya pemilik: siapa pun boleh menekan, hasilnya untuk yang menekan.
+def catat_pemilik(ids, uid, nama=""):
+    ids = [str(i) for i in (ids or []) if i]
+    if not ids or not uid:
+        return
+    d = _st(); pm = d.setdefault("pemilik", {})
+    now = time.time()
+    for i in ids:
+        pm[i] = [str(uid), nama or "", now]
+    d["pemilik"] = {k: v for k, v in pm.items() if now - v[2] < 3 * 86400}
+    _st(d)
+
+
+def pemilik(mid):
+    v = (_st().get("pemilik") or {}).get(str(mid))
+    return (v[0], v[1]) if v else None
+
+
+def _kirim_milik(uid, nm, **data):
+    """sendMessage lalu catat pemilik pesan."""
+    js = _api("sendMessage", **data)
+    try:
+        catat_pemilik([(js.get("result") or {}).get("message_id")], uid, nm)
+    except Exception:
+        pass
+    return js
+
+
 def dari_tombol(cq):
     """callback_query -> (perintah, argumen) atau None. Jawab tombol supaya jam pasir di Telegram hilang."""
     data = cq.get("data") or ""
@@ -323,6 +359,11 @@ def dari_tombol(cq):
     uid = str(fr.get("id", ""))
     nm = " ".join(x for x in (fr.get("first_name"), fr.get("last_name")) if x) or fr.get("username") or ""
     mid = (cq.get("message") or {}).get("message_id")
+    own = pemilik(mid) if mid else None
+    if own and own[0] != uid:
+        _api("answerCallbackQuery", callback_query_id=cq.get("id"), chat_id=None, show_alert=True,
+             text=f"Ini menu milik {own[1] or 'orang lain'}. Buka menu kamu sendiri dari tombol bawah.")
+        return None
     _api("answerCallbackQuery", callback_query_id=cq.get("id"), chat_id=None)
     jenis, isi = data[:1], data[2:]
     if jenis == "c":
@@ -336,12 +377,13 @@ def dari_tombol(cq):
         cmd, petunjuk = isi, TANYA.get(isi, "Ketik isinya")
         d = _st(); d.setdefault("tunggu", {})[uid] = {"cmd": cmd, "t": time.time()}; _st(d)
         # tanpa force_reply: force_reply menyembunyikan keyboard menu bawah
-        _api("sendMessage", text=f"✍️ <b>{html.escape(nm)}</b>, {petunjuk}\nCukup ketik biasa lalu kirim (berlaku 10 menit).",
+        _api("sendMessage", text=f"✍️ <b>{html.escape(nm)}</b>, {petunjuk}\nCukup ketik biasa lalu kirim (berlaku 10 menit). "
+                                 f"Hanya ketikan {html.escape(nm)} yang dipakai.",
              parse_mode="HTML", reply_markup=keyboard())
         return None
     if jenis == "y":
-        _api("sendMessage", text=f"Yakin jalankan <b>{html.escape(isi.replace('/', '').upper())}</b> di harga sekarang?", parse_mode="HTML",
-             reply_markup=_inline([[("✅ Ya, jalankan", f"c:{isi}"), ("❌ Batal", "x:")]]))
+        _kirim_milik(uid, nm, text=f"👤 <b>{html.escape(nm)}</b>, yakin jalankan <b>{html.escape(isi.replace('/', '').upper())}</b> di harga sekarang?",
+                     parse_mode="HTML", reply_markup=_inline([[("✅ Ya, jalankan", f"c:{isi}"), ("❌ Batal", "x:")]]))
         return None
     if jenis == "x" and mid:
         _api("deleteMessage", message_id=mid)

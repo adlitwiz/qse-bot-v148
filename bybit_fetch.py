@@ -41,6 +41,45 @@ def _sesi_baru():
     _S.headers.update({"User-Agent": "qse-bot/170"})
 
 
+# v172 QC 70 (permintaan user): robot hanya Futures. Rantai Spot / Binance MATI secara bawaan, nyalakan dengan QSE_SUMBER_SPOT=1.
+SUMBER_SPOT = os.environ.get("QSE_SUMBER_SPOT", "0") == "1"
+_fut = {"t": 0.0, "s": set()}
+
+
+def futures(paksa=False):
+    """Set simbol USDT Perpetual (category linear, status Trading) di Bybit. Cache 6 jam, salinan disk saat API gagal. Kosong = tidak tahu."""
+    now = time.time()
+    if _fut["s"] and not paksa and now - _fut["t"] < 21600:
+        return _fut["s"]
+    path = os.path.join(CACHE, "futures_bybit.json")
+    try:
+        s = set(get_symbols().keys())
+        if s:
+            _fut.update(t=now, s=s)
+            try:
+                os.makedirs(CACHE, exist_ok=True)
+                with open(path + ".tmp", "w") as f:
+                    json.dump(sorted(s), f)
+                os.replace(path + ".tmp", path)
+            except Exception:
+                pass
+            return s
+    except Exception as ex:
+        print("[WARN] daftar futures Bybit", ex)
+    try:
+        with open(path) as f:
+            _fut.update(t=now - 18000, s=set(json.load(f)))          # salinan lama: dicoba lagi 1 jam kemudian
+    except Exception:
+        pass
+    return _fut["s"]
+
+
+def ada_futures(sym):
+    """True kalau koin punya kontrak Futures di Bybit. Daftar tidak tersedia = True (tidak memblokir karena gangguan jaringan)."""
+    s = futures()
+    return (sym in s) if s else True
+
+
 class SimbolSalah(RuntimeError):
     """Koin tidak ada di kategori yang diminta: tidak diulang, langsung pindah sumber."""
 
@@ -356,7 +395,7 @@ def _raw_binance(symbol, interval, bars):
 
 def _raw_api(symbol, interval, bars):
     """Berantai: sumber yang diingat dulu, lalu Bybit Perpetual -> Bybit Spot -> Binance Spot. Kosong di semua sumber = DataFrame kosong."""
-    urut = ["linear", "spot", "binance"]
+    urut = ["linear", "spot", "binance"] if SUMBER_SPOT else ["linear"]
     ingat = sumber(symbol)
     if ingat in urut:
         urut = [ingat] + [x for x in urut if x != ingat]

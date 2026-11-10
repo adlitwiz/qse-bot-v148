@@ -146,8 +146,12 @@ def kartu(s, x):
         except Exception:
             lot = ""
         st = rapor("SHORT")
+        jb = jembatan(s, "SHORT")
         return (f"🟡 <b>GZH PANTULAN SHORT: {s} SHORT MARKET</b>\n"
-                f"🌦 Cuaca: <b>↩️ RETRACEMENT TURUN</b> (BTC 4J di bawah EMA 50, koin di bawah EMA 200, pantulan naik ke fib 0.786 ditolak)\n"
+                + (f"🌉 <b>JEMBATAN TREN SHORT</b>: {jb} sudah memberi sinyal SHORT di koin ini dalam 8 hari terakhir, ini pantulan naik ke fib 0.786 "
+                   f"lalu lanjut turun. Uji 2025-2026: +0.10R dari 102 sinyal (tanpa jembatan -0.10R dari 31 sinyal). Tepi tipis, tetap kelas ringan\n"
+                   if jb else "⚠️ Tanpa jembatan tren: tidak ada sinyal jalur SHORT di koin ini 8 hari terakhir. Uji 2025-2026 kelompok ini -0.10R (31 sinyal)\n")
+                + f"🌦 Cuaca: <b>↩️ RETRACEMENT TURUN</b> (BTC 4J di bawah EMA 50, koin di bawah EMA 200, pantulan naik ke fib 0.786 ditolak)\n"
                 f"🏅 Rekam jejak aturan ini: uji 2025-2026 WR 60%, PF 1.14, +0.057R per trade dari 133 sinyal (latih PF 1.43). Tepi tipis"
                 + (f"  ·  live {st['n']} trade WR {st['wr']:.0f}% {st['tot']:+.1f}R" if st["n"] else "") + "\n"
                 + SY.blok_salin(x["entry"], x["sl"], x["tp"], x["tp"], "MARKET", t, sym=s, arah="SHORT")
@@ -163,8 +167,8 @@ def kartu(s, x):
     st = rapor()
     jb = jembatan(s, "LONG")
     return (f"🟡 <b>GZH PANTULAN PENDEK: {s} LONG MARKET</b>\n"
-            + (f"🌉 <b>JEMBATAN TREN</b>: {jb} LONG sudah memberi sinyal di koin ini dalam 8 hari terakhir, ini koreksi ke fib 0.618 lalu lanjut tren. "
-               f"Uji 2025-2026: WR 77%, +0.33R dari 44 sinyal (tanpa jembatan +0.17R)\n" if jb else "")
+            + (f"🌉 <b>JEMBATAN TREN · 🟦 KELAS UTAMA</b>: {jb} LONG sudah memberi sinyal di koin ini dalam 8 hari terakhir, ini koreksi ke fib 0.618 "
+               f"lalu lanjut tren. Uji 2025-2026: WR 77%, +0.33R dari 44 sinyal (tanpa jembatan +0.17R)\n" if jb else "")
             + f"🌦 Cuaca: <b>↩️ RETRACEMENT</b> (koreksi ke fib 0.618 dalam tren, ambil pantulan cepat)\n"
             f"🏅 Rekam jejak aturan ini: uji 2025-2026 WR 69%, PF 1.70, +38R dari 182 sinyal (latih 2023-2024 WR 72%)"
             + (f"  ·  live {st['n']} trade WR {st['wr']:.0f}% {st['tot']:+.1f}R" if st["n"] else "") + "\n"

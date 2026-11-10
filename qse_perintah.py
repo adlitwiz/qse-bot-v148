@@ -60,10 +60,16 @@ def mulai_laporan4j():
             "Hasilnya terkirim dalam 10 sampai 20 menit dan otomatis disematkan.")
 
 
+# v172 QC 70: perintah yang isinya milik pengirim (posisi, modal, catatan). Balasannya bernama dan tombolnya terkunci ke pengirim.
+PRIBADI = {"/entry", "/status", "/milikku", "/punyaku", "/tutup", "/tp", "/sl", "/batal", "/tpall", "/tpsemua", "/slall", "/slsemua", "/ubah",
+           "/modify", "/modif", "/edit", "/modal", "/pindah", "/kelola", "/be", "/hapus", "/catat"}
 BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "Robot jalan otomatis: scan tiap 4 jam dan per jam, pantau posisi tiap menit, berita, peta BTC pagi 07:05 WIB, "
-           "dan aturan jaga modal (TP awal 20%, SL ke entry, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun). "
-           "Semua fitur ada di tombol bawah. Isi tombol per orang: posisi, status, dan modal milik yang menekan.\n\n"
+           "dan aturan jaga modal: TP 20% di +0.5R lalu SL ke entry, jam ke-12, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun. "
+           "EMA Cross SHORT: tanpa TP sebagian, SL ke entry di +0.4R lalu SL berjalan. McGinley: sisa posisi trailing 3 ATR. "
+           "Robot hanya memberi sinyal koin Futures Bybit. "
+           "Semua fitur ada di tombol bawah. Balasan dan tombol pribadi (posisi, status, modal, entry) hanya bisa ditekan pemiliknya, "
+           "namanya tertulis di judul pesan.\n\n"
            "📊 <b>Status</b>: hasil hari ini, slot, dan tombol per posisi kamu\n"
            "📡 <b>Sinyal 4J</b>: sinyal valid sekarang plus rencana Sniper S/R, tiap kartu punya tombol 📋 Salin Setup\n"
            "₿ <b>Cek BTC</b>: arah BTC, level, dan peta pasar\n"
@@ -411,12 +417,21 @@ def proses(cmds, dari_main=False):
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/mode": "🎚️", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}
             isi = isi if "QSE v150 |" in isi.split("\n")[0] else f"{ikon.get(cmd, '🤖')} <b>QSE v150 | {JUDUL.get(cmd, cmd.upper()[1:])}</b>\n\n{isi}"
+            pribadi = uid is not None and cmd in PRIBADI
+            if pribadi:          # v172 QC 70: balasan pribadi diberi nama pemilik di baris judul, tombolnya hanya untuk pemilik
+                _b = isi.split("\n", 1)
+                isi = _b[0] + f"  ·  👤 {TG.e(str(nama or uid))}" + ("\n" + _b[1] if len(_b) > 1 else "")
             try:
                 import qse_menu as QM
                 mk = QM.tombol_untuk(cmd, args, isi, uid, nama)
             except Exception as ex:
                 print("[WARN] tombol", ex)
                 mk = None
-            TG.send(isi.split("\n\n"), markup=mk)
+            ids = TG.send(isi.split("\n\n"), markup=mk)
+            if pribadi:
+                try:
+                    QM.catat_pemilik(ids, uid, nama)
+                except Exception as ex:
+                    print("[WARN] pemilik", ex)
             n += 1
     return n

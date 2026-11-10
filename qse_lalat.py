@@ -779,16 +779,40 @@ def kartu(it, baru=False):
 
 
 # ---------- jalan tiap 15 menit dari listener ----------
+def bersihkan_spot(st):
+    """v172 QC 70: buang antrean dan posisi lalat di koin yang tidak punya kontrak Futures Bybit (token klub Spot). Return pesan atau ''."""
+    try:
+        import bybit_fetch as B
+        fut = B.futures()
+    except Exception as ex:
+        print("[WARN] lalat futures", ex)
+        return ""
+    if not fut:
+        return ""
+    buang = [(k, it) for k, it in list(st.get("open", {}).items()) if it.get("sym") not in fut]
+    if not buang:
+        return ""
+    for k, it in buang:
+        st["open"].pop(k, None)
+    nm = ", ".join(sorted({f"{it['sym'].replace('USDT', '')} {it.get('arah', '')}".strip() for _, it in buang}))
+    return (f"🧹 <b>ANTREAN SPOT DIBERSIHKAN</b>\n{nm} dihapus dari antrean dan posisi lalat: koin ini tidak punya kontrak Futures "
+            "(USDT Perpetual) di Bybit, jadi leverage tidak bisa dipasang. Kalau kamu sempat memasang order ini di Spot, batalkan atau "
+            "kelola sendiri. Mulai sekarang semua sinyal hanya dari koin Futures Bybit.")
+
+
 def jalankan():
     """Return daftar pesan untuk grup. Hormon dan sinapsis disimpan tiap jalan (berkembang tiap jam)."""
     with _KUNCI:
         st = state(); m = memori()
         _hidup(st)
+        _spot_msg = bersihkan_spot(st)
+        if _spot_msg:
+            st["buru_t"] = 0          # langsung cari pengganti dari koin Futures
         try:
             _makan_posisi_user(st, m)
         except Exception as ex:
             print("[WARN] lalat user", ex)
-        out = []
+        out = [_spot_msg] if _spot_msg else []
         try:
             out += _kelola(st, m)
         except Exception as ex:
