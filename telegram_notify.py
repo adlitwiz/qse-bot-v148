@@ -166,7 +166,75 @@ def _keyboard():
         return None
 
 
+# ---------- v173 QC 71: log siaran setup, supaya /entry tahu teknik asalnya (bukan "manual") ----------
+_RX_SIAR = None
+TEKNIK_KATA = (("McGinley", "mcginley"), ("EMA Cross", "ema_short"), ("RSI 50", "rsi_vol"), ("MSB", "msb_hpz"), ("CHoCH", "smc_choch"),
+               ("SnR Pantul", "snr_vol"), ("Ichimoku", "ichimoku"), ("Order Block", "orderblock"), ("GZH", "GZH"),
+               ("WHIP-FADE", "whip"), ("Whip-Fade", "whip"), ("TITIK JENUH", "reversal"), ("Trendline", "trendline"),
+               ("LALAT", "lalat"), ("Sniper", "sniper"), ("SEKTOR", "sektor"), ("Gurita", "gurita"), ("JAGOAN", "jagoan"))
+
+
+def catat_siaran(teks, now=None):
+    """Simpan tiap blok setup (KOINUSDT ARAH + Entry) yang disiarkan, dengan nama teknik dari baris di atas blok atau judul pesan."""
+    global _RX_SIAR
+    import re
+    if _RX_SIAR is None:
+        _RX_SIAR = re.compile(r"<pre>\s*([A-Z0-9]{2,20}USDT)\s+(LONG|SHORT)[^\n]*\n\s*Entry\s+([0-9.]+)", re.S)
+    try:
+        from config import STATE_DIR
+        ada = list(_RX_SIAR.finditer(teks or ""))
+        if not ada:
+            return 0
+        bersih = lambda x: html.unescape(re.sub(r"<[^>]+>", "", x)).strip()
+        judul = bersih((teks or "").strip().split("\n")[0])
+        baru = []
+        for m in ada:
+            atas = [b for b in (bersih(x) for x in teks[:m.start()].split("\n")) if b]
+            dekat = next((x for x in reversed(atas[-6:]) if m.group(1).replace("USDT", "") in x), atas[-1] if atas else "")
+            sumber = dekat + " | " + judul
+            kunci = next((k for kata, k in TEKNIK_KATA if kata in dekat), None) or next((k for kata, k in TEKNIK_KATA if kata in judul), "")
+            seg = [x.strip() for x in dekat.split("·")]
+            nama = next((x for x in seg[1:] if any(kata in x for kata, _ in TEKNIK_KATA)), "") or next(
+                (kata for kata, k in TEKNIK_KATA if k == kunci), "") or judul.replace("QSE v150 |", "").strip()
+            baru.append(dict(sym=m.group(1), arah=m.group(2), entry=float(m.group(3)), t=now or time.time(), kunci=kunci,
+                             nama=nama[:60], judul=judul[:80]))
+        f = os.path.join(STATE_DIR, "siaran.json")
+        try:
+            with open(f) as fh:
+                lama = json.load(fh)
+        except Exception:
+            lama = []
+        t0 = (now or time.time()) - 3 * 86400
+        lama = [x for x in lama if x.get("t", 0) >= t0][-400:] + baru
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(f + ".tmp", "w") as fh:
+            json.dump(lama, fh)
+        os.replace(f + ".tmp", f)
+        return len(baru)
+    except Exception as ex:
+        print("[WARN] catat siaran", ex)
+        return 0
+
+
+def siaran_cocok(sym, arah, harga, jam=12, tol=0.03, now=None):
+    """Siaran setup terbaru untuk koin dan arah ini dalam `jam` terakhir dengan entry dekat (selisih <= tol). Dict atau None."""
+    try:
+        from config import STATE_DIR
+        with open(os.path.join(STATE_DIR, "siaran.json")) as fh:
+            lama = json.load(fh)
+    except Exception:
+        return None
+    now = now or time.time()
+    ok = [x for x in lama if x["sym"] == sym and x["arah"] == arah and now - x["t"] <= jam * 3600
+          and (not harga or abs(x["entry"] - harga) / harga <= tol)]
+    return max(ok, key=lambda x: x["t"]) if ok else None
+
+
 def send(blocks, token=None, chat_id=None, markup=None):
+    try:
+        catat_siaran("\n\n".join(str(b) for b in blocks))
+    except Exception as ex:
+        print("[WARN] siaran", ex)
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:

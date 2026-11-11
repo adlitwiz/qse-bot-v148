@@ -230,7 +230,8 @@ def _tugas_berkala():
                     except Exception as ex:
                         print("[WARN] gambar sinyal", ex)
                     ids = [mid] if mid else TG.send([f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk])
-                    _pin_sinyal(ids)
+                    if _layak_pin(rk):          # QC 71: yang disematkan hanya KELAS UTAMA dan KOIN JAGOAN
+                        _pin_sinyal(ids)
                     try:
                         cr = BM.cara_dari_kartu(rk)          # v150: langkah pasang lengkap tepat di bawah gambar sinyal
                         if cr:
@@ -252,7 +253,8 @@ def _tugas_berkala():
                                + (peta_btc + "\n" if peta_btc and no == 1 else "")
                                + ("\n".join(tambah) + "\n" if tambah else "")
                                + ("\n".join(slot_b) + "\n" if slot_b and no == 1 else "") + m])
-                kirim.append((slot, ids))
+                if _layak_pin(m):
+                    kirim.append((slot, ids))
             terbaik = {}
             for slot, ids in kirim:
                 terbaik.setdefault(slot, ids)          # tiap slot menyematkan sinyal terbaik jalur itu
@@ -667,6 +669,12 @@ def _pin_ichi(ids, slot="pin_ichi"):
         _st({slot: ids[0], slot + "_t": time.time()})
 
 
+def _layak_pin(teks):
+    """v173 QC 71: kartu sinyal yang wajib disematkan: KELAS UTAMA atau KOIN JAGOAN. Kelas ringan tidak disematkan."""
+    t = teks or ""
+    return ("KELAS UTAMA" in t) or ("KOIN JAGOAN" in t) or ("JAGOAN SEJATI" in t)
+
+
 def _pin_sinyal(ids, umur_jam=12, maks=12):
     """v150: tiap gelembung sinyal disematkan sendiri, jadi daftar pin = sinyal yang bisa dipilih. Pin sinyal lebih dari 12 jam
     (lewat masa entry kebanyakan jalur) dilepas, maksimal 12 pin sinyal."""
@@ -877,11 +885,20 @@ def _gurita():
 
 
 def _tugas_menit():
+    try:          # v173 QC 71: struktur 1 jam posisi jalan dicek tiap 5 menit, kabar sekali saat patah
+        if int(time.time() // 60) % 5 == 0:
+            import qse_saya as _SYp
+            kp = _SYp.cek_patah()
+            if kp:
+                TG.send(["📋 <b>QSE v150 | KABAR POSISI</b> (data untuk kamu nilai, bukan perintah keluar)\n\n" + "\n\n".join(kp)])
+    except Exception as ex:
+        print("[WARN] cek patah", ex)
     try:
         import qse_ditahan as DT          # v150: sinyal jalur yang ditahan otak tetap dikirim (lot kecil), semua isi Jalur Live sampai grup
         for m in DT.jalankan():
             ids = TG.send(["🧠 <b>QSE v150 | JALUR LIVE</b>\n\n" + m])
-            _pin_sinyal(ids or [])
+            if _layak_pin(m):
+                _pin_sinyal(ids or [])
     except Exception as ex:
         print("[WARN] ditahan", ex)
     try:
@@ -1031,6 +1048,10 @@ def _pekerja():
             _tugas_berkala()
         except Exception as ex:
             print("[WARN] pekerja", ex)
+        try:
+            QM.sapu()          # QC 71: hapus menu pribadi yang sudah lewat 60 detik
+        except Exception as ex:
+            print("[WARN] sapu menu", ex)
         HB["kerja"] = time.time()
         time.sleep(5)
 
@@ -1056,6 +1077,9 @@ def main():
     try:
         import qse_saya as _SY
         _SY.hapus_manual_sekali()
+        _bs = _SY.bersihkan_spot()          # QC 71: posisi ACM, PSG, ALPINE dan koin non-Futures lain dibuang dari posisi aktif
+        if _bs:
+            TG.send([_bs])
         _SY.seed_awal()
     except Exception as ex:
         print("[WARN] hapus manual atau seed", ex, flush=True)

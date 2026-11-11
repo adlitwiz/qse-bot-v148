@@ -1668,7 +1668,7 @@ def scan(now, run4, tfs):
                        f"Sinyal baru ditahan 3 jam. Posisi jalan: tahan sesuai aturan jalur, SL di Bybit yang melindungi "
                     f"(uji 2021-2026: geser SL ke entry menurunkan profit 18%).")
     if waspada:
-        TG.send(["⚠️ <b>QSE v150 | PERINGATAN POSISI</b>\n\n" + "\n\n".join(waspada)])
+        TG.send(["📋 <b>QSE v150 | KABAR POSISI</b> (data untuk kamu nilai, bukan perintah keluar)\n\n" + "\n\n".join(waspada)])
     events += [(ev, dict(it)) for ev, it in FX.recheck(led, res_map, tfs)]
     for r in results:
         r["tk"] = tickers.get(r["symbol"])
@@ -1718,7 +1718,7 @@ def scan(now, run4, tfs):
         isi += [(r["symbol"], x["arah"]) for lst in (cad, sik, fib, cad2) for r, x, _ in lst if r.get("tf", "240") == tf]
         if ada:
             jenis = ("saran4" if tf == "240" else "prospek") if isi else "lap4"
-            _pin(TG.send(sinyal) or [], jenis, isi, led)
+            _pin(_kirim_sinyal(sinyal), jenis, isi, led)
         ids_lap = TG.send(blocks) or []
         if not ada and tf == "240":
             _pin(ids_lap, "lap4", led=led)     # tanpa saran: pin saran lama yang masih berlaku tetap disematkan
@@ -1728,6 +1728,22 @@ def scan(now, run4, tfs):
     FX.save(led)
     _dump(results)
     print(f"Selesai {time.time() - t0:.0f}s | hasil {len(results)} | gagal {fail}")
+
+
+TEKNIK_AWAL = "🎯 <b>QSE v150 | SINYAL 4 JAM · "
+
+
+def _kirim_sinyal(sinyal):
+    """v173 QC 71: ringkasan dikirim dulu, lalu satu pesan untuk tiap teknik. Return id pesan ringkasan (untuk pin laporan)."""
+    utama = [b for b in sinyal if not b.startswith(TEKNIK_AWAL)]
+    ids = TG.send(utama) or []
+    for b in sinyal:
+        if b.startswith(TEKNIK_AWAL):
+            try:
+                TG.send([b])
+            except Exception as ex:
+                print("[WARN] kirim per teknik", ex)
+    return ids
 
 
 WIB = dt.timezone(dt.timedelta(hours=7))
@@ -2407,12 +2423,25 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             ok_n = sum(1 for z in item if z in ikut)
             blok.append(f"{GARIS}\n🔹 <b>{nama_j} ({len(item)})</b>  ·  bisa diikuti {ok_n}\n<i>{ket}</i>")
             blok += [f(i, r, x, st, led) for i, (j_, r, x, st, f) in enumerate(item, 1)]
+        per_teknik = []
         if judul_b == "KARTU SINYAL YANG BISA DIIKUTI":
-            if robot_blok:
-                blok.append(f"{GARIS}\n🤖 <b>8 TEKNIK INDIKATOR, URUT PRIORITAS</b>")
-            blok += robot_blok
+            # v173 QC 71: kartu 8 teknik tidak lagi digabung di satu pesan panjang. Tiap teknik jadi pesan sendiri (lihat _kirim_sinyal).
+            import re as _re
+            grup, lain_rb = {}, []
+            for b_ in robot_blok:
+                m_ = _re.search(r"USDT (?:LONG|SHORT)</b>\s+·\s+(.+?) 4J", b_)
+                if m_ and "PRIORITAS" in b_.split("\n", 2)[1]:
+                    grup.setdefault(m_.group(1).strip(), []).append(b_)
+                else:
+                    lain_rb.append(b_)
+            if grup:
+                blok.append(f"{GARIS}\n🤖 <b>8 TEKNIK INDIKATOR</b>: {sum(len(v) for v in grup.values())} kartu, dikirim satu pesan per teknik di bawah "
+                            f"({', '.join(f'{k} {len(v)}' for k, v in grup.items())})")
+            blok += lain_rb
+            per_teknik = [TEKNIK_AWAL + f"{TG.e(k.upper())}</b>  ·  {len(v)} sinyal\n" + "\n".join(v) for k, v in grup.items()]
         if len(blok) > 1:
             so.append("\n".join(blok))
+        so += per_teknik
     if kosong:
         so.append(f"{GARIS}\n⚪ Kosong di candle ini: {', '.join(kosong)}")
     if not semua and not ring_rb:

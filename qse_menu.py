@@ -181,8 +181,10 @@ def _posisi_rows(uid, nama=""):
         if v.get("status") == "MENUNGGU":
             rows.append([("❌ Batal order", f"y:/batal {k}"), ("✏️ Ubah", f"t:/ubah {k}")])
         else:
-            rows.append([("💰 TP 50%", f"c:/tp {k} 50%"), ("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY")])
-            rows.append([("🏆 TP penuh", f"y:/tp {k} 100%"), ("✋ Tutup", f"y:/tutup {k}")])
+            # QC 71: empat pilihan TP. Persen dihitung dari SISA posisi (sama dengan Close By Proportion di Bybit)
+            rows.append([("💰 TP 25%", f"c:/tp {k} 25%"), ("💰 TP 50%", f"c:/tp {k} 50%")])
+            rows.append([("💰 TP 75%", f"c:/tp {k} 75%"), ("🏆 TP penuh", f"y:/tp {k} 100%")])
+            rows.append([("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY"), ("✋ Tutup", f"y:/tutup {k}")])
     if not rows:
         rows.append([("📭 Belum ada posisi. Lihat sinyal", "c:/sinyal4j")])
     else:
@@ -195,8 +197,9 @@ def _modal_rows():
     return [[("✏️ Isi / ganti modal", "t:/modal")],
             [("⚙️ 3x", "c:/modal LEV 3"), ("5x", "c:/modal LEV 5"), ("10x", "c:/modal LEV 10"), ("20x", "c:/modal LEV 20")],
             [("💵 $50", "c:/modal ENTRY 50"), ("$100", "c:/modal ENTRY 100"), ("$150", "c:/modal ENTRY 150"), ("$200", "c:/modal ENTRY 200")],
-            [("🟨 Ringan $50", "c:/modal RINGAN 50"), ("$75", "c:/modal RINGAN 75"), ("$100", "c:/modal RINGAN 100"), ("✍️ Ringan lain", "t:/modal RINGAN")],
-            [("✍️ Entry lain", "t:/modal ENTRY"), ("✍️ Leverage lain", "t:/modal LEV"), ("🤖 Entry otomatis", "c:/modal ENTRY 0")],
+            [("🟨 Ringan $50", "c:/modal RINGAN 50"), ("$75", "c:/modal RINGAN 75"), ("$100", "c:/modal RINGAN 100")],
+            [("✍️ Ringan lain", "t:/modal RINGAN"), ("✍️ Entry lain", "t:/modal ENTRY")],
+            [("✍️ Leverage lain", "t:/modal LEV"), ("🤖 Entry otomatis", "c:/modal ENTRY 0")],
             [("🎚️ Risiko 0.5%", "c:/modal RISIKO 0.5"), ("1%", "c:/modal RISIKO 1"), ("2%", "c:/modal RISIKO 2")],
             [("📋 Detail slot dan rem", "c:/modal"), ("🔄 Segarkan", "m:💼 Modal")]]
 
@@ -234,6 +237,8 @@ def buka_sub(nama, mid=None, uid=None, nm=""):
     if mid and not (pribadi and not pemilik(mid)):          # menu pribadi tidak menimpa pesan bersama, dikirim sebagai pesan sendiri
         js = _api("editMessageText", message_id=mid, text=teks, parse_mode="HTML", reply_markup=_inline(rows))
         if js.get("ok") or "not modified" in str(js.get("description", "")):
+            if pribadi:
+                jadwal_bersih([mid], "hapus")          # disegarkan: hitung 60 detik dari awal lagi
             return
     if pribadi and uid:
         _kirim_milik(uid, nm, text=teks, parse_mode="HTML", reply_markup=_inline(rows))
@@ -268,7 +273,7 @@ def tombol_untuk(cmd, args, isi, uid=None, nama=""):
     if cmd in ("/status", "/milikku", "/punyaku"):
         extra = _posisi_rows(uid, nama)
     elif cmd in ("/sinyal4j", "/sinyal4", "/sinyal", "/scan", "/rencana"):
-        extra = [[("🔄 Segarkan", f"c:{cmd}"), ("📝 Catat entry", "m:📝 Entry"), ("🪰 Pilihan lalat", "c:/lalat")]]
+        extra = [[("🔄 Pindai ulang", f"c:{cmd}"), ("📝 Catat entry", "m:📝 Entry")], [("🪰 Pilihan lalat", "c:/lalat"), ("📊 Status", "c:/status")]]
     elif cmd in ("/cek", "/cekdetail", "/arah") and k:
         extra = [[("🔄 Segarkan", f"c:/cek {k}"), ("🧐 Detail", f"c:/cekdetail {k}")], [("🧭 Arah", f"c:/arah {k}"), ("📡 Sinyal 4J", "c:/sinyal4j")]]
     elif cmd == "/modal":
@@ -337,6 +342,47 @@ def catat_pemilik(ids, uid, nama=""):
     _st(d)
 
 
+# ---------- v173 QC 71: pesan menu pribadi dibersihkan otomatis supaya grup tidak penuh tombol orang lain ----------
+# Telegram tidak bisa menampilkan pesan grup hanya untuk satu orang. Jadi: menu tombol pribadi (Kelola Posisi, Modal, konfirmasi)
+# DIHAPUS setelah BERSIH_DETIK, dan balasan perintah pribadi (status, tp, entry) DILEPAS tombolnya (teks laporan tetap).
+BERSIH_DETIK = int(os.environ.get("QSE_MENU_HAPUS", "60") or 0)
+
+
+def jadwal_bersih(ids, mode="hapus", detik=None):
+    """mode 'hapus' = hapus pesan, 'tombol' = lepas tombol saja."""
+    ids = [str(i) for i in (ids or []) if i]
+    dt = BERSIH_DETIK if detik is None else detik
+    if not ids or dt <= 0:
+        return
+    d = _st(); b = d.setdefault("bersih", {})
+    for i in ids:
+        b[i] = [time.time() + dt, mode]
+    _st(d)
+
+
+def sapu(now=None):
+    """Dipanggil pekerja tiap 5 detik. Return jumlah pesan yang dibersihkan."""
+    now = now or time.time()
+    b = _st().get("bersih") or {}
+    due = [(i, v) for i, v in b.items() if v[0] <= now]
+    if not due:
+        return 0
+    for i, v in due:
+        try:
+            if v[1] == "hapus":
+                _api("deleteMessage", message_id=int(i))
+            else:
+                _api("editMessageReplyMarkup", message_id=int(i), reply_markup=json.dumps({"inline_keyboard": []}))
+        except Exception as ex:
+            print("[WARN] sapu menu", ex)
+    d = _st(); bb = d.get("bersih") or {}
+    for i, _ in due:
+        bb.pop(i, None)
+    d["bersih"] = bb
+    _st(d)
+    return len(due)
+
+
 def pemilik(mid):
     v = (_st().get("pemilik") or {}).get(str(mid))
     return (v[0], v[1]) if v else None
@@ -347,6 +393,7 @@ def _kirim_milik(uid, nm, **data):
     js = _api("sendMessage", **data)
     try:
         catat_pemilik([(js.get("result") or {}).get("message_id")], uid, nm)
+        jadwal_bersih([(js.get("result") or {}).get("message_id")], "hapus")
     except Exception:
         pass
     return js

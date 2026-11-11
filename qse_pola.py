@@ -305,3 +305,53 @@ def gz_hunter(h, l, c, depth=10, thr=4.0, fee_pct=0.055, tf_jam=4, konf=True):
               tf="4J" if tf_jam == 4 else "1J")
     return dict(start=float(start), end=float(end), puncak=bool(L), sudah=sudah, atr=float(atr[n - 1]),
                 levels={str(m): float(v) for m, v in lv.items()}, bt=bt)
+
+
+# ---------- v173 QC 71: pola candle di candle sinyal sebagai penguat (riset/upgrade/run_v173_long.py bagian D) ----------
+# Uji 30 ribu sinyal 8 teknik 2023-2026, aturan keluar live. Semua teknik digabung: pola searah TIDAK konsisten (2023 lebih jelek).
+# Per teknik, selisih rata R dengan pola searah dikurangi tanpa pola positif di 2023, 2024, 2025, DAN 2026 hanya di tiga kelompok:
+#   EMA Cross SHORT (+0.02, +0.12, +0.40, +0.04), Ichimoku SHORT (+0.07, +0.28, +0.05, +0.01), McGinley LONG (+0.09, +0.03, +0.07, +0.11).
+# Negatif di keempat tahun: SMC CHoCH LONG (-0.05, -0.16, -0.25, -0.24). Jadi label penguat hanya untuk tiga kelompok itu,
+# peringatan untuk SMC CHoCH LONG, dan teknik lain hanya diberi nama polanya tanpa klaim.
+POLA_TERUJI = {("ema_short", "SHORT"): "+0.40R di 2025 dan +0.04R di 2026 dibanding tanpa pola",
+               ("ichimoku", "SHORT"): "+0.05R di 2025 dan +0.01R di 2026 dibanding tanpa pola",
+               ("mcginley", "LONG"): "+0.07R di 2025 dan +0.11R di 2026 dibanding tanpa pola"}
+POLA_JELEK = {("smc_choch", "LONG"): "-0.25R di 2025 dan -0.24R di 2026 dibanding tanpa pola"}
+
+
+def pola_sinyal(o, h, l, c, arah, i=-1):
+    """Pola candle searah `arah` di candle i (definisi sama dengan uji). Return nama pola atau ''."""
+    n = len(c)
+    i = i if i >= 0 else n + i
+    if i < 2:
+        return ""
+    rg = max(h[i] - l[i], 1e-12); bd = abs(c[i] - o[i])
+    lw, uw = (min(o[i], c[i]) - l[i]) / rg, (h[i] - max(o[i], c[i])) / rg
+    bd1 = abs(c[i - 1] - o[i - 1]); rg1 = max(h[i - 1] - l[i - 1], 1e-12); rg2 = max(h[i - 2] - l[i - 2], 1e-12)
+    L = arah == "LONG"
+    if L:
+        if lw >= 0.55 and bd / rg <= 0.35 and uw <= 0.25:
+            return "Hammer / Pin Bar (ekor bawah panjang)"
+        if c[i] > o[i] and c[i - 1] < o[i - 1] and c[i] >= o[i - 1] and o[i] <= c[i - 1] and bd > bd1:
+            return "Bullish Engulfing"
+        if c[i - 2] < o[i - 2] and (o[i - 2] - c[i - 2]) / rg2 >= 0.5 and bd1 / rg1 <= 0.3 and c[i] > o[i] and c[i] > (o[i - 2] + c[i - 2]) / 2:
+            return "Morning Star"
+    else:
+        if uw >= 0.55 and bd / rg <= 0.35 and lw <= 0.25:
+            return "Shooting Star / Pin Bar (ekor atas panjang)"
+        if c[i] < o[i] and c[i - 1] > o[i - 1] and c[i] <= o[i - 1] and o[i] >= c[i - 1] and bd > bd1:
+            return "Bearish Engulfing"
+        if c[i - 2] > o[i - 2] and (c[i - 2] - o[i - 2]) / rg2 >= 0.5 and bd1 / rg1 <= 0.3 and c[i] < o[i] and c[i] < (o[i - 2] + c[i - 2]) / 2:
+            return "Evening Star"
+    return ""
+
+
+def baris_pola(k, arah, nama):
+    """Baris kartu untuk pola candle di candle sinyal. Kosong kalau tidak ada pola."""
+    if not nama:
+        return ""
+    if (k, arah) in POLA_TERUJI:
+        return f"🕯 <b>Pola candle penguat: {nama}</b>. Uji teknik ini dengan pola searah: {POLA_TERUJI[(k, arah)]}"
+    if (k, arah) in POLA_JELEK:
+        return f"🕯 Pola candle: {nama}. Di teknik ini pola searah justru lebih jelek ({POLA_JELEK[(k, arah)]}), jangan dianggap penguat"
+    return f"🕯 Pola candle: {nama} (info, di teknik ini tidak terbukti menambah hasil)"

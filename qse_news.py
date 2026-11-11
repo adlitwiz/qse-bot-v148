@@ -16,7 +16,15 @@ from config import STATE_DIR
 FILE = os.path.join(STATE_DIR, "news.json")
 UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) qse-bot/1.0"}
 WIB = dt.timezone(dt.timedelta(hours=7))
+# v173 QC 71: sumber langsung ditambah (CryptoCompare News API = agregator puluhan media dengan jam terbit per menit, pengumuman
+# Bybit, The Block, Bitcoin Magazine). Semua sumber diambil BERSAMAAN tiap 60 detik (dulu satu per satu), jadi telat robot paling
+# lama sekitar 1 menit dari saat sumber memuat beritanya. Google News tetap ada sebagai jaring terakhir: media kecil yang hanya
+# muncul di sana tetap bisa telat 10-20 menit karena Google sendiri baru mengindeksnya.
 SUMBER = (
+    ("CryptoCompare", "https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=latest"),
+    ("Bybit Announcements", "https://api.bybit.com/v5/announcements/index?locale=en-US&limit=20"),
+    ("The Block", "https://www.theblock.co/rss.xml"),
+    ("Bitcoin Magazine", "https://bitcoinmagazine.com/feed"),
     ("Cointelegraph", "https://cointelegraph.com/rss"),
     ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
     ("Decrypt", "https://decrypt.co/feed"),
@@ -192,12 +200,48 @@ def _bersih(s):
     return html.unescape(re.sub(r"<[^>]+>", " ", s)).replace("\xa0", " ").strip()
 
 
+def _ambil_json(nama, x):
+    """Sumber JSON: CryptoCompare News API dan pengumuman Bybit. Bentuk hasil sama dengan RSS."""
+    import json as _json
+    try:
+        js = _json.loads(x)
+    except Exception:
+        return []
+    out = []
+    if nama == "CryptoCompare":
+        for it in (js.get("Data") or [])[:40]:
+            if not isinstance(it, dict) or not it.get("title"):
+                continue
+            src = (it.get("source_info") or {}).get("name") or it.get("source") or nama
+            out.append(dict(sumber=str(src), judul=_bersih(it["title"]), link=it.get("url") or "", isi=_bersih(it.get("body") or "")[:400],
+                            pub=float(it["published_on"]) if it.get("published_on") else None))
+    else:
+        for it in ((js.get("result") or {}).get("list") or [])[:20]:
+            if not it.get("title"):
+                continue
+            ts = it.get("publishTime") or it.get("dateTimestamp")
+            out.append(dict(sumber="Bybit", judul=_bersih(it["title"]), link=it.get("url") or "", isi=_bersih(it.get("description") or "")[:400],
+                            pub=float(ts) / 1000 if ts else None))
+    return out
+
+
+def ambil_semua(sumber=None):
+    """Semua sumber diambil bersamaan (maks 8 koneksi). Return list (nama, daftar berita) urut seperti SUMBER."""
+    from concurrent.futures import ThreadPoolExecutor
+    sumber = list(sumber or SUMBER)
+    with ThreadPoolExecutor(min(8, len(sumber))) as ex:
+        hasil = list(ex.map(lambda z: _ambil(*z), sumber))
+    return [(nm, h) for (nm, _), h in zip(sumber, hasil)]
+
+
 def _ambil(nama, url):
     try:
-        x = requests.get(url, headers=UA, timeout=15).text
+        x = requests.get(url, headers=UA, timeout=10).text
     except Exception as ex:
         print("[WARN] news", nama, ex)
         return []
+    if nama in ("CryptoCompare", "Bybit Announcements"):
+        return _ambil_json(nama, x)
     out = []
     for it in re.findall(r"<(?:item|entry)(?:\s[^>]*)?>(.*?)</(?:item|entry)>", x, re.S)[:25]:
         t = re.search(r"<title[^>]*>(.*?)</title>", it, re.S)
@@ -494,8 +538,8 @@ def cek(simbol, maks=2):
     awal = not sudah
     now = time.time()
     out = []
-    for nama, url in SUMBER:
-        for b in _ambil(nama, url):
+    for nama, _daftar in ambil_semua():
+        for b in _daftar:
             kunci = re.sub(r"\W+", "", b["judul"].lower())[:90]
             if not kunci or kunci in sudah:
                 continue

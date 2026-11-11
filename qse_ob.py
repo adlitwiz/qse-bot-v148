@@ -375,6 +375,7 @@ def kartu(no, it, sg):
         SY.GARIS,
         f"🟢 <b>{no}. {it['sym']} LONG</b>  ·  Order Block + Volume 4J",
         f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  <b>{MD.teks_kelas(lot_b)}</b> (margin dan leverage tiap orang di baris bawah)",
+        *([_sp] if (_sp := __import__("qse_strat").baris_spesialis("orderblock", "LONG")) else []),
         *_combo_teks(it),
         *([cat_hari] if cat_hari else []),
         SY.GARIS,

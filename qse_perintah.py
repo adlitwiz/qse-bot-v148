@@ -188,6 +188,12 @@ def balas(cmd, args, dari_main=False):
         # v150 urutan: 1 sinyal jalur live yang masih valid, 2 sinyal terkuat (combo raja/fix/emas, NILAI 9-10) dan yang ditahan otak,
         # 3 Sniper S/R koin medali
         isi = SY.sinyal_jalur()
+        try:          # v173 QC 71: pindai paksa detik ini, sinyal yang masih valid ditampilkan lagi dengan rekomendasi teratas
+            import qse_strat as _STp
+            j1_, _, sisa_ = isi.partition("\n")
+            isi = j1_ + "\n\n" + _STp.pindai_teks() + ("\n\n" + sisa_ if sisa_.strip() else "")
+        except Exception as ex:
+            print("[WARN] sinyal4j pindai", ex)
         try:
             import qse_kompas as KP          # 9 Nov 2026: kompas yang sama dengan Cek BTC, di bawah judul
             kp = KP.kompas()
@@ -431,6 +437,7 @@ def proses(cmds, dari_main=False):
             if pribadi:
                 try:
                     QM.catat_pemilik(ids, uid, nama)
+                    QM.jadwal_bersih(ids, "tombol")          # QC 71: tombol pribadi dilepas setelah 60 detik, teks laporan tetap
                 except Exception as ex:
                     print("[WARN] pemilik", ex)
             n += 1

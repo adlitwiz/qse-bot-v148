@@ -150,7 +150,8 @@ def kartu(s, x):
         return (f"🟡 <b>GZH PANTULAN SHORT: {s} SHORT MARKET</b>\n"
                 + (f"🌉 <b>JEMBATAN TREN SHORT</b>: {jb} sudah memberi sinyal SHORT di koin ini dalam 8 hari terakhir, ini pantulan naik ke fib 0.786 "
                    f"lalu lanjut turun. Uji 2025-2026: +0.10R dari 102 sinyal (tanpa jembatan -0.10R dari 31 sinyal). Tepi tipis, tetap kelas ringan\n"
-                   if jb else "⚠️ Tanpa jembatan tren: tidak ada sinyal jalur SHORT di koin ini 8 hari terakhir. Uji 2025-2026 kelompok ini -0.10R (31 sinyal)\n")
+                   if jb else "ℹ️ GZH murni (tanpa jembatan tren): tidak ada sinyal jalur SHORT di koin ini 8 hari terakhir. Uji: 2023-2024 +0.25R dari 22 sinyal, "
+                         "2025-2026 -0.10R dari 31 sinyal. Sampel kecil dan belum konsisten, jadi tetap dikirim sebagai kelas ringan\n")
                 + f"🌦 Cuaca: <b>↩️ RETRACEMENT TURUN</b> (BTC 4J di bawah EMA 50, koin di bawah EMA 200, pantulan naik ke fib 0.786 ditolak)\n"
                 f"🏅 Rekam jejak aturan ini: uji 2025-2026 WR 60%, PF 1.14, +0.057R per trade dari 133 sinyal (latih PF 1.43). Tepi tipis"
                 + (f"  ·  live {st['n']} trade WR {st['wr']:.0f}% {st['tot']:+.1f}R" if st["n"] else "") + "\n"
