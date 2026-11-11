@@ -1775,7 +1775,7 @@ SARAN_DASBOR_1J = False
 # v175 QC 73: siaran otomatis 4 jam hanya KELAS UTAMA. Kelas ringan lewat scan 1 jam (qse_radar). QSE_4J_UTAMA=0 mengembalikan semua.
 UTAMA_4J = os.environ.get("QSE_4J_UTAMA", "1") != "0"
 IKON = {"LONG": "🟢", "SHORT": "🔴"}
-GARIS = "━━━━━━━━━━━━━━━━━━"
+GARIS = "━━━━━━━━━━━━"
 NAMA = {"240": ("4 JAM", "4J"), "60": ("1 JAM", "1J")}
 
 
@@ -2512,6 +2512,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         out += _pantauan(rs, sig + [(r, x) for r, x, _ in cad] + [(r, x) for r, x, _ in sik], kode)
         try:
             import qse_lalat as LT          # v150: ringkasan lalat bionik di laporan 4 jam
+            if not LT.siar():
+                raise RuntimeError("lalat uji live")          # QC 76: tidak ditampilkan di laporan
             _lt = LT.state()
             out.append(f"{GARIS}\n🪰 <b>LALAT ABDUL</b>: {LT.mood(_lt)}  ·  lapar {_lt['lapar']:.0f}%  ·  DA {_lt['DA']:.0f}  ·  "
                        f"5-HT {_lt['SER']:.0f}  ·  GABA {_lt['GABA']:.0f}  ·  posisi {len(_lt['open'])}/2. Detail di tombol 🪰 Lalat Abdul."

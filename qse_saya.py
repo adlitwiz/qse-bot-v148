@@ -1009,7 +1009,7 @@ def tingkat_bukti(jalur, arah=None, skor=None):
 
 IKUT = ("TERBUKTI", "TERBUKTI LIVE", "SEDANG DIUJI")
 TAMPIL_SEMUA = os.environ.get("QSE_TAMPIL_SEMUA", "0") == "1"      # 1 = sinyal yang belum terbukti tetap ditampilkan lengkap
-GARIS = "━━━━━━━━━━━━━━━━━━"
+GARIS = "━━━━━━━━━━━━"
 
 
 def layak(jalur, arah=None, skor=None):
@@ -3316,12 +3316,91 @@ def hewan_asal(sym, arah, harga):
     return None
 
 
+_ASAL_CACHE = {}
+
+
+def label_rusak(it):
+    """Posisi yang tekniknya tercatat sebagai judul pesan (bug catat_siaran sebelum QC 77)."""
+    p = str(it.get("pola") or "")
+    return it.get("jalur") == "saran siaran" or "SINYAL JALUR TERBUKTI" in p or "PINDAI PAKSA" in p or "SCAN 1 JAM" in p or "SINYAL 4 JAM" in p
+
+
+def teknik_asal(it):
+    """v180 QC 77: cari teknik asli sebuah posisi. 1. posisi robot jalur (masih jalan atau sudah selesai) di koin dan arah yang sama
+    dalam 12 jam dari entry. 2. hitung ulang sinyal teknik di 3 candle 4J sebelum entry. Return (kunci, nama) atau (None, None)."""
+    ts = it.get("fill_ts") or it.get("created_ts") or time.time()
+    ts = ts / 1000 if ts > 1e11 else ts
+    key = (it["sym"], it["arah"], int(ts))
+    if key in _ASAL_CACHE:
+        return _ASAL_CACHE[key]
+    hasil = (None, None)
+    try:
+        import qse_strat as ST
+        sumber = [(k, cfg["nama"], ST.lihat(k)) for k, cfg in ST.STRAT.items() if not cfg.get("manual")]
+        for mod, k, nm in (("qse_ichimoku", "ichimoku", "Ichimoku"), ("qse_ob", "orderblock", "Order Block + Volume")):
+            try:
+                sumber.append((k, nm, __import__(mod).lihat()))
+            except Exception:
+                pass
+        for k, nm, d in sumber:
+            for x in list(d.get("open", {}).values()) + list(d.get("closed", []))[-200:]:
+                if x.get("sym") == it["sym"] and x.get("arah") == it["arah"] and abs((x.get("t") or 0) - ts) <= 12 * 3600:
+                    hasil = (k, nm); break
+            if hasil[0]:
+                break
+        if not hasil[0]:
+            df = ST._k4(it["sym"], 600)
+            if df is not None and len(df) > 265:
+                df = df[df.index + 14400000 <= ts * 1000 + 60000]
+                bn = ST.btc_naik()
+                for m in range(3):
+                    d_ = df if m == 0 else df.iloc[:-m]
+                    sg = {k: v for k, v in ST.sinyal(d_, bn, True).items() if v[0] == it["arah"]}
+                    if not sg:
+                        try:
+                            import qse_ichimoku as IC
+                            if IC._sinyal(d_)[0] == it["arah"]:
+                                sg = {"ichimoku": 1}
+                        except Exception:
+                            pass
+                    if sg:
+                        k = max(sg, key=lambda z: ST.PF_JALUR.get(z, 1.0))
+                        hasil = (k, (ST.STRAT.get(k) or {}).get("nama") or "Ichimoku"); break
+    except Exception as ex:
+        print("[WARN] teknik asal", it.get("sym"), ex)
+    if len(_ASAL_CACHE) > 500:
+        _ASAL_CACHE.clear()
+    _ASAL_CACHE[key] = hasil
+    return hasil
+
+
+@per_orang
+def perbaiki_label():
+    """QC 77: posisi yang telanjur tercatat 'saran siaran' dipulihkan ke teknik aslinya, sekali. Return list teks (untuk log)."""
+    def f(d):
+        out = []
+        for it in d["open"].values():
+            if not label_rusak(it) or it.get("label_cek"):
+                continue
+            k, nm = teknik_asal(it)
+            it["label_cek"] = True
+            if k:
+                it["pola_lama"] = it.get("pola"); it["jalur"] = "saran " + k; it["pola"] = nm
+                out.append(f"{it['sym']} {it['arah']}: teknik dipulihkan ke {nm}")
+        return out
+    return ubah(f)
+
+
 def info_teknik(it, jp=None):
     """Asal entry untuk kartu posisi: nama teknik, skor label saat sinyal, dan nama label. Dicatat saat /entry
     (skor_label, label_sinyal). Trade lama tanpa catatan diambil dari posisi robot jalur yang masih jalan."""
     import qse_strat as ST
     jalur = it.get("ikut") or it.get("jalur") or "manual"
     nama = (jp.get("nama") if (jp and it.get("ikut")) else None) or it.get("pola") or "manual"
+    if label_rusak(it) and not it.get("ikut"):          # QC 77: label rusak dari versi lama, tampilkan teknik aslinya
+        k_, nm_ = (ST.kunci_jalur(jp.get("jalur")), jp.get("nama")) if (jp and jp.get("jalur")) else teknik_asal(it)
+        if k_:
+            jalur, nama = "saran " + k_, nm_ or nama
     skor, label = it.get("skor_label"), it.get("label_sinyal")
     if skor is None and jp and jalur != "manual":
         try:

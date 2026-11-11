@@ -88,6 +88,29 @@ def sinkron():
     return len(baru)
 
 
+def hati(d=None):
+    """v180 QC 77: suasana hati robot dari HP dan 10 trade terakhir. Dipakai bubble 🧠 untuk mengatur keberanian keputusan.
+    Return dict(ikon, nama, hp, sebab, maks) dengan maks = jumlah posisi baru yang disarankan per jam."""
+    d = d or _baca()
+    hp = d["hp"]
+    r = [x["R"] for x in d["log"][-10:]]
+    mn = sum(1 for x in r if x > 0.05); kl = sum(1 for x in r if x < -0.5)
+    beruntun = 0
+    for x in reversed(r):
+        if x < -0.5:
+            beruntun += 1
+        else:
+            break
+    rk = f"10 trade terakhir {mn} menang, {kl} SL" if r else "belum ada trade tercatat"
+    if hp < 50 or beruntun >= 3:
+        return dict(ikon="💔", nama="DEFENSIF", hp=hp, maks=1, sebab=f"{rk}" + (f", {beruntun} SL beruntun" if beruntun >= 3 else "") + ". Hanya Kelas Utama, satu posisi baru")
+    if hp < 75 or kl > mn:
+        return dict(ikon="🧡", nama="WASPADA", hp=hp, maks=1, sebab=f"{rk}. Utamakan Kelas Utama, kelas ringan ukuran kecil")
+    if hp >= 90 and mn >= kl + 3:
+        return dict(ikon="💚", nama="PERCAYA DIRI", hp=hp, maks=2, sebab=f"{rk}. Aturan ukuran tetap, jangan menambah risiko")
+    return dict(ikon="❤️", nama="TENANG", hp=hp, maks=2, sebab=f"{rk}. Ikuti kelas tiap sinyal")
+
+
 def kapok(sym, arah, now=None):
     """Alasan blokir (teks) kalau koin dan arah ini sedang kapok, atau ''."""
     if os.environ.get("QSE_KAPOK", "1") == "0":

@@ -246,7 +246,7 @@ def balas(cmd, args, dari_main=False):
             print("[WARN] sinyal4j rencana", ex)
         try:
             import qse_lalat as LT
-            pl = LT.pilihan_teks()
+            pl = LT.pilihan_teks() if LT.siar() else ""
             if pl:
                 isi += "\n\n" + pl
         except Exception as ex:

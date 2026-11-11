@@ -40,7 +40,7 @@ def unpin(mid):
 _RAPAT = ("↳", "━", "SL:", "TP1:", "TP2:", "TP:")
 
 
-GARIS_PANJANG = "━━━━━━━━━━━━━━━━━━"
+GARIS_PANJANG = "━━━━━━━━━━━━"
 JUDUL_BAGIAN = ("💡", "🛠", "⚠️ <b>", "👍", "📏", "🧭", "⏰ <b>", "🔎", "🌐 <b>", "❓", "📐", "🙈", "📋", "🗂",
                 "📈 <b>", "🛡", "🎯 <b>", "🟢 <b>", "🔴 <b>", "🟡 <b>", "🔵 <b>", "🟠 <b>", "Rapor A/B lainnya", "<b>", "🔹", "⚪", "📊 <b>", "🤖 <b>", "⛔")
 
@@ -191,13 +191,23 @@ def catat_siaran(teks, now=None):
         for m in ada:
             atas = [b for b in (bersih(x) for x in teks[:m.start()].split("\n")) if b]
             dekat = next((x for x in reversed(atas[-6:]) if m.group(1).replace("USDT", "") in x), atas[-1] if atas else "")
-            sumber = dekat + " | " + judul
-            kunci = next((k for kata, k in TEKNIK_KATA if kata in dekat), None) or next((k for kata, k in TEKNIK_KATA if kata in judul), "")
+            # v180 QC 77: nama teknik ada di baris "🏷 Teknik:" di bawah judul kartu, bukan di baris nama koin. Dulu kunci kosong dan
+            # entry tercatat "saran siaran" lalu dicap bukan sinyal jalur terbukti. Sekarang 6 baris di atas blok dipindai semua.
+            blok_atas = "\n".join(atas[-6:])
+            baris_tek = next((x for x in reversed(atas[-6:]) if "Teknik:" in x), dekat)
+            kunci = (next((k for kata, k in TEKNIK_KATA if kata in baris_tek), None)
+                     or next((k for kata, k in TEKNIK_KATA if kata in dekat), None)
+                     or next((k for kata, k in TEKNIK_KATA if kata in blok_atas), None)
+                     or next((k for kata, k in TEKNIK_KATA if kata in judul), ""))
             seg = [x.strip() for x in dekat.split("·")]
-            nama = next((x for x in seg[1:] if any(kata in x for kata, _ in TEKNIK_KATA)), "") or next(
-                (kata for kata, k in TEKNIK_KATA if k == kunci), "") or judul.replace("QSE v150 |", "").strip()
+            if "Teknik:" in baris_tek:
+                nama = re.sub(r"^.*?Teknik:\s*", "", baris_tek).split("·")[0].strip()
+            else:
+                nama = next((x for x in seg[1:] if any(kata in x for kata, _ in TEKNIK_KATA)), "") or next(
+                    (kata for kata, k in TEKNIK_KATA if k == kunci), "") or judul.replace("QSE v150 |", "").strip()
+            kelas = "UTAMA" if "KELAS UTAMA" in blok_atas else "RINGAN" if "KELAS RINGAN" in blok_atas else ""
             baru.append(dict(sym=m.group(1), arah=m.group(2), entry=float(m.group(3)), t=now or time.time(), kunci=kunci,
-                             nama=nama[:60], judul=judul[:80]))
+                             nama=nama[:60], judul=judul[:80], kelas=kelas))
         f = os.path.join(STATE_DIR, "siaran.json")
         try:
             with open(f) as fh:

@@ -232,7 +232,7 @@ def _kartu(no, it, tick):
         garis = SY.GARIS
     except Exception:
         blok = f"<pre>{it['sym']} {it['arah']}\nEntry  {TG.fp(e, t)} MARKET\nSL     {TG.fp(sl, t)}</pre>"
-        garis = "━━━━━━━━━━━━━━━━━━"
+        garis = "━━━━━━━━━━━━"
     try:
         import qse_modal as MD
         lot = MD.baris_lot(e, sl, LOT)

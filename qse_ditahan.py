@@ -225,6 +225,8 @@ def kelas(k, it, prio=None):
         pass
     if it.get("netral_buka"):
         return "RINGAN", "BTC netral: arah ini dibuka tanpa izin BTC (uji tidak konsisten)"
+    if (it.get("peringkat") or 0) > 110:
+        return "RINGAN", f"teknik tunggal di koin peringkat likuiditas {it['peringkat']} (uji peringkat 111-150 PF 0.87)"
     if not prio:
         return "RINGAN", "sinyal eks-tahanan otak"
     try:

@@ -324,10 +324,10 @@ def kartu_ringkas(m, pr=None, nama=""):
     if nilai >= 8:
         rows.append("🏆 <b>SINYAL PRIORITAS UTAMA</b>")
     rows.append(f"💯 Skor <b>{skor}/100</b>  ·  {nm}  ·  uji 2023-2026 PF {pf}, WR {wr}")
-    rows.append("━━━━━━━━━━━━━━━━━━")
+    rows.append("━━━━━━━━━━━━")
     rows.append(pre.group(0))
     rows += ambil("🎯 Entry valid")
-    rows.append("━━━━━━━━━━━━━━━━━━")
+    rows.append("━━━━━━━━━━━━")
     ki = _cari_it(sym, arah)
     pr_k = (ki[1].get("profil") if ki else None) or {}
     if pr_k:

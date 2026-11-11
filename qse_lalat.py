@@ -137,6 +137,44 @@ def state():
     return _baca(F_STATE, _state_baru)
 
 
+DA_TINGGI = 60.0          # dopamin di atas ini saat order dibuat = setup kualitas tinggi
+
+
+def siar(teks=None):
+    """v180 QC 77: siaran lalat hidup lagi, khusus setup MEDALI atau kualitas tinggi. Tanpa teks: saklar umum (QSE_LALAT_SIAR, bawaan 1).
+    Dengan teks: pesan lalat ini boleh ke grup kalau koin yang disebut adalah koin medali, atau order lalat di koin itu dibuat saat
+    dopamin tinggi / nilai di atas ambang + 0.10 / memakan sinyal jalur. Setup lalat biasa tetap jalan sebagai trade kertas.
+    Catatan uji QC 76 (run_v178_lalat_futures.py): lalat di semua koin Futures PF 1.01 (2025) dan 1.17 (2026), jadi yang umum tidak disiarkan."""
+    if os.environ.get("QSE_LALAT_SIAR", "1") != "1":
+        return False
+    if teks is None:
+        return True
+    import re
+    syms = set(re.findall(r"\b([A-Z0-9]{2,20}USDT)\b", teks))
+    if not syms:
+        return True
+    try:
+        sp = daftar_spesialis()
+        if any(s in sp for s in syms):
+            return True
+        if os.environ.get("QSE_LALAT_LUAS", "0") == "1":          # QC 78: bawaan hanya koin medali (uji Futures NEXO PF 1.27 dan 1.22,
+            st = state()                                          # koin umum DEXE PF 0.78 dan 0.91)
+            for it in list(st.get("open", {}).values()) + list(st.get("riwayat", [])[-30:]):
+                if it.get("sym") in syms and (it.get("medali") or it.get("siar_ok")):
+                    return True
+    except Exception as ex:
+        print("[WARN] siar lalat", ex)
+    return False
+
+
+def rapor_uji():
+    """Baris rapor trade kertas lalat untuk /nyawa."""
+    r = [x["R"] for x in state().get("riwayat", []) if x.get("R") is not None]
+    if not r:
+        return "• 🪰 Lalat Abdul (koin Futures): belum ada trade kertas yang selesai"
+    return f"• 🪰 Lalat Abdul (koin Futures): {len(r)} trade, WR {sum(1 for x in r if x > 0) / len(r) * 100:.0f}%, total {sum(r):+.1f}R"
+
+
 def memori():
     m = _baca(F_MEMORI, _memori_baru)
     if len(m.get("kc", [])) != N_KC:
@@ -726,6 +764,8 @@ def _berburu(st, m, paksa=False):
                       tingkat=tk, tick=SY.tick_of(None, a["entry"]), lot=lot_sekarang(st), ketat=bool(st.get("ketat")),
                       sumber=a["sumber"], level=a["entry"])
             st["makan_t"] = time.time()          # masuk market: langsung makan
+        it["siar_ok"] = bool(it.get("medali") or it.get("sumber") or st.get("DA", 0) >= DA_TINGGI
+                             or (jenis == "rencana" and it.get("nilai", 0) >= ambang(st) + 0.10))          # QC 77: layak ke grup
         st["open"][key] = it
         st["harian"][hari] = st["harian"].get(hari, 0) + 1
         out.append(kartu(it, baru=True))

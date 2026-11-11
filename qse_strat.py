@@ -27,7 +27,7 @@ H4 = 4 * 3600 * 1000
 # EMA SHORT SL 1.5 trailing 4 (+0.30 -> +0.54R di 2017-20, +0.11 -> +0.18R di 2024-26), McGinley SL 1.5 TP 4R,
 # MSB trailing 4. RSI, SMC, SnR tetap (rasio profit/drawdown tidak naik). SL/TP per koin juga diuji, tidak lebih baik.
 SL_ATR, TRAIL_ATR, MAKS_BAR = 2.0, 3.0, 60
-MAKS_BARU, MAKS_BUKA, TOP_KOIN = 5, 8, 150
+MAKS_BARU, MAKS_BUKA, TOP_KOIN = int(os.environ.get("QSE_MAKS_BARU", "8")), int(os.environ.get("QSE_MAKS_BUKA", "16")), 150
 BIAYA = 0.0015
 TELAT_ATR = 0.5
 STRAT = {
@@ -445,9 +445,17 @@ SPESIALIS = {
 # termasuk EMA Cross SHORT 2+ teknik (-0.070 / +0.375 / +0.389 / +0.067R, tunggal 2026 -0.141R). 2+ teknik SHORT saat BTC di atas
 # EMA 50 -0.189 / +0.046 / +0.115 / -0.119R: kelas tidak dinaikkan.
 NETRAL_BAND = float(os.environ.get("QSE_NETRAL_BAND", "1.0"))
+# v180 QC 77 (permintaan user): pelonggaran BTC netral hidup lagi (sinyalnya tetap KELAS RINGAN, uji QC 73 tidak lulus). McGinley tunggal
+# melawan sisi BTC TIDAK masuk uji live saat BTC netral: uji -0.164 / +0.391 / +0.084 / +0.026R, PF 1.13 (di luar netral PF 0.88).
+# Teknik tunggal di koin peringkat 111-150 disiarkan lagi sebagai KELAS RINGAN (uji PF 0.87: -0.135 / +0.005 / +0.042 / -0.113R).
+# v181 QC 78 (permintaan user: hanya yang untung di uji): pelonggaran BTC netral mati lagi (uji -0.311 / +0.159 / +0.134 / -0.319R) dan
+# teknik tunggal peringkat 111-150 kembali uji live (PF 0.87). McGinley saat BTC netral TETAP disiarkan (PF 1.13, uji 2025 dan 2026 plus).
+# Frekuensi dijaga dari kelompok yang untung: batas posisi kertas robot per teknik 8 jadi 16 dan sinyal baru per candle 5 jadi 8, supaya
+# sinyal dari populasi teruji (PF 1.45, 109 per minggu di 150 koin) tidak terbuang karena slot penuh. QSE_MAKS_BUKA / QSE_MAKS_BARU.
 NETRAL_LONGGAR = os.environ.get("QSE_NETRAL_LONGGAR", "0") == "1"
 TOP_PINDAI = int(os.environ.get("QSE_TOP_PINDAI", "150"))
-PERINGKAT_TUNGGAL = 110
+PERINGKAT_TUNGGAL = int(os.environ.get("QSE_PERINGKAT_TUNGGAL", "110"))
+PERINGKAT_RINGAN = 110          # teknik tunggal di atas peringkat ini: kelas ringan
 
 
 def uji_live(k, arah, bj, peringkat, konf):
@@ -460,7 +468,7 @@ def uji_live(k, arah, bj, peringkat, konf):
         return ""
     if peringkat and peringkat > PERINGKAT_TUNGGAL:
         return f"teknik tunggal di koin peringkat {peringkat} (uji peringkat 111+: total -194R)"
-    if k == "mcginley" and bj is not None and (bj < 0) == (arah == "LONG"):
+    if k == "mcginley" and bj is not None and (bj < 0) == (arah == "LONG") and not btc_netral(bj):
         return "McGinley tunggal melawan sisi BTC (uji total -111R)"
     if k == "rsi_vol" and arah == "LONG":
         return "RSI 50 LONG tunggal (latih -0.05R)"
@@ -482,9 +490,14 @@ def uji_live_teks():
                     g.setdefault(c["uji_live"].split(" (")[0], []).append(float(c["R"]))
         except Exception:
             pass
-    rows = ["🧪 <b>UJI LIVE</b> (kelompok yang rugi di uji mundur: dicatat robot, tidak disiarkan. Naik lagi kalau hasil live berbalik)"]
+    rows = ["🧪 <b>UJI LIVE</b> (kelompok yang rugi atau impas di uji mundur: dicatat robot, tidak disiarkan. Naik lagi kalau hasil live berbalik)"]
+    try:
+        import qse_lalat as LT
+        rows.append(LT.rapor_uji() + ("" if not LT.siar() else " (yang disiarkan hanya medali dan kualitas tinggi)"))
+    except Exception:
+        pass
     if not g:
-        rows.append("Belum ada trade kertas uji live yang selesai.")
+        rows.append("Belum ada trade kertas uji live jalur yang selesai.")
     for nm, r in sorted(g.items(), key=lambda z: -len(z[1])):
         rows.append(f"• {nm}: {len(r)} trade, WR {sum(1 for x in r if x > 0) / len(r) * 100:.0f}%, total {sum(r):+.1f}R")
     return "\n".join(rows)
@@ -1354,10 +1367,12 @@ def sapu_rusak(now=None):
         return [t for _, t in out]
 
 
-def pindai_sekarang(batas=60, top=None):
+def pindai_sekarang(batas=60, top=None, intrabar=False):
     """v173 QC 71: pindai paksa detik ini, tanpa mencatat posisi apa pun. Semua koin Futures teratas dicek ulang di dua candle 4J
     terakhir yang sudah tutup, lalu dipilah: masih valid di harga sekarang (harga dalam 0.5R dari harga sinyal dan umur sinyal belum
-    lewat) atau sudah lewat. Return (valid, lewat, info). valid = list dict urut rekomendasi."""
+    lewat) atau sudah lewat. Return (valid, lewat, info). valid = list dict urut rekomendasi.
+    intrabar=True (QC 77, dipakai scan 1 jam): candle 4J yang MASIH BERJALAN ikut dicek dengan harga dan volume sementara. Sinyal baru
+    di candle berjalan diberi tanda intrabar dan jam ke berapa candle itu (uji run_v179_intrabar: lihat qse_radar.kelas_intrabar)."""
     t0 = time.time()
     tk = B.get_tickers()
     try:
@@ -1386,6 +1401,17 @@ def pindai_sekarang(batas=60, top=None):
                     if mundur and umur_maks(k) < 2:
                         continue
                     out.append((k, arah, a, mundur, float(d_["close"].iloc[-1]), d_))
+            if intrabar:          # QC 77: candle 4J berjalan, minimal sudah 1 jam. Sinyal yang belum ada di candle tutup terakhir = baru
+                try:
+                    raw = B._raw(sym, "240", 600)
+                    umur_ = time.time() - int(raw.index[-1]) / 1000
+                    if len(raw) > len(df) and 3000 <= umur_ < 14400:
+                        lama_ = {(k_, x_[1]) for x_ in out for k_ in [x_[0]] if x_[3] == 0}
+                        for k, (arah, a) in sinyal(raw, bn, netral).items():
+                            if (k, arah) not in lama_:
+                                out.append((k, arah, a, 0, float(raw["close"].iloc[-1]), dict(df=raw, ib=int(umur_ // 3600) or 1)))
+                except Exception as ex_:
+                    print("[WARN] pindai intrabar", sym, ex_)
             # v174 QC 72: Ichimoku, Order Block, dan GZH ikut dihitung ulang di candle terakhir detik ini juga
             try:
                 import qse_ichimoku as IC_
@@ -1481,7 +1507,7 @@ def pindai_sekarang(batas=60, top=None):
                 - (2 if k == "ema_short" else 0)
             luar = urut.index(sym) >= TOP_KOIN
             ringan = bool(cfg.get("ringan") or k == "ema_short" or (k == "gzh" and arah == "SHORT") or nb or luar)
-            row = dict(netral=nb, luar=luar, peringkat=urut.index(sym) + 1, t4=int(d_.index[-1]) if hasattr(d_, "index") else 0, sym=sym, k=k, nama=cfg["nama"], arah=arah, px=px, sl=px - d * risk, risk=risk, geser=geser, mundur=mundur, pola=pc,
+            row = dict(intrabar=ekstra.get("ib", 0), netral=nb, luar=luar, peringkat=urut.index(sym) + 1, t4=int(d_.index[-1]) if hasattr(d_, "index") else 0, sym=sym, k=k, nama=cfg["nama"], arah=arah, px=px, sl=px - d * risk, risk=risk, geser=geser, mundur=mundur, pola=pc,
                        spesialis=sp_ok, nilai=nilai - (1 if ringan else 0), why=why, tick=tick.get(sym, 0.0001), ringan=ringan,
                        entry_robot=cl, tp=(px + (ekstra["tp"] - cl)) if ekstra.get("tp") else (px + d * cfg["tp_r"] * risk) if cfg.get("tp_r") else None)
             (lewat if why else valid).append(row)
@@ -1504,6 +1530,8 @@ def pindai_sekarang(batas=60, top=None):
         r["konf"] = len(g); r["konf_nama"] = [v for kk, v in g.items() if kk != r["k"]]
         if konf_utama(r["arah"], bj, r["konf"]) and not r["luar"] and not r["netral"]:
             r["ringan"] = False; r["nilai"] += 1 + r["konf"]
+        elif r["konf"] < 2 and r["peringkat"] > PERINGKAT_RINGAN:
+            r["ringan"] = True          # QC 77: teknik tunggal di koin peringkat 111-150 disiarkan sebagai kelas ringan (uji PF 0.87)
         b = satu.get((r["sym"], r["arah"]))
         if b is None or (r["ringan"], -r["nilai"]) < (b["ringan"], -b["nilai"]):
             satu[(r["sym"], r["arah"])] = r          # satu koin satu kartu: ambil teknik terbaiknya

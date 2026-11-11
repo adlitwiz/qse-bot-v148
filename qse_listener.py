@@ -820,6 +820,9 @@ def _antrean_8j(now=None):
     now = now or time.time()
     if now - _st().get("antrean_t", 0) < 8 * 3600 or now - waktu_sinyal_terakhir() < 8 * 3600:
         return []
+    import qse_lalat as LT_
+    if not LT_.siar():
+        return []          # QC 76: antrean Limit koin medali ikut lalat, uji live
     import qse_rencana as RC
     teks = RC.antrean_teks(2)
     _st({"antrean_t": now})
@@ -866,6 +869,8 @@ def _lalat():
     import qse_lalat as LT
     pesan = LT.jalankan()
     for m in pesan:            # v150: tiap makanan lalat satu pesan, pilihan baru dan order terisi disematkan
+        if not LT.siar(m):          # QC 77: hanya setup medali atau kualitas tinggi ke grup, sisanya trade kertas
+            continue
         ids = TG.send(["🪰 <b>QSE v150 | LALAT ABDUL</b>\n\n" + m])
         if any(k in m for k in ("PILIHAN BARU", "terisi", "TP1")):
             _pin_sinyal(ids or [])
@@ -897,6 +902,7 @@ def _tugas_menit():
                 br = __import__("qse_strat").sapu_rusak() if 180 <= time.time() % 14400 <= 1500 else []
                 for m_ in br:
                     TG.send([m_])
+                _SYp.perbaiki_label()          # QC 77: posisi berlabel "saran siaran" dipulihkan ke teknik aslinya
                 kw = _SYp.kawal()          # QC 73: kabar proaktif saat posisi mendekati TP awal
                 for m_ in kw:
                     TG.send(["🛰 <b>QSE v150 | KAWAL POSISI</b>\n\n" + m_])
@@ -954,7 +960,7 @@ def _tugas_menit():
     try:
         import qse_lalat as LT          # 9 Nov 2026: hidung berita lalat Abdul, ledakan volume 1 menit serentak
         hb = LT.hidung()
-        if hb:
+        if hb and LT.siar():
             TG.send(["👃 <b>QSE v150 | HIDUNG ABDUL</b>\n\n" + hb])
     except Exception as ex:
         print("[WARN] hidung", ex)
@@ -977,6 +983,8 @@ def _tugas_menit():
         import qse_lalat as LT
         for x in LT.refleks():            # mata cepat lalat: candle 5 menit tiap menit untuk order dan posisi lalat
             teks, rows = (x, None) if isinstance(x, str) else x
+            if not LT.siar(teks):
+                continue          # QC 77: refleks setup lalat biasa tidak disiarkan
             ids = TG.send(["⚡ <b>QSE v150 | REFLEKS LALAT</b>\n\n" + teks], markup=QM._inline(rows) if rows else None)
             if "ORDER TERISI" in teks or "REFLEKS MASUK" in teks:
                 _pin_sinyal(ids or [])
@@ -1107,6 +1115,11 @@ def main():
     try:
         import qse_saya as _SY
         _SY.hapus_manual_sekali()
+        try:
+            for _m in _SY.perbaiki_label():          # QC 77
+                print("[LABEL]", _m, flush=True)
+        except Exception as _ex:
+            print("[WARN] perbaiki label", _ex, flush=True)
         _bs = _SY.bersihkan_spot()          # QC 71: posisi ACM, PSG, ALPINE dan koin non-Futures lain dibuang dari posisi aktif
         if _bs:
             TG.send([_bs])

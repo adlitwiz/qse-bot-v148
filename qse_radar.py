@@ -44,19 +44,70 @@ def _wib(fmt="%H:%M", t=None):
 #   Order Block LONG jam 1 / 2 / 3: PF 1.43 / 1.39 / 1.56 (2023 sedikit minus, latih gabungan plus, 2025-2026 +0.12 sampai +0.34R)
 #   Ichimoku LONG jam 1 / 2: PF 1.32 / 1.34 (jam 3 2026 -0.029R: tidak)
 # Gagal: EMA Cross SHORT (2026 -0.12 sampai -0.14R), McGinley SHORT (latih minus), SMC CHoCH, SnR, MSB HPZ, RSI SHORT, Ichimoku SHORT.
-MOMENTUM = {("mcginley", "LONG"): (3.0, "PF 1.52-1.69"), ("orderblock", "LONG"): (3.0, "PF 1.39-1.56"), ("ichimoku", "LONG"): (2.0, "PF 1.32-1.34")}
+# v180 QC 77 (permintaan user): momentum dibuka DUA ARAH untuk semua teknik terbukti. TERUJI = lolos uji di atas, boleh KELAS UTAMA.
+# Sisanya (uji run_v177b tidak lolos: SHORT telat PF 0.69-1.36 dan tidak konsisten antar tahun) tetap dikirim tetapi KELAS RINGAN.
+# Tambahan syarat untuk yang belum teruji: candle 1 jam terakhir tutup searah sinyal.
+# v181 QC 78 (permintaan user: yang ujinya lemah tidak dipasang): QSE_MOMENTUM_KETAT bawaan 1, hanya yang lolos uji yang dikirim.
+# Momentum SHORT telat dan intrabar selain McGinley LONG tidak dikirim. QSE_MOMENTUM_KETAT=0 mengirimnya lagi sebagai kelas ringan.
+TERUJI = {("mcginley", "LONG"): (3.0, "PF 1.52-1.69"), ("orderblock", "LONG"): (3.0, "PF 1.39-1.56"), ("ichimoku", "LONG"): (2.0, "PF 1.32-1.34")}
+MOMENTUM = dict(TERUJI)
+for _k in ("mcginley", "orderblock", "ichimoku", "smc_choch", "msb_hpz", "snr_vol", "rsi_vol", "gzh"):
+    for _a in ("LONG", "SHORT"):
+        MOMENTUM.setdefault((_k, _a), (3.0, ""))
+# INTRABAR (riset/upgrade/run_v179_intrabar.py, hasil_v179_intrabar.txt, 12.700 sinyal 2023-2026, candle 4J berjalan dicek tiap 1J tutup,
+# aturan keluar live). McGinley LONG: semua +0.029 / +0.068 / +0.108 / +0.095R (PF 1.22), jam ke-3 +0.160 / +0.101 / +0.104 / +0.123R
+# (PF 1.41), BTC searah +0.002 / +0.127 / +0.163 / +0.337R (PF 1.45), jam ke-1 PF 0.79. McGinley SHORT -0.144 / +0.018 / +0.114 /
+# -0.075R (PF 0.96). RSI 50 LONG PF 1.10 (jam ke-3 PF 1.22, 2024 -0.061R), RSI 50 SHORT PF 1.01. Teknik lain belum diuji intrabar.
+# McGinley LONG BTC searah per jam: jam ke-1 -0.221 / -0.183 / +0.419 / +0.628R (latih minus), jam ke-2 dan 3 gabungan +0.031 / +0.145 /
+# +0.140 / +0.311R (PF 1.47).
+# Jadi: McGinley LONG intrabar di jam ke-3, atau jam ke-2 saat BTC di atas EMA 50 = KELAS UTAMA. Intrabar lain = KELAS RINGAN.
+
+
+def _c1_searah(sym, arah):
+    """Candle 1 jam terakhir yang sudah tutup searah sinyal? None kalau data gagal (tidak menahan)."""
+    try:
+        import bybit_fetch as B
+        d = B._raw(sym, "60", 4)
+        d = d[d.index + 3600000 <= int(time.time() * 1000)]
+        if not len(d):
+            return None
+        o, c = float(d["open"].iloc[-1]), float(d["close"].iloc[-1])
+        return (c > o) if arah == "LONG" else (c < o)
+    except Exception:
+        return None
+
+
+def kelas_intrabar(r, bj):
+    """QC 77: sinyal di candle 4J yang masih berjalan. Menandai r["intrabar_ket"] dan kelasnya. Return True kalau layak dikirim."""
+    if not r.get("intrabar") or r["mundur"]:
+        return False
+    utama = (r["k"], r["arah"]) == ("mcginley", "LONG") and (r["intrabar"] >= 3 or (r["intrabar"] >= 2 and bj is not None and bj > 0))
+    if r.get("konf", 1) >= 2 and not r["ringan"]:
+        utama = True
+    if not utama:
+        if os.environ.get("QSE_MOMENTUM_KETAT", "1") == "1" or _c1_searah(r["sym"], r["arah"]) is False:
+            return False
+        r["ringan"] = True
+    r["intrabar_ket"] = f"jam ke-{r['intrabar']} candle 4J berjalan" + (", uji McGinley LONG intrabar PF 1.41-1.45" if utama and r["k"] == "mcginley" else "")
+    return True
 
 
 def momentum(r, now=None):
-    """True kalau sinyal tunggal ini lolos MOMENTUM BERPROSPEK: teknik dan arah terdaftar, candle terakhir, harga sudah bergerak searah
-    (0 sampai 0.5R), umur sejak candle 4J tutup tidak lewat batas jam teknik itu, bukan kelas ringan. Menandai r["momentum"]."""
+    """True kalau sinyal tunggal ini lolos MOMENTUM: teknik dan arah terdaftar, candle 4J terakhir, harga sudah bergerak searah (0 sampai
+    0.5R), umur sejak candle tutup tidak lewat batas jam. Yang TERUJI dan bukan kelas ringan diberi label PF (r["momentum"]). Yang
+    belum teruji wajib candle 1 jam terakhir searah, lalu dikirim sebagai KELAS RINGAN."""
     m = MOMENTUM.get((r["k"], r["arah"]))
-    if not m or r["mundur"] or r["ringan"] or not (0 <= r["geser"] <= 0.5) or not r.get("t4"):
+    if not m or r["mundur"] or r.get("intrabar") or not (0 <= r["geser"] <= 0.5) or not r.get("t4"):
         return False
     jam = ((now or time.time()) - (r["t4"] / 1000 + 14400)) / 3600
     if jam > m[0] + 0.25:
         return False
-    r["momentum"] = m[1]
+    if m[1] and not r["ringan"]:
+        r["momentum"] = m[1]
+        return True
+    if os.environ.get("QSE_MOMENTUM_KETAT", "1") == "1" or _c1_searah(r["sym"], r["arah"]) is False:
+        return False
+    r["ringan"] = True; r["momentum"] = "belum teruji, ukuran ringan"
     return True
 
 
@@ -74,8 +125,11 @@ def kartu(r, no=None):
                        f"harga {abs(r['geser']):.1f}R {'lebih baik dari' if r['geser'] < 0 else 'di atas'} harga sinyal" if abs(r["geser"]) >= 0.1 else "",
                        "BTC netral" if r.get("netral") else "", f"likuiditas peringkat {r['peringkat']}" if r.get("luar") else "") if x]
     tek = f"<b>{TG.e(r['nama'])}</b>"
-    if r.get("momentum") and r.get("konf", 1) < 2:
-        tek += f"  ·  ⚡ MOMENTUM BERPROSPEK (harga sudah searah, uji 2023-2026 {r['momentum']})"
+    if r.get("intrabar_ket"):
+        tek += f"  ·  ⚡ INTRABAR ({r['intrabar_ket']})"
+    elif r.get("momentum") and r.get("konf", 1) < 2:
+        tek += (f"  ·  ⚡ MOMENTUM BERPROSPEK (harga sudah searah, uji 2023-2026 {r['momentum']})" if r["momentum"].startswith("PF") else
+                f"  ·  ⚡ MOMENTUM (harga dan candle 1 jam searah, {r['momentum']})")
     if r.get("konf", 1) >= 2:
         tek += f"  ·  ⭐ KONFLUENSI {r['konf']} TEKNIK (+ {TG.e(', '.join(r['konf_nama']))})"
     px, o = (r["entry_robot"], "LIMIT") if tunggu else (r["px"], "MARKET")
@@ -100,7 +154,7 @@ def pasar_teks(inf, judul, n_utama, n_ringan):
     except Exception:
         pass
     rows.append(f"🔎 {inf['n']}" + (f" dari {inf['total']}" if inf["n"] < inf["total"] else "") + f" koin Futures, 10 mesin + konfluensi, {inf['detik']:.0f} detik")
-    rows.append(f"🎯 Hasil: <b>{n_utama} Kelas Utama</b>, {n_ringan} momentum" + (". Tiap koin satu pesan di bawah." if n_utama + n_ringan else ""))
+    rows.append(f"🎯 Hasil: <b>{n_utama} Kelas Utama</b>, {n_ringan} kelas ringan" + (". Tiap koin satu pesan di bawah." if n_utama + n_ringan else ""))
     return "\n".join(rows)
 
 
@@ -144,12 +198,33 @@ def otak_teks(sinyal=None, lewat=None, bj=None):
                 rows.append(f"• Teknik dominan: belum ada pemicu di candle ini. Pemimpin 20 trade terakhir: {TG.e(str(pj))}")
         except Exception:
             pass
+    ht = None
     try:
         import qse_nyawa as NY
-        hp = NY._baca()["hp"]
-        rows.append(f"• Nyawa robot {hp:.0f}/100 HP" + (". Kondisi tertekan: ambil hanya Kelas Utama" if hp < 60 else ""))
-    except Exception:
-        pass
+        ht = NY.hati()
+        rows.append(f"{ht['ikon']} Hati: <b>{ht['nama']}</b> ({ht['hp']:.0f}/100 HP). {ht['sebab']}")
+    except Exception as ex:
+        print("[WARN] radar hati", ex)
+    # pikiran: satu kalimat penalaran dari fakta di atas
+    try:
+        vp_ = ST.vol_pasar()
+        n_l = sum(1 for r in sinyal if r["arah"] == "LONG"); n_s = len(sinyal) - n_l
+        if bj is None:
+            pk = "data BTC belum lengkap, jadi saya hanya percaya sinyal yang punya 2 teknik searah"
+        elif ST.btc_netral(bj):
+            pk = ("BTC belum memilih arah. Uji saya: saat netral LONG untung di 4 tahun, SHORT rugi di 2023. " +
+                  ("LONG saya dahulukan" if n_l >= n_s else "SHORT saya ambil hanya yang 2 teknik searah"))
+        elif bj > 0:
+            pk = "BTC di atas EMA 50, arus mendukung LONG. " + ("SHORT yang muncul saya anggap melawan arus, ukuran ringan" if n_s else "Saya menunggu pullback LONG, bukan mengejar harga")
+        else:
+            pk = "BTC di bawah EMA 50, arus mendukung SHORT. " + ("LONG yang muncul hanya pantulan, ambil untung cepat di TP awal" if n_l else "Saya menunggu pantulan untuk SHORT, bukan menjual di dasar")
+        if vp_ and vp_ < 0.6:
+            pk += ". Volume tipis, tembusan mudah gagal"
+        elif vp_ and vp_ > 2.5:
+            pk += ". Volume besar, gerakan ini punya tenaga"
+        rows.append(f"💭 Pikiran: {pk}.")
+    except Exception as ex:
+        print("[WARN] radar pikiran", ex)
     # 4. saran GZH
     try:
         import qse_gzh2 as GZ
@@ -161,9 +236,13 @@ def otak_teks(sinyal=None, lewat=None, bj=None):
         print("[WARN] radar gzh", ex)
     # 5. keputusan
     ut = [r for r in sinyal if not r.get("ringan")]; rg = [r for r in sinyal if r.get("ringan")]
+    maks = (ht or {}).get("maks", 2)
     if ut:
         kp = (f"ambil {ut[0]['sym'].replace('USDT', '')} {ut[0]['arah']} sekarang dengan ukuran Kelas Utama"
-              + (f", lalu {ut[1]['sym'].replace('USDT', '')} {ut[1]['arah']}" if len(ut) > 1 else "") + ". Maksimal 2 posisi baru di jam ini")
+              + (f", lalu {ut[1]['sym'].replace('USDT', '')} {ut[1]['arah']}" if len(ut) > 1 and maks > 1 else "")
+              + f". Maksimal {maks} posisi baru di jam ini" + (". Kelas ringan dilewati dulu" if ht and ht["maks"] < 2 and rg else ""))
+    elif rg and ht and ht["maks"] < 2:
+        kp = f"tahan modal. Hanya ada kelas ringan ({rg[0]['sym'].replace('USDT', '')} {rg[0]['arah']}) dan hati robot sedang {ht['nama'].lower()}"
     elif rg:
         kp = f"boleh ambil {rg[0]['sym'].replace('USDT', '')} {rg[0]['arah']} dengan ukuran ringan. Belum ada Kelas Utama, jangan tambah ukuran"
     else:
@@ -215,8 +294,7 @@ def radar_teks(lewat, inf):
 def bubble(valid, lewat, inf, judul="SCAN 1 JAM", maks=6, hanya_utama=False, otak=True):
     """List bubble: [pasar, kartu..., otak]. hanya_utama: kelas ringan tidak ditampilkan."""
     tampil = [r for r in valid if not (hanya_utama and r["ringan"])][:maks]
-    out = [pasar_teks(inf, judul, sum(1 for r in tampil if not r["ringan"] and not r.get("momentum")),
-                      sum(1 for r in tampil if r["ringan"] or r.get("momentum")))]
+    out = [pasar_teks(inf, judul, sum(1 for r in tampil if not r["ringan"]), sum(1 for r in tampil if r["ringan"]))]
     out += [kartu(r, no) for no, r in enumerate(tampil, 1)]
     if otak:
         out.append(otak_teks(tampil, lewat, inf.get("bj")))
@@ -238,7 +316,7 @@ def jalankan(now=None, paksa=False):
     _tulis(d)          # ditandai dulu: gagal di tengah tidak mengulang pindai tiap menit
     import qse_strat as ST
     try:
-        valid, lewat, inf = ST.pindai_sekarang(batas=120)
+        valid, lewat, inf = ST.pindai_sekarang(batas=120, intrabar=True)
     except Exception as ex:
         print("[WARN] radar pindai", ex)
         return []
@@ -247,26 +325,33 @@ def jalankan(now=None, paksa=False):
     # +0.210 / +0.005R (jam 3), PF 1.46-1.58, untung 4 tahun. Teknik tunggal telat PF 1.14-1.25 (jam 1 2023 -0.033R), EMA Cross SHORT
     # tunggal 2026 -0.10R di semua jam, sinyal candle sebelumnya (5-7 jam) PF 1.30-1.41: tidak dikirim scan. QSE_RADAR_SEMUA=1 = semua.
     if os.environ.get("QSE_RADAR_SEMUA", "0") != "1":
-        valid = [r for r in valid if (not r["ringan"] and r.get("konf", 1) >= 2 and not r["mundur"]) or momentum(r, now)]
+        valid = [r for r in valid if (kelas_intrabar(r, inf.get("bj")) if r.get("intrabar") else
+                                      ((not r["ringan"] and r.get("konf", 1) >= 2 and not r["mundur"]) or momentum(r, now)))]
+    valid.sort(key=lambda r: (r["ringan"], -r["nilai"]))
     baru = []
     for r in valid:
         k = f"{r['sym']}|{r['arah']}"
-        if now - d["kirim"].get(k, 0) < 8 * 3600:
+        kl = "RINGAN" if r["ringan"] else "UTAMA"
+        lama = d["kirim"].get(k) or [0, ""]
+        lama = lama if isinstance(lama, list) else [lama, "UTAMA"]
+        naik = kl == "UTAMA" and lama[1] == "RINGAN"          # QC 77: yang dulu dikirim kelas ringan boleh dikirim lagi saat naik Kelas Utama
+        if now - lama[0] < 8 * 3600 and not naik:
             continue
         try:
-            if TG.siaran_cocok(r["sym"], r["arah"], r["px"], jam=8, tol=0.04, now=now):
-                d["kirim"][k] = now          # sudah disiarkan lewat pesan 4 jam atau kartu jalur
+            x = TG.siaran_cocok(r["sym"], r["arah"], r["px"], jam=8, tol=0.04, now=now)
+            if x and not (kl == "UTAMA" and x.get("kelas") == "RINGAN"):
+                d["kirim"][k] = [now, x.get("kelas") or "UTAMA"]          # sudah disiarkan lewat pesan 4 jam atau kartu jalur
                 continue
         except Exception:
             pass
         baru.append(r)
-    baru = baru[:5]
+    baru = baru[:6]
     for r in baru:
-        d["kirim"][f"{r['sym']}|{r['arah']}"] = now
-    d["kirim"] = {k: t for k, t in d["kirim"].items() if now - t < 2 * 86400}
+        d["kirim"][f"{r['sym']}|{r['arah']}"] = [now, "RINGAN" if r["ringan"] else "UTAMA"]
+    d["kirim"] = {k: t for k, t in d["kirim"].items() if now - (t[0] if isinstance(t, list) else t) < 2 * 86400}
     _tulis(d)
     if baru:
-        return bubble(baru, lewat, inf, "SCAN 1 JAM", maks=5)
+        return bubble(baru, lewat, inf, "SCAN 1 JAM", maks=6)
     if jam4 or os.environ.get("QSE_RADAR_SEPI", "1") == "0":
         return []          # jam tutup 4J: siaran 4 jam sudah membawa analisa otak
     return [radar_teks(lewat, inf) + "\n\n" + otak_teks([], lewat, inf.get("bj"))]
