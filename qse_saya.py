@@ -4106,6 +4106,36 @@ def cek_darurat():
 
 
 @per_orang
+def kawal():
+    """v175 QC 73: kawal posisi jalan. Harga sudah 70% jalan menuju TP awal (+0.5R) atau titik SL ke entry (jalur tanpa TP sebagian):
+    kabar sekali dengan tindakan yang jelas. Dilepas lagi kalau harga mundur jauh, supaya pendekatan berikutnya tetap dikabari."""
+    def f(d):
+        pesan = []
+        for it in d["open"].values():
+            if it.get("status") != "TERISI":
+                continue
+            px = harga_live(it["sym"])
+            if not px:
+                continue
+            r = _r_at(it, px); be = _be(it); tgt = be or 0.5
+            al = it.setdefault("alert", [])
+            if 0.7 * tgt <= r < tgt and "dekat_tp" not in al:
+                al.append("dekat_tp")
+                t = it.get("tick") or tick_of(None, it["entry"])
+                L = it["arah"] == "LONG"
+                lv = it["entry"] + (1 if L else -1) * tgt * _risk0(it)
+                pesan.append(f"🎯 <b>{it['sym']} {it['arah']} mendekati {'titik SL ke entry' if be else 'TP awal'}</b>\n"
+                             f"• Sekarang {r:+.2f}R di {fp(px, t)}. Target {fp(lv, t)} (+{tgt:g}R), sisa {abs(lv / px - 1) * 100:.1f}%\n"
+                             + (f"• Saat tersentuh: geser SL ke entry {fp(it['entry'], t)}. Sisa posisi ikut SL berjalan" if be else
+                                f"• Saat tersentuh: tutup 20% posisi (tombol TP 25% boleh), lalu geser SL ke entry {fp(it['entry'], t)}")
+                             + "\n• Pasang order TP sebagian di Bybit sekarang supaya tidak terlewat")
+            elif r < 0.3 * tgt and "dekat_tp" in al:
+                al.remove("dekat_tp")
+        return pesan
+    return ubah(f)
+
+
+@per_orang
 def cek_patah():
     """v173 QC 71: tiap 5 menit, posisi jalan yang struktur 1 jamnya baru patah dikabari sekali (data, bukan perintah keluar).
     Kabar dilepas lagi kalau struktur pulih, supaya patah berikutnya tetap dikabari."""
@@ -4927,6 +4957,8 @@ def sinyal_jalur(jam=False):
                 baru = abs(d) <= 0.5 and ((px > sl) if L else (px < sl))       # harga sudah lari: tidak ditampilkan
             masih = (k in telat_ok and umur <= ST.umur_maks(k) and d is not None and abs(d) <= 0.5 and ((px > sl) if L else (px < sl))
                      and not (it.get("tp") and ((px >= it["tp"]) if L else (px <= it["tp"]))))
+            if it.get("uji_live"):
+                continue          # QC 74: kelompok uji live (rugi di uji mundur), dicatat robot, tidak ditawarkan
             if it.get("otak_saring"):
                 n_otak += 1
                 continue          # disaring otak robot: dicatat, tidak ditawarkan

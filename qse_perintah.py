@@ -191,7 +191,9 @@ def balas(cmd, args, dari_main=False):
         try:          # v173 QC 71: pindai paksa detik ini, sinyal yang masih valid ditampilkan lagi dengan rekomendasi teratas
             import qse_strat as _STp
             j1_, _, sisa_ = isi.partition("\n")
-            isi = j1_ + "\n\n" + _STp.pindai_teks() + ("\n\n" + sisa_ if sisa_.strip() else "")
+            pt_ = _STp.pindai_teks().split(TG.PISAH)          # QC 73: [pasar, kartu..., otak]
+            otak_ = pt_.pop() if len(pt_) > 1 else ""
+            isi = j1_ + "\n" + TG.PISAH.join(pt_) + (TG.PISAH + "📋 <b>DAFTAR JALUR ROBOT DAN MESIN LAIN</b>\n" + sisa_ if sisa_.strip() else "")
         except Exception as ex:
             print("[WARN] sinyal4j pindai", ex)
         try:
@@ -208,7 +210,7 @@ def balas(cmd, args, dari_main=False):
             now = time.time()
             kuat, tahan = [], []
             for k, nama, it in DT._sumber():
-                if now - it.get("t", 0) > 12 * 3600:
+                if now - it.get("t", 0) > 12 * 3600 or it.get("uji_live"):
                     continue
                 prio, nm_p = DT.prioritas_live(k, it)
                 cu = CU.NAMA[CU.jenis(k)].split(" ", 1)[1]
@@ -249,6 +251,11 @@ def balas(cmd, args, dari_main=False):
                 isi += "\n\n" + pl
         except Exception as ex:
             print("[WARN] sinyal4j lalat", ex)
+        try:
+            if otak_:
+                isi += TG.PISAH + otak_
+        except Exception:
+            pass
         return isi
     if cmd in ("/sinyal1j", "/sinyal1"):
         return ("Saran 1J dimatikan. Uji 111 koin data 1 jam 2020-2026: 9 jalur terbukti versi 1J PF 1.00 sampai 1.11, "
@@ -282,7 +289,11 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/nyawa", "/trauma", "/hp"):
         import qse_nyawa as NY
         NY.sinkron()
-        return NY.teks()
+        try:
+            import qse_strat as _STu
+            return NY.teks() + "\n\n" + _STu.uji_live_teks()          # QC 74: rapor kelompok uji live
+        except Exception:
+            return NY.teks()
     if cmd in ("/jagoan", "/koinjagoan"):
         import qse_jagoan as JG
         return JG.teks()
@@ -437,7 +448,10 @@ def proses(cmds, dari_main=False):
             except Exception as ex:
                 print("[WARN] tombol", ex)
                 mk = None
-            ids = TG.send(isi.split("\n\n"), markup=mk)
+            if TG.PISAH.strip() in isi:          # QC 73: balasan berisi beberapa bubble (pasar, satu koin satu pesan, analisa otak)
+                ids = [i_ for g_ in TG.kirim_pisah([isi], markup=mk) for i_ in g_]
+            else:
+                ids = TG.send(isi.split("\n\n"), markup=mk)
             if pribadi:
                 try:
                     QM.catat_pemilik(ids, uid, nama)

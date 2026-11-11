@@ -1722,6 +1722,11 @@ def scan(now, run4, tfs):
         ids_lap = TG.send(blocks) or []
         if not ada and tf == "240":
             _pin(ids_lap, "lap4", led=led)     # tanpa saran: pin saran lama yang masih berlaku tetap disematkan
+            try:          # v175 QC 73: analisa otak dan saran GZH tetap dikirim walau tidak ada sinyal Kelas Utama
+                import qse_radar as RD_o
+                TG.send([RD_o.otak_teks([])])
+            except Exception as ex:
+                print("[WARN] otak 4 jam", ex)
         for b in sinyal + blocks:
             print(b, "\n")
     FX.antrian_terapkan(led)
@@ -1733,17 +1738,30 @@ def scan(now, run4, tfs):
 TEKNIK_AWAL = "🎯 <b>QSE v150 | SINYAL 4 JAM · "
 
 
+OTAK_AWAL = "🧠 <b>ANALISA OTAK BOT"
+
+
 def _kirim_sinyal(sinyal):
-    """v173 QC 71: ringkasan dikirim dulu, lalu satu pesan untuk tiap teknik. Return id pesan ringkasan (untuk pin laporan)."""
-    utama = [b for b in sinyal if not b.startswith(TEKNIK_AWAL)]
-    ids = TG.send(utama) or []
-    for b in sinyal:
-        if b.startswith(TEKNIK_AWAL):
-            try:
-                TG.send([b])
-            except Exception as ex:
-                print("[WARN] kirim per teknik", ex)
-    return ids
+    """v175 QC 73: bubble terpisah. 1 ringkasan pasar, lalu satu koin satu pesan, lalu sisa daftar, terakhir analisa otak dan saran GZH.
+    Return id kartu sinyal pertama (prioritas 1) untuk disematkan, atau id ringkasan kalau tidak ada kartu."""
+    if not sinyal:
+        return []
+    kartu = [b for b in sinyal[1:] if b.startswith(TEKNIK_AWAL)]
+    otak = [b for b in sinyal[1:] if b.startswith(OTAK_AWAL)]
+    lain = [b for b in sinyal[1:] if not b.startswith(TEKNIK_AWAL) and not b.startswith(OTAK_AWAL)]
+    ids = TG.send([sinyal[0]]) or []
+    ids_k = []
+    for b in kartu:
+        try:
+            ids_k.append(TG.send([b]) or [])
+        except Exception as ex:
+            print("[WARN] kirim per koin", ex)
+    for grp in ([lain] if lain else []) + [[b] for b in otak]:
+        try:
+            TG.send(grp)
+        except Exception as ex:
+            print("[WARN] kirim bubble", ex)
+    return next((i for i in ids_k if i and i[0]), ids)
 
 
 WIB = dt.timezone(dt.timedelta(hours=7))
@@ -1754,6 +1772,8 @@ SARAN_DASBOR_4J = False
 # Saran 1J dimatikan. Uji 111 koin data 1 jam 2020-2026: 9 jalur terbukti versi 1J PF 1.00 sampai 1.11, tahun 2026 semua di bawah 1.
 # Saran dasbor 1J (uji 2 tahun 30 koin) 17 trade -6.8R. Tidak ada aturan 1J yang lolos.
 SARAN_DASBOR_1J = False
+# v175 QC 73: siaran otomatis 4 jam hanya KELAS UTAMA. Kelas ringan lewat scan 1 jam (qse_radar). QSE_4J_UTAMA=0 mengembalikan semua.
+UTAMA_4J = os.environ.get("QSE_4J_UTAMA", "1") != "0"
 IKON = {"LONG": "🟢", "SHORT": "🔴"}
 GARIS = "━━━━━━━━━━━━━━━━━━"
 NAMA = {"240": ("4 JAM", "4J"), "60": ("1 JAM", "1J")}
@@ -2313,6 +2333,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             print("[WARN] rem portofolio", ex)
             rem_p = ""
 
+        n_ringan = [0]
+
         def _jalur_robot(kunci, nama, ik, tk, lot, n, maks, cek, items, pendek):
             if rem_p:
                 lot = f"{SY.lot_angka(lot) / 2:g}x (rem)"
@@ -2323,7 +2345,15 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                     lot = f"{lot2} (akhir pekan)"
             except Exception:
                 pass
-            items = [x_ for x_ in items if not x_.get("batal")]          # QC 72: sinyal yang strukturnya berubah tidak ditawarkan lagi
+            items = [x_ for x_ in items if not x_.get("batal") and not x_.get("uji_live")]          # QC 72 batal, QC 74 uji live: tidak ditawarkan
+            if UTAMA_4J:          # v175 QC 73: siaran 4 jam hanya KELAS UTAMA. Kelas ringan dikirim lewat scan 1 jam
+                try:
+                    import qse_ditahan as DT_
+                    n0_ = len(items)
+                    items = [x_ for x_ in items if DT_.kelas(kunci, x_)[0] == "UTAMA"]
+                    n_ringan[0] += n0_ - len(items)
+                except Exception as ex_:
+                    print("[WARN] kelas 4 jam", kunci, ex_)
             teks, ring, lewat = _baru_candle(items, tutup, kunci, harga, pegang)
             if not teks:
                 sepi.append(pendek)
@@ -2332,7 +2362,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             for sym, arah, ket, it_, kartu_, lv in ring:
                 pr = ST_.prioritas(kunci, it_)
                 ring_rb.append((sym, arah, pendek, ik, lot, ket, pr, ST_.label_nama(it_), lv))
-                kartu_rb.append((pr, f"{GARIS}\n🔹 <b>{nama}</b>  ·  {ik} {tk}  ·  {MD.teks_kelas(lot)}  ·  PF jalur {pr[1]:.2f}\n" + kartu_))
+                kartu_rb.append((pr, f"{GARIS}\n🔹 <b>{nama}</b>  ·  " + ("🟦 KELAS UTAMA  ·  " if UTAMA_4J else "")
+                                 + f"{ik} {tk}  ·  {MD.teks_kelas(lot)}  ·  PF jalur {pr[1]:.2f}\n" + kartu_))
         try:
             import qse_ichimoku as IC
             d_ = IC.lihat()["open"]
@@ -2373,6 +2404,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                     robot_blok.append(f"{GARIS}\n{kd}")
             except Exception as ex:
                 print("[WARN] kandidat terdekat", ex)
+        if n_ringan[0]:
+            sepi.append(f"{n_ringan[0]} sinyal kelas ringan tidak disiarkan di sini, ikut scan 1 jam")
         if sepi:
             robot_blok.append(f"{GARIS}\n⚪ Teknik indikator tanpa sinyal di candle ini: {TG.e(', '.join(sepi))}")
     prio = ""
@@ -2428,18 +2461,14 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
         if judul_b == "KARTU SINYAL YANG BISA DIIKUTI":
             # v173 QC 71: kartu 8 teknik tidak lagi digabung di satu pesan panjang. Tiap teknik jadi pesan sendiri (lihat _kirim_sinyal).
             import re as _re
-            grup, lain_rb = {}, []
-            for b_ in robot_blok:
+            lain_rb = []
+            for b_ in robot_blok:          # v175 QC 73: satu koin satu bubble, urut prioritas
                 m_ = _re.search(r"USDT (?:LONG|SHORT)</b>\s+·\s+(.+?) 4J", b_)
                 if m_ and "PRIORITAS" in b_.split("\n", 2)[1]:
-                    grup.setdefault(m_.group(1).strip(), []).append(b_)
+                    per_teknik.append(TEKNIK_AWAL + f"{TG.e(m_.group(1).strip().upper())}</b>\n" + b_[len(GARIS) + 1:])
                 else:
                     lain_rb.append(b_)
-            if grup:
-                blok.append(f"{GARIS}\n🤖 <b>8 TEKNIK INDIKATOR</b>: {sum(len(v) for v in grup.values())} kartu, dikirim satu pesan per teknik di bawah "
-                            f"({', '.join(f'{k} {len(v)}' for k, v in grup.items())})")
             blok += lain_rb
-            per_teknik = [TEKNIK_AWAL + f"{TG.e(k.upper())}</b>  ·  {len(v)} sinyal\n" + "\n".join(v) for k, v in grup.items()]
         if len(blok) > 1:
             so.append("\n".join(blok))
         so += per_teknik
@@ -2529,6 +2558,27 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                             "CPI/FOMC: robot kirim SIAGA 1 jam sebelum")
             except Exception:
                 pass
+        if tf == "240":          # v175 QC 73: bubble 1 hanya ringkasan pasar. Tiap koin di pesan sendiri, analisa otak di pesan terakhir
+            try:
+                import qse_strat as ST_h
+                import qse_radar as RD_h
+                st_btc = ST_h.status_btc()
+                nama_s = ", ".join(f"{z[0].replace('USDT', '')} {z[1]}" for z in ring_rb[:8]) or ", ".join(
+                    f"{z[1]['symbol'].replace('USDT', '')} {z[2]['arah']}" for z in ikut[:8])
+                slot_ = []
+                try:
+                    slot_ = MD.baris_slot()
+                except Exception:
+                    pass
+                so.insert(0, f"🎯 <b>QSE v150 | SINYAL {judul}</b>\n{SY.baris_jadwal(rs[0]['tf_ms'] if rs else 4 * 3600000, tutup)}\n{st_btc}\n"
+                             f"🟦 <b>{len(ring_rb) + len(ikut)} sinyal KELAS UTAMA</b>: {TG.e(nama_s)}\nTiap koin satu pesan di bawah, urut prioritas."
+                             + ("\n" + "\n".join(slot_) if slot_ else "")
+                             + "".join("\n" + z for z in ktx.split("\n") if z.startswith("📅")))
+                so.append(RD_h.otak_teks([dict(sym=z[0], arah=z[1], nama=z[2], ringan=False) for z in ring_rb]
+                                         + [dict(sym=z[1]["symbol"], arah=z[2]["arah"], nama=SY.NAMA_JALUR.get(z[0], z[0]), ringan=False) for z in ikut]))
+                return out, so, True
+            except Exception as ex:
+                print("[WARN] bubble 4 jam", ex)
         so.insert(0, f"🎯 <b>QSE v150 | SINYAL {judul}</b>\n{SY.baris_jadwal(rs[0]['tf_ms'] if rs else 4 * 3600000, tutup)}\n"
                      + (prio + "\n" if prio else "") + f"{SY.GARIS}\n" + (f"{ktx}\n" if ktx.strip() else "")
                      + "Detail tiap sinyal di bawah. Laporan lengkap ada di pesan 📊 berikutnya.")

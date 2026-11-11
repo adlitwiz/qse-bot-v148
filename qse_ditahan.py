@@ -215,6 +215,16 @@ def kelas(k, it, prio=None):
                 return "UTAMA", "👑 koin jagoan sejati"
         except Exception:
             pass
+    # v175 QC 73: konfluensi 3+ teknik searah di koin yang sama = KELAS UTAMA (uji: -0.095 / +0.322 / +0.274 / +0.091R, WR 61%, PF 1.73)
+    # v176 QC 74: 2+ teknik (bukan SHORT saat BTC 4J di atas EMA 50): +0.048 / +0.308 / +0.312 / +0.086R
+    try:
+        import qse_strat as ST_
+        if ST_.konf_utama(it["arah"], it.get("btc_j"), len(it.get("combo") or []) + 1):
+            return "UTAMA", f"⭐ konfluensi {len(it['combo']) + 1} teknik searah"
+    except Exception:
+        pass
+    if it.get("netral_buka"):
+        return "RINGAN", "BTC netral: arah ini dibuka tanpa izin BTC (uji tidak konsisten)"
     if not prio:
         return "RINGAN", "sinyal eks-tahanan otak"
     try:
@@ -255,8 +265,8 @@ def jalankan():
         if key in d["kirim"] or not it.get("otak_saring") or now - t0 > UMUR_JAM * 3600:
             continue
         d["kirim"][key] = now
-        if it.get("blokir_koin"):
-            continue                      # QC 56: teknik ini rugi di koin ini, tidak dikirim sama sekali
+        if it.get("blokir_koin") or it.get("uji_live"):
+            continue                      # QC 56: teknik ini rugi di koin ini. QC 74: kelompok uji live. Tidak dikirim sama sekali
         try:
             out.append(kartu(k, nama, it))
         except Exception as ex:

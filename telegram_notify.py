@@ -230,6 +230,22 @@ def siaran_cocok(sym, arah, harga, jam=12, tol=0.03, now=None):
     return max(ok, key=lambda x: x["t"]) if ok else None
 
 
+PISAH = "\n\n\u2063PISAH\u2063\n\n"          # QC 73: pemisah bubble. Teks yang memuat PISAH dikirim sebagai beberapa pesan
+
+
+def kirim_pisah(bubbles, markup=None):
+    """QC 73: tiap isi `bubbles` jadi satu pesan Telegram sendiri. Teks ber-PISAH dipecah juga. Return list id per bubble."""
+    out = []
+    semua = [b for x in bubbles for b in str(x).split(PISAH.strip()) if b.strip()]
+    for q, b in enumerate(semua):
+        try:
+            out.append(send([z for z in b.strip().split("\n\n") if z.strip()], markup=markup if q == len(semua) - 1 else None) or [])
+        except Exception as ex:
+            print("[WARN] kirim pisah", ex)
+            out.append([])
+    return out
+
+
 def send(blocks, token=None, chat_id=None, markup=None):
     try:
         catat_siaran("\n\n".join(str(b) for b in blocks))

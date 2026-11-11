@@ -897,6 +897,9 @@ def _tugas_menit():
                 br = __import__("qse_strat").sapu_rusak() if 180 <= time.time() % 14400 <= 1500 else []
                 for m_ in br:
                     TG.send([m_])
+                kw = _SYp.kawal()          # QC 73: kabar proaktif saat posisi mendekati TP awal
+                for m_ in kw:
+                    TG.send(["🛰 <b>QSE v150 | KAWAL POSISI</b>\n\n" + m_])
             except Exception as ex:
                 print("[WARN] darurat / nyawa / sapu rusak", ex)
             kp = _SYp.cek_patah()
@@ -904,9 +907,21 @@ def _tugas_menit():
                 TG.send(["📋 <b>QSE v150 | KABAR POSISI</b> (data untuk kamu nilai, bukan perintah keluar)\n\n" + "\n\n".join(kp)])
     except Exception as ex:
         print("[WARN] cek patah", ex)
+    try:          # v175 QC 73: scan otomatis tiap 1 jam, satu koin satu bubble, ditutup analisa otak dan saran GZH
+        import qse_radar as RD
+        for b_ in RD.jalankan():
+            ids = TG.send([b_])
+            if _layak_pin(b_) and "ANALISA OTAK" not in b_:
+                _pin_sinyal(ids or [])
+    except Exception as ex:
+        print("[WARN] radar jam", ex)
+    utama4 = os.environ.get("QSE_4J_UTAMA", "1") != "0"          # QC 73: siaran 4 jam hanya Kelas Utama, kelas ringan lewat scan 1 jam
     try:
         import qse_ditahan as DT          # v150: sinyal jalur yang ditahan otak tetap dikirim (lot kecil), semua isi Jalur Live sampai grup
         for m in DT.jalankan():
+            if utama4 and "KELAS RINGAN" in m:
+                print("[RADAR] kartu jalur kelas ringan tidak disiarkan di 4 jam, ikut scan 1 jam")
+                continue
             ids = TG.send(["🧠 <b>QSE v150 | JALUR LIVE</b>\n\n" + m])
             if _layak_pin(m):
                 _pin_sinyal(ids or [])
@@ -915,6 +930,10 @@ def _tugas_menit():
     try:
         import qse_gzh2 as GZ2          # 9 Nov 2026: GZH pantulan pendek (QC 53), sekali sesudah candle 4J tutup
         for m in GZ2.jalankan():
+            if utama4 and "KELAS RINGAN" in m and "GZH PANTULAN SHORT:" in m:
+                # QC 75: GZH SHORT kelas ringan tetap dikirim sebagai pesan GZH sendiri (uji 2025 +5.6R, 2026 +2.0R), tidak disematkan
+                TG.send(["🟡 <b>QSE v150 | GZH PANTULAN · KELAS RINGAN</b>\n\n" + m])
+                continue
             ids = TG.send(["🟡 <b>QSE v150 | GZH PANTULAN</b>\n\n" + m])
             if "GZH PANTULAN PENDEK:" in m:
                 _pin_sinyal(ids or [])
