@@ -355,3 +355,56 @@ def baris_pola(k, arah, nama):
     if (k, arah) in POLA_JELEK:
         return f"🕯 Pola candle: {nama}. Di teknik ini pola searah justru lebih jelek ({POLA_JELEK[(k, arah)]}), jangan dianggap penguat"
     return f"🕯 Pola candle: {nama} (info, di teknik ini tidak terbukti menambah hasil)"
+
+
+# ---------- v174 QC 72: TANDA LAWAN (struktur berubah melawan sinyal) ----------
+# Uji riset/upgrade/run_v174_rusak.py, 30 ribu sinyal 2023-2026, aturan keluar live:
+#  MASUK TELAT di candle berikutnya. Tanpa tanda lawan -0.003 / +0.173 / +0.021 / -0.002R. Dengan pola candle lawan -0.057 / +0.140 /
+#   +0.150 / -0.056R. Pola lawan DAN kejenuhan >= 50: -0.144 / +0.070 / +0.089 / -0.220R. Kejenuhan lawan saja (>= 75) JUSTRU lebih baik
+#   (+0.105 / +0.113 / +0.255 / +0.116R), jadi kejenuhan sendirian TIDAK membatalkan sinyal.
+#  POSISI JALAN, untung, belum TP awal. Pola lawan: TAHAN +0.120 / +0.272 / +0.345 / +0.073R lawan TUTUP +0.030 / +0.046 / +0.038 /
+#   +0.032R. Pola lawan DAN kejenuhan >= 50: TAHAN +0.162 / -0.050 / +0.211 / -0.133R lawan TUTUP +0.035 / +0.048 / +0.041 / +0.047R.
+# Jadi: sinyal yang belum diambil DIBATALKAN bila ada pola candle lawan atau CHoCH / MSB lawan. Posisi jalan diberi kabar DARURAT hanya
+# bila pola lawan muncul bersama kejenuhan >= 50 atau bersama CHoCH / MSB lawan (satu-satunya kondisi di mana menahan tidak jelas unggul).
+_TL_CACHE = {}
+
+
+def tanda_lawan(sym, arah, df=None):
+    """Tanda struktur berubah melawan `arah` di candle 4J terakhir yang sudah tutup. Return dict atau None kalau data tidak ada.
+    dict: pola (nama pola candle lawan), choch (bool CHoCH / MSB lawan di 2 candle terakhir), jenuh (skor 0-100 sisi lawan), status,
+    nyala (komponen jenuh yang menyala), batal (bool), darurat (bool), alasan (teks)."""
+    import numpy as np
+    try:
+        if df is None:
+            import qse_strat as ST
+            df = ST._k4(sym, 300)
+        if df is None or len(df) < 120:
+            return None
+        kunci = (sym, arah, int(df.index[-1]))
+        if kunci in _TL_CACHE:
+            return _TL_CACHE[kunci]
+        o, h, l, c, v = (df[x].values.astype(float) for x in ("open", "high", "low", "close", "volume"))
+        lawan = "SHORT" if arah == "LONG" else "LONG"
+        pl = pola_sinyal(o, h, l, c, lawan)
+        n = len(c); dl = 1 if lawan == "LONG" else -1
+        ch = False
+        try:
+            import qse_smccore as K
+            ch = any(z[0] >= n - 2 and z[1] == dl and z[5].get("tag") == "choch" for z in K.smc(o, h, l, c, 5, 50)) or \
+                any(z[0] >= n - 2 and z[1] == dl for z in K.msb(o, h, l, c, v, 7, 0.5, K.volpct(v)))
+        except Exception as ex:
+            print("[WARN] tanda lawan struktur", sym, ex)
+        import qse_ta as TA
+        kj = TA.kejenuhan(o, h, l, c, v)
+        skor = kj["os"] if arah == "SHORT" else kj["ob"]
+        nyala = kj["nyala_os"] if arah == "SHORT" else kj["nyala_ob"]
+        sebab = [x for x in (pl, "CHoCH / MSB lawan" if ch else "", f"kejenuhan {skor:.0f}% ({', '.join(nyala[:4])})" if skor >= 50 else "") if x]
+        out = dict(pola=pl, choch=bool(ch), jenuh=float(skor), status=kj["status"], nyala=nyala, batal=bool(pl or ch),
+                   darurat=bool(pl and (skor >= 50 or ch)), alasan=" + ".join(sebab))
+        if len(_TL_CACHE) > 2000:
+            _TL_CACHE.clear()
+        _TL_CACHE[kunci] = out
+        return out
+    except Exception as ex:
+        print("[WARN] tanda lawan", sym, ex)
+        return None

@@ -339,3 +339,67 @@ def math_abs(x):
 
 def math_avg(*a):
     return sum(f64(x) for x in a) / len(a)
+
+
+# ---------- v174 QC 72: RADAR KEJENUHAN GABUNGAN (multi-indikator overbought / oversold) ----------
+# 10 komponen, tiap komponen 1 suara untuk sisi jenuh beli (OB) atau jenuh jual (OS). Skor = suara / komponen yang terhitung x 100.
+# Osilator dan aliran uang: RSI 14, Stochastic 14, CCI 20, MFI 14, CMF 20. Rentang: di luar pita Bollinger 20/2, jarak ke EMA 50 dan
+# ke EMA 200 lebih dari 2.5 ATR. Struktur: Golden Pocket 0.618-0.65 dari ayunan 50 candle, dekat support / resistance 50 candle.
+# Komponen ke-11 (peringkat RSI antar koin) ditambahkan oleh pemanggil lewat `peringkat`. Status EKSTREM bila skor >= 75.
+JENUH_EKSTREM = 75.0
+KOMPONEN_JENUH = ("RSI", "Stochastic", "CCI", "MFI", "CMF", "Bollinger", "jarak EMA 50", "jarak EMA 200", "Golden Pocket", "S/R 50 candle")
+
+
+def kejenuhan_seri(o, h, l, c, v):
+    """Skor jenuh beli dan jenuh jual per candle (0-100), plus matriks suara. Semua komponen memakai data sampai candle itu saja."""
+    import pandas as pd
+    o, h, l, c, v = (np.asarray(x, dtype=float) for x in (o, h, l, c, v))
+    n = len(c); S = pd.Series
+    a = np.asarray(atr(h, l, c, 14), dtype=float)
+    r = np.asarray(rsi(c, 14), dtype=float)
+    hh, ll = S(h).rolling(14).max().values, S(l).rolling(14).min().values
+    st = (c - ll) / np.where(hh - ll > 0, hh - ll, np.nan) * 100
+    tp = (h + l + c) / 3
+    ma = S(tp).rolling(20).mean().values
+    md = S(tp).rolling(20).apply(lambda x: np.abs(x - x.mean()).mean(), raw=True).values
+    cci = (tp - ma) / np.where(md > 0, 0.015 * md, np.nan)
+    dtp = np.r_[0, np.diff(tp)]; mf = tp * v
+    pos, neg = S(np.where(dtp > 0, mf, 0.0)).rolling(14).sum().values, S(np.where(dtp < 0, mf, 0.0)).rolling(14).sum().values
+    mfi = 100 - 100 / (1 + pos / np.where(neg > 0, neg, np.nan))
+    mfi = np.where(neg > 0, mfi, np.where(pos > 0, 100.0, 50.0))
+    rg = np.where(h - l > 0, h - l, np.nan)
+    cmf = S(np.nan_to_num(((c - l) - (h - c)) / rg) * v).rolling(20).sum().values / np.where(S(v).rolling(20).sum().values > 0, S(v).rolling(20).sum().values, np.nan)
+    bm, bs = S(c).rolling(20).mean().values, S(c).rolling(20).std(ddof=0).values
+    e50, e200 = np.asarray(ema(c, 50), dtype=float), np.asarray(ema(c, 200), dtype=float)
+    aa = np.where(a > 0, a, np.nan)
+    hi50, lo50 = S(h).rolling(50).max().values, S(l).rolling(50).min().values
+    ih = S(h).rolling(50).apply(np.argmax, raw=True).values; il = S(l).rolling(50).apply(np.argmin, raw=True).values
+    span = np.where(hi50 - lo50 > 0, hi50 - lo50, np.nan)
+    ret_turun = (hi50 - c) / span          # ayunan naik (low dulu, high kemudian): harga turun balik ke 0.618-0.65 = zona pantul naik
+    ret_naik = (c - lo50) / span           # ayunan turun (high dulu): harga naik balik ke 0.618-0.65 = zona pantul turun
+    gp_os = (il < ih) & (ret_turun >= 0.58) & (ret_turun <= 0.70)
+    gp_ob = (ih < il) & (ret_naik >= 0.58) & (ret_naik <= 0.70)
+    ob = np.vstack([r > 70, st > 80, cci > 100, mfi > 80, cmf > 0.2, c > bm + 2 * bs, (c - e50) / aa > 2.5, (c - e200) / aa > 2.5, gp_ob,
+                    (hi50 - c) / aa < 0.5]).astype(float)
+    os_ = np.vstack([r < 30, st < 20, cci < -100, mfi < 20, cmf < -0.2, c < bm - 2 * bs, (c - e50) / aa < -2.5, (c - e200) / aa < -2.5, gp_os,
+                     (c - lo50) / aa < 0.5]).astype(float)
+    k = len(KOMPONEN_JENUH)
+    return ob.sum(axis=0) / k * 100, os_.sum(axis=0) / k * 100, ob, os_, r
+
+
+def kejenuhan(o, h, l, c, v, peringkat=None, i=-1):
+    """Kejenuhan di candle i. peringkat = persentil RSI koin ini di antara koin lain (0-100) atau None.
+    Return dict(ob, os, status, nyala_ob, nyala_os, rsi)."""
+    sob, sos, ob, os_, r = kejenuhan_seri(o, h, l, c, v)
+    nob = [KOMPONEN_JENUH[j] for j in range(len(KOMPONEN_JENUH)) if ob[j, i] > 0]
+    nos = [KOMPONEN_JENUH[j] for j in range(len(KOMPONEN_JENUH)) if os_[j, i] > 0]
+    k = len(KOMPONEN_JENUH)
+    if peringkat is not None:
+        k += 1
+        if peringkat >= 90:
+            nob.append("peringkat RSI antar koin")
+        elif peringkat <= 10:
+            nos.append("peringkat RSI antar koin")
+    vob, vos = len(nob) / k * 100, len(nos) / k * 100
+    status = "OVERBOUGHT EKSTREM" if vob >= JENUH_EKSTREM else "OVERSOLD EKSTREM" if vos >= JENUH_EKSTREM else ""
+    return dict(ob=vob, os=vos, status=status, nyala_ob=nob, nyala_os=nos, rsi=float(r[i]) if r[i] == r[i] else None)

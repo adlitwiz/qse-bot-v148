@@ -336,6 +336,10 @@ def _jalankan(baru_ok=True):
         t = tick.get(sym, 0.0001)
         it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now, mutu=sk, mutu_plus=mp,
                   last=int(df.index[-1]), close=px, tick=t, sl_atr=SL_ATR, trail_atr=TRAIL_ATR)
+        try:          # QC 72: pola candle di candle sinyal (baris 🕯 di kartu)
+            it["pola_c"] = __import__("qse_pola").pola_sinyal(*(df[x_].values.astype(float) for x_ in ("open", "high", "low", "close")), arah)
+        except Exception as ex:
+            print("[WARN] pola candle ichimoku", ex)
         try:
             import qse_strat as ST
             it["combo"] = ST._combo(df, "ichimoku", arah, ST.btc_naik(), sym)
@@ -382,6 +386,7 @@ def _jalankan(baru_ok=True):
             f"{'🟢' if L else '🔴'} <b>{len(baru)}. {sym} {arah}</b>  ·  Ichimoku 4J",
             f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  <b>{MD.teks_kelas(lot_b)}</b> (margin dan leverage tiap orang di baris bawah)",
             *([_sp] if (_sp := __import__("qse_strat").baris_spesialis("ichimoku", arah)) else []),
+            *([_pc] if (_pc := __import__("qse_pola").baris_pola("ichimoku", arah, it.get("pola_c"))) else []),
             *ST_combo(it),
             *([cat_hari] if cat_hari else []),
             SY.GARIS,

@@ -1106,6 +1106,13 @@ def jalankan(baru_ok=True):
             if cfg.get("izin_btc") and not izin.get(arah, True):
                 print(f"[STRAT {k}] {sym} {arah} ditahan: izin BTC 4J tidak mengizinkan {arah}")
                 continue
+            try:          # v174 QC 72: kapok (3 SL beruntun di koin dan arah ini, 14 hari)
+                kpk = __import__("qse_nyawa").kapok(sym, arah)
+            except Exception:
+                kpk = ""
+            if kpk:
+                print(f"[STRAT {k}] {sym} {arah} ditahan: {kpk}")
+                continue
             gq = gerbang_qc71(k, arah, bj)
             if gq:
                 print(f"[STRAT {k}] {sym} {arah} ditahan: {gq}")
@@ -1197,6 +1204,46 @@ def jalankan(baru_ok=True):
 
 
 _CEK = {}
+# mesin di luar STRAT yang ikut pindai paksa (QC 72). GZH SHORT kelas ringan (QC 64), GZH LONG kelas utama.
+LAIN_PINDAI = {"ichimoku": dict(nama="Ichimoku", likuid=20, sl_atr=1.5), "orderblock": dict(nama="Order Block", likuid=50, tp_r=4.0),
+               "gzh": dict(nama="GZH Golden Zone", likuid=0, sl_atr=1.5, tp_r=0.8)}
+
+
+def sapu_rusak(now=None):
+    """v174 QC 72: sinyal robot dari candle sebelumnya yang belum aman (belum kena TP awal) dicek ulang tiap candle 4J. Ada pola candle
+    lawan atau CHoCH / MSB lawan: sinyal diberi cap batal (tidak pernah ditawarkan lagi, tidak diturunkan kelasnya) dan dikabari sekali.
+    Trade kertas robot tetap jalan untuk statistik. Return list pesan."""
+    import qse_pola as QPL
+    now = now or time.time()
+    c4 = int(now // 14400) * 14400
+    out = []
+
+    def proses(nama, k):
+        def f(d):
+            ps = []
+            for it in d["open"].values():
+                if it.get("batal") or it.get("t", now) >= c4 - 60 or (it.get("v9") or {}).get("aman") or now - it.get("t", now) > 3 * 14400:
+                    continue
+                tl = QPL.tanda_lawan(it["sym"], it["arah"])
+                if tl and tl["batal"]:
+                    it["batal"] = tl["alasan"]; it["pola_lawan"] = tl["pola"] or "CHoCH / MSB lawan"
+                    st = "Oversold" if it["arah"] == "SHORT" else "Overbought"
+                    ps.append(f"🚫 <b>SINYAL {it['sym']} {it['arah']} DIBATALKAN OTOMATIS</b> ({nama})\n"
+                              f"Struktur berubah di candle 4J terakhir: {tl['alasan']}. Kejenuhan {st} {tl['jenuh']:.0f}%.\n"
+                              "Belum masuk: ⛔ JANGAN AMBIL. Sudah masuk dan belum kena TP awal: lihat kabar posisi, SL tetap batas rugi.")
+            return ps
+        return f
+    for k, cfg in STRAT.items():
+        try:
+            out += _ubah(k, proses(cfg["nama"], k)) or []
+        except Exception as ex:
+            print("[WARN] sapu rusak", k, ex)
+    for nama, mod in (("Ichimoku", "qse_ichimoku"), ("Order Block", "qse_ob")):
+        try:
+            out += __import__(mod)._ubah(proses(nama, mod)) or []
+        except Exception as ex:
+            print("[WARN] sapu rusak", nama, ex)
+    return out
 
 
 def pindai_sekarang():
@@ -1228,6 +1275,30 @@ def pindai_sekarang():
                     if mundur and umur_maks(k) < 2:
                         continue
                     out.append((k, arah, a, mundur, float(d_["close"].iloc[-1]), d_))
+            # v174 QC 72: Ichimoku, Order Block, dan GZH ikut dihitung ulang di candle terakhir detik ini juga
+            try:
+                import qse_ichimoku as IC_
+                ar_, a_ = IC_._sinyal(df)
+                if ar_:
+                    out.append(("ichimoku", ar_, a_, 0, float(df["close"].iloc[-1]), df))
+            except Exception as ex_:
+                print("[WARN] pindai ichimoku", sym, ex_)
+            try:
+                import qse_ob as OB_
+                x_ = OB_._sinyal(df)
+                if x_ and bn:
+                    out.append(("orderblock", "LONG", x_["atr"], 0, float(df["close"].iloc[-1]), dict(df=df, sl=x_["sl"])))
+            except Exception as ex_:
+                print("[WARN] pindai ob", sym, ex_)
+            try:
+                import qse_gzh2 as GZ_
+                hh_, ll_, cc_ = (df[x].values.astype(float) for x in ("high", "low", "close"))
+                g_ = GZ_.setup_short(hh_, ll_, cc_) if bn is False else GZ_.setup_terakhir(hh_, ll_, cc_) if bn else None
+                if g_:
+                    out.append(("gzh", g_.get("arah", "SHORT" if bn is False else "LONG"), g_.get("atr") or float(_atr(hh_, ll_, cc_)[-1]), 0,
+                                float(df["close"].iloc[-1]), dict(df=df, sl=g_.get("sl"), tp=g_.get("tp"))))
+            except Exception as ex_:
+                print("[WARN] pindai gzh", sym, ex_)
             return sym, out
         except Exception as ex:
             print("[WARN] pindai", sym, ex)
@@ -1252,13 +1323,17 @@ def pindai_sekarang():
         QPL = None
     for sym, lst in hasil:
         for k, arah, a, mundur, cl, d_ in lst:
-            cfg = STRAT[k]
+            ekstra = d_ if isinstance(d_, dict) else {}
+            d_ = ekstra.get("df", d_) if ekstra else d_
+            cfg = STRAT.get(k) or LAIN_PINDAI[k]
             if cfg.get("manual"):
                 continue
             if cfg["likuid"] and urut.index(sym) >= cfg["likuid"]:
                 continue
             d = 1 if arah == "LONG" else -1
             risk = cfg.get("sl_atr", SL_ATR) * a
+            if ekstra.get("sl"):
+                risk = abs(cl - ekstra["sl"])
             px = tk[sym]["last"] or cl
             geser = (px - cl) * d / risk
             why = gerbang_qc71(k, arah, bj) or ("" if izin.get(arah, True) or not cfg.get("izin_btc") else f"izin BTC 4J tidak mengizinkan {arah}")
@@ -1266,6 +1341,16 @@ def pindai_sekarang():
                 why = "jarak SL di luar 0.3% sampai 10% harga"
             if not why and abs(geser) > 0.5:
                 why = f"harga sudah {'lari' if geser > 0 else 'melawan'} {abs(geser):.1f}R dari harga sinyal"
+            tl = None
+            if not why:
+                try:
+                    why = __import__("qse_nyawa").kapok(sym, arah)
+                except Exception:
+                    pass
+            if not why and mundur and QPL:          # sinyal candle sebelumnya: batal kalau candle terakhir memberi tanda lawan
+                tl = QPL.tanda_lawan(sym, arah)
+                if tl and tl["batal"]:
+                    why = "struktur berubah: " + tl["alasan"]
             pc = ""
             try:
                 pc = QPL.pola_sinyal(*(d_[x_].values.astype(float) for x_ in ("open", "high", "low", "close")), arah) if QPL else ""
@@ -1275,8 +1360,10 @@ def pindai_sekarang():
             sp_ok = bool(sp and bj is not None and (sp[0] == "atas") == (bj > 0))
             nilai = (2 if sp_ok else 0) + (1 if pc and QPL and (k, arah) in QPL.POLA_TERUJI else 0) + (1 if geser < 0 else 0) + (0 if mundur else 1) \
                 - (2 if k == "ema_short" else 0)
+            ringan = bool(cfg.get("ringan") or k == "ema_short" or (k == "gzh" and arah == "SHORT"))
             row = dict(sym=sym, k=k, nama=cfg["nama"], arah=arah, px=px, sl=px - d * risk, risk=risk, geser=geser, mundur=mundur, pola=pc,
-                       spesialis=sp_ok, nilai=nilai, why=why, tick=tick.get(sym, 0.0001), tp=(px + d * cfg["tp_r"] * risk) if cfg.get("tp_r") else None)
+                       spesialis=sp_ok, nilai=nilai - (1 if ringan else 0), why=why, tick=tick.get(sym, 0.0001), ringan=ringan,
+                       entry_robot=cl, tp=(px + (ekstra["tp"] - cl)) if ekstra.get("tp") else (px + d * cfg["tp_r"] * risk) if cfg.get("tp_r") else None)
             (lewat if why else valid).append(row)
     valid.sort(key=lambda r: (-r["nilai"], urut.index(r["sym"])))
     return valid, lewat, dict(n=n_selesai, total=len(pindai), detik=time.time() - t0, bj=bj)
@@ -1290,7 +1377,7 @@ def pindai_teks(maks=6):
     except Exception as ex:
         return f"🔎 <b>PINDAI PAKSA</b>: gagal mengambil data ({TG.e(str(ex)[:120])}). Coba lagi sebentar."
     jam = time.strftime("%H:%M:%S", time.gmtime(time.time() + 7 * 3600))
-    rows = [f"🔎 <b>PINDAI PAKSA {jam} WIB</b>  ·  {inf['n']}" + (f" dari {inf['total']}" if inf["n"] < inf["total"] else "") + f" koin Futures, 7 teknik indikator, 2 candle 4J terakhir, {inf['detik']:.0f} detik"
+    rows = [f"🔎 <b>PINDAI PAKSA {jam} WIB</b>  ·  {inf['n']}" + (f" dari {inf['total']}" if inf["n"] < inf["total"] else "") + f" koin Futures, 10 mesin (7 teknik, Ichimoku, Order Block, GZH), 2 candle 4J terakhir, {inf['detik']:.0f} detik"
             + (f"  ·  BTC 4J {inf['bj']:+.1f}% dari EMA 50" if inf.get("bj") is not None else "")]
     if not valid:
         rows.append("Tidak ada sinyal teknik yang masih valid di harga sekarang."
@@ -1298,17 +1385,21 @@ def pindai_teks(maks=6):
     for no, r in enumerate(valid[:maks], 1):
         ket = [x for x in (("🎯 spesialis " + r["arah"]) if r["spesialis"] else "", ("🕯 " + r["pola"]) if r["pola"] else "",
                            "candle terakhir" if not r["mundur"] else "candle sebelumnya",
-                           f"harga {abs(r['geser']):.1f}R {'lebih baik dari' if r['geser'] < 0 else 'di atas'} harga sinyal") if x]
-        rows.append(f"{'⭐ <b>REKOMENDASI SEKARANG</b>' if no == 1 else f'{no}.'} {'🟢' if r['arah'] == 'LONG' else '🔴'} <b>{r['sym']} {r['arah']}</b>  ·  "
-                    f"{r['nama']}  ·  " + "  ·  ".join(ket) + ("  ·  🟨 kelas ringan" if r["k"] == "ema_short" else "") + "\n"
+                           f"harga {abs(r['geser']):.1f}R {'lebih baik dari' if r['geser'] < 0 else 'lari dari'} harga sinyal") if x]
+        kpt = (f"⏳ TUNGGU HARGA JEMPUT di {SY.fp(r['entry_robot'], r['tick'])}" if r["geser"] > 0.25 else "✅ AMBIL SEKARANG (Market)")
+        rows.append(f"{'⭐ <b>REKOMENDASI SEKARANG</b>' if no == 1 else f'{no}.'} {'🟢' if r['arah'] == 'LONG' else '🔴'} <b>{r['sym']} {r['arah']}</b>\n"
+                    f"🏷 Teknik: <b>{r['nama']}</b>  ·  {'🟨 KELAS RINGAN' if r['ringan'] else '🟦 KELAS UTAMA'}  ·  Struktur: ✅ valid searah"
+                    f"\n🧭 Keputusan: <b>{kpt}</b>\nℹ️ " + "  ·  ".join(ket) + "\n"
                     + (SY.blok_salin(r["px"], r["sl"], r["tp"], r["tp"], "MARKET", r["tick"], sym=r["sym"], arah=r["arah"], sebagian=True) if r["tp"] else
                        SY.blok_salin(r["px"], r["sl"], order="MARKET", tick=r["tick"], catatan_tp="tanpa, pakai SL berjalan", sym=r["sym"], arah=r["arah"],
                                      sebagian=True)))
     if len(valid) > maks:
-        rows.append("Lainnya masih valid: " + ", ".join(f"{r['sym'].replace('USDT', '')} {r['arah']} ({r['nama']})" for r in valid[maks:maks + 10]))
+        rows.append("Lainnya masih valid (✅ AMBIL SEKARANG): " + ", ".join(
+            f"{r['sym'].replace('USDT', '')} {r['arah']} ({r['nama']}, {'kelas ringan' if r['ringan'] else 'kelas utama'})" for r in valid[maks:maks + 10]))
     if lewat:
-        rows.append("⏭ Sudah lewat atau ditahan: " + "  ·  ".join(f"{r['sym'].replace('USDT', '')} {r['arah']} {r['nama']}: {r['why']}" for r in lewat[:6]))
-    rows.append("Ichimoku, Order Block, GZH, Whip-Fade, Sniper, dan Lalat Abdul ada di bagian bawah pesan ini (status terbaru masing-masing mesin).")
+        rows.append("⛔ <b>JANGAN AMBIL</b> (batal, telat, atau ditahan): " + "  ·  ".join(
+            f"{r['sym'].replace('USDT', '')} {r['arah']} {r['nama']}: {r['why']}" for r in lewat[:8]))
+    rows.append("Pindai ini sudah mencakup 7 teknik indikator, Ichimoku, Order Block, dan GZH di candle terakhir.")
     return "\n\n".join(rows)
 
 

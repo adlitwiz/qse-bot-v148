@@ -888,6 +888,17 @@ def _tugas_menit():
     try:          # v173 QC 71: struktur 1 jam posisi jalan dicek tiap 5 menit, kabar sekali saat patah
         if int(time.time() // 60) % 5 == 0:
             import qse_saya as _SYp
+            try:
+                dr = _SYp.cek_darurat()
+                if dr:
+                    TG.send(["🚨 <b>QSE v150 | DARURAT POSISI</b>\n\n" + "\n\n".join(dr)])
+                import qse_nyawa as _NY
+                _NY.sinkron()
+                br = __import__("qse_strat").sapu_rusak() if 180 <= time.time() % 14400 <= 1500 else []
+                for m_ in br:
+                    TG.send([m_])
+            except Exception as ex:
+                print("[WARN] darurat / nyawa / sapu rusak", ex)
             kp = _SYp.cek_patah()
             if kp:
                 TG.send(["📋 <b>QSE v150 | KABAR POSISI</b> (data untuk kamu nilai, bukan perintah keluar)\n\n" + "\n\n".join(kp)])

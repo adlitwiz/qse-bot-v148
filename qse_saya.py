@@ -4062,6 +4062,50 @@ def kabar_objektif(it, txt, px=None):
 
 
 @per_orang
+def cek_darurat():
+    """v174 QC 72: posisi jalan yang BELUM aman (belum kena TP awal) dan sedang untung, lalu di candle 4J terakhir muncul pola candle
+    lawan bersama kejenuhan gabungan >= 50% atau bersama CHoCH / MSB lawan: kabar DARURAT sekali per posisi per candle.
+    Uji run_v174_rusak: di kondisi ini menahan +0.162 / -0.050 / +0.211 / -0.133R, menutup +0.035 / +0.048 / +0.041 / +0.047R.
+    Pola lawan saja TIDAK memicu darurat (menahan +0.07 sampai +0.35R, menutup +0.03R)."""
+    import qse_pola as QPL
+
+    def f(d):
+        pesan = []
+        for it in d["open"].values():
+            if it.get("status") != "TERISI":
+                continue
+            px = harga_live(it["sym"])
+            if not px:
+                continue
+            r = _r_at(it, px)
+            if r <= 0.05:
+                continue
+            tl = QPL.tanda_lawan(it["sym"], it["arah"])
+            if not tl or not tl["darurat"]:
+                continue
+            al = it.setdefault("alert", [])
+            kunci = f"darurat{int(time.time() // 14400)}"
+            if kunci in al:
+                continue
+            al.append(kunci)
+            t = it.get("tick") or tick_of(None, it["entry"])
+            pu = None
+            try:
+                pu = __import__("qse_modal").pnl_usdt(it, r)
+            except Exception:
+                pass
+            st = "OVERSOLD" if it["arah"] == "SHORT" else "OVERBOUGHT"
+            pesan.append(f"🚨 <b>DARURAT TP MANUAL / TUTUP SEKARANG: {it['sym']} {it['arah']}</b>\n"
+                         f"• Tanda pembalikan di candle 4J terakhir: {tl['alasan']}\n"
+                         f"• Pasar {st} {tl['jenuh']:.0f}%" + (" (EKSTREM)" if tl["jenuh"] >= 75 else "") + f". Posisi sekarang {r:+.2f}R"
+                         + (f" = {pu:+.2f} USDT" if pu is not None else "") + f" di {fp(px, t)}, belum kena TP awal\n"
+                         f"• Amankan sekarang: tombol <b>TP 50%</b> atau <b>TP penuh</b> di Kelola Posisi, sisanya SL ke entry {fp(it['entry'], t)}\n"
+                         f"• Angka uji kondisi ini 2023-2026: menutup rata +0.04R di tiap tahun, menahan +0.16 / -0.05 / +0.21 / -0.13R (tidak konsisten)")
+        return pesan
+    return ubah(f)
+
+
+@per_orang
 def cek_patah():
     """v173 QC 71: tiap 5 menit, posisi jalan yang struktur 1 jamnya baru patah dikabari sekali (data, bukan perintah keluar).
     Kabar dilepas lagi kalau struktur pulih, supaya patah berikutnya tetap dikabari."""
@@ -4861,6 +4905,7 @@ def sinyal_jalur(jam=False):
         except Exception as ex:
             print("[WARN] batas searah", ex)
     kartu = []
+    batal_ = []           # QC 72: sinyal yang dibatalkan karena struktur berubah atau kapok
     dipakai = []          # sinyal yang sudah kamu pakai dan keluar rugi atau impas: tidak ditawarkan lagi
     for k, nama, items in sumber:
         for it in items:
@@ -4892,6 +4937,26 @@ def sinyal_jalur(jam=False):
                 masih = not sl_tersentuh(it, it.get("sl0", sl))          # SL awal robot sudah tersentuh sejak sinyal: tidak valid
             if not (baru or masih):
                 continue
+            # v174 QC 72: sinyal candle sebelumnya yang strukturnya berubah DIBATALKAN, tidak pernah dikirim ulang sebagai kelas ringan
+            if it.get("batal"):
+                batal_.append(f"{it['sym']} {it['arah']} ({nama}: {it['batal']})")
+                continue
+            try:
+                kp_ = __import__("qse_nyawa").kapok(it["sym"], it["arah"])
+            except Exception:
+                kp_ = ""
+            if kp_:
+                batal_.append(f"{it['sym']} {it['arah']} ({nama}: {kp_})")
+                continue
+            tl_ = None
+            if not baru:
+                try:
+                    tl_ = __import__("qse_pola").tanda_lawan(it["sym"], it["arah"])
+                except Exception:
+                    tl_ = None
+                if tl_ and tl_["batal"]:
+                    batal_.append(f"{it['sym']} {it['arah']} ({nama}: {tl_['alasan']})")
+                    continue
             if it.get("tp"):
                 tp = fp(it["tp"], t)
             else:
@@ -4961,8 +5026,17 @@ def sinyal_jalur(jam=False):
                 skor_t = (skor_t + "\n" if skor_t else "") + "🟨 KELAS RINGAN: EMA Cross SHORT rugi di 2026 (uji -128R)"
             elif ju_:
                 skor_t = (skor_t + "\n" if skor_t else "") + "🟦 KELAS UTAMA: koin jagoan sejati"
+            # QC 72: empat keterangan wajib di tiap koin: teknik, kelas, struktur, keputusan
+            kls_ = "🟨 KELAS RINGAN" if (k == "ema_short" and not ju_) or it.get("ringan") else "🟦 KELAS UTAMA"
+            if d is not None and d > 0.25:
+                kpt_ = f"⏳ TUNGGU HARGA JEMPUT di {fp(it['entry'], t)} (harga sudah lari {d:.1f}R, masuk sekarang jarak SL melebar)"
+            else:
+                kpt_ = "✅ AMBIL SEKARANG (Market)"
+            jn_ = f", kejenuhan lawan {tl_['jenuh']:.0f}%" if tl_ and tl_["jenuh"] >= 50 else ""
+            id_ = (f"🏷 Teknik: <b>{nama}</b>  ·  {kls_}  ·  Struktur: ✅ valid searah"
+                   + (" (sinyal candle ini)" if baru else f" (candle terakhir tanpa pola lawan, tanpa CHoCH lawan{jn_})") + f"\n🧭 Keputusan: <b>{kpt_}</b>")
             kartu.append((ST.prioritas(k, it), (ju_, searah), "".join(z + "\n" for z in jg_)
-                         + f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama} TF 4J  ·  MARKET\n"
+                         + f"{'🟢' if L else '🔴'} <b>{it['sym']} {it['arah']}</b>  ·  {nama} TF 4J  ·  MARKET\n" + id_ + "\n"
                          + (skor_t + "\n" if skor_t else "") + f"ℹ️ {ket}\n"
                          + blok + "".join("\n" + z for z in ST.batas_masuk_teks(it, k)) + ("\n" + bukti if bukti else "")
                          + "\n" + langkah
@@ -4989,7 +5063,9 @@ def sinyal_jalur(jam=False):
                 continue
             jarak = f", harga sekarang {fp(px, t)} ({jr:.1f}% dari entry)" if px else ""
             tunggu.append(f"⏳ <b>{v['sym']} {v['arah']}</b>  ·  Tembus Trendline  ·  order {v.get('order', '')} menunggu{jarak}, "
-                          f"berlaku {sisa:.0f} jam lagi\n<pre>{v['sym']} {v['arah']}\nEntry {fp(v['entry'], t)} {v.get('order', '')}\n"
+                          f"berlaku {sisa:.0f} jam lagi\n🏷 Teknik: <b>Tembus Trendline</b>  ·  "
+                          f"{'🟨 KELAS RINGAN' if v.get('ringan') or v.get('kelas') == 'RINGAN' else '🟦 KELAS UTAMA'}  ·  Struktur: garis belum ditembus"
+                          f"\n🧭 Keputusan: <b>⏳ TUNGGU HARGA JEMPUT</b> (pasang order {v.get('order', 'STOP')} di entry, jangan Market)\n<pre>{v['sym']} {v['arah']}\nEntry {fp(v['entry'], t)} {v.get('order', '')}\n"
                           f"SL    {fp(v['sl'], t)}\nTP1   {fp(v['tp1'], t)}\nTP2   {fp(v['tp2'], t)}</pre>")
     except Exception as ex:
         print("[WARN] sinyal4j trendline", ex)
@@ -5004,6 +5080,8 @@ def sinyal_jalur(jam=False):
     if n_sem and not jam:
         blok_tunggu += (f"\n\nℹ️ {n_sem} sinyal dengan nilai di bawah "
                         "8 (skor label di bawah 3) disembunyikan otomatis, karena hasil ujinya jauh lebih rendah.")
+    if batal_:
+        blok_tunggu += ("\n\n🚫 <b>DIBATALKAN OTOMATIS</b> (struktur berubah atau kapok, ⛔ JANGAN AMBIL): " + "  ·  ".join(batal_[:10]))
     if dipakai and not jam:
         blok_tunggu += ("\n\n⛔ Disembunyikan karena sudah kamu pakai dan keluar rugi atau impas (tidak ditawarkan lagi): "
                         + ", ".join(dipakai) + ". Catatan orang lain di grup tidak ikut.")

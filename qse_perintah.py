@@ -279,6 +279,10 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/ichimoku", "/ichi"):
         import qse_ichimoku as IC
         return IC.teks()
+    if cmd in ("/nyawa", "/trauma", "/hp"):
+        import qse_nyawa as NY
+        NY.sinkron()
+        return NY.teks()
     if cmd in ("/jagoan", "/koinjagoan"):
         import qse_jagoan as JG
         return JG.teks()

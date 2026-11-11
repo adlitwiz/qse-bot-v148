@@ -2323,6 +2323,7 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                     lot = f"{lot2} (akhir pekan)"
             except Exception:
                 pass
+            items = [x_ for x_ in items if not x_.get("batal")]          # QC 72: sinyal yang strukturnya berubah tidak ditawarkan lagi
             teks, ring, lewat = _baru_candle(items, tutup, kunci, harga, pegang)
             if not teks:
                 sepi.append(pendek)
