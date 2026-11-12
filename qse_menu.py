@@ -11,7 +11,7 @@ import requests
 from config import STATE_DIR
 
 PATH = os.path.join(STATE_DIR, "menu.json")
-VERSI = 5                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
+VERSI = 6                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
 
 UTAMA = [["📊 Status", "📡 Sinyal 4J", "₿ Cek BTC"],
          ["💼 Modal", "📝 Entry", "🎯 Kelola Posisi"],
@@ -108,8 +108,14 @@ def _api(metode, **data):
 
 
 def keyboard():
-    return {"keyboard": [[{"text": t} for t in r] for r in UTAMA], "resize_keyboard": True, "is_persistent": True,
-            "input_field_placeholder": "Pilih menu QSE di bawah"}
+    """QC 80: menu bawah tidak lagi memaksa terbuka. is_persistent mati supaya bisa dilipat lewat ikon kotak di kolom ketik, dan
+    menu hanya dikirim sekali per versi atau saat /menu (bukan di setiap pesan robot). QSE_MENU_TETAP=1 mengembalikan cara lama."""
+    return {"keyboard": [[{"text": t} for t in r] for r in UTAMA], "resize_keyboard": True, "is_persistent": MENU_TETAP(),
+            "input_field_placeholder": "Menu QSE: ikon kotak di kanan"}
+
+
+def MENU_TETAP():
+    return os.environ.get("QSE_MENU_TETAP", "0") == "1"
 
 
 def _inline(rows):
@@ -132,7 +138,8 @@ def _tanpa_salin(mk):
     return {"inline_keyboard": rows} if rows else keyboard()
 
 
-def kirim_menu(teks="🤖 <b>QSE v150 | MENU</b>\nSemua fitur ada di tombol bawah. Tombol ikut muncul di setiap pesan robot."):
+def kirim_menu(teks="🤖 <b>QSE v150 | MENU</b>\nMenu sekarang tidak terbuka sendiri. Buka dan lipat lewat ikon kotak di kanan kolom ketik, "
+                     "atau ketik /menu."):
     js = _api("sendMessage", text=teks, parse_mode="HTML", reply_markup=keyboard())
     if js.get("ok"):
         _st({"versi": VERSI})
@@ -176,8 +183,9 @@ def _posisi_rows(uid, nama=""):
         s = v.get("sym", "?"); a = str(v.get("arah", "")).upper(); k = s.replace("USDT", "")
         st = {"MENUNGGU": "⏳ antre", "TERISI": "jalan", "TP1": "✅ TP awal kena"}.get(v.get("status"), v.get("status", ""))
         ent = v.get("entry")
-        rows.append([(f"{'🟢' if a.startswith('L') else '🔴'} {k} {a} · {st}" + (f" · {ent:g}" if isinstance(ent, (int, float)) else ""),
-                      f"c:/cek {k}")])
+        us = v.get("usdt"); ss = v.get("sisa", 1.0) if v.get("status") != "MENUNGGU" else 1.0
+        rows.append([(f"{'🟢' if a.startswith('L') else '🔴'} {k} {a} · {st}" + (f" · {ent:g}" if isinstance(ent, (int, float)) else "")
+                      + (f" · {float(us) * float(ss):,.0f} USDT" if us else ""), f"c:/cek {k}")])
         if v.get("status") == "MENUNGGU":
             rows.append([("❌ Batal order", f"y:/batal {k}"), ("✏️ Ubah", f"t:/ubah {k}")])
         else:
@@ -185,6 +193,7 @@ def _posisi_rows(uid, nama=""):
             rows.append([("💰 TP 25%", f"c:/tp {k} 25%"), ("💰 TP 50%", f"c:/tp {k} 50%")])
             rows.append([("💰 TP 75%", f"c:/tp {k} 75%"), ("🏆 TP penuh", f"y:/tp {k} 100%")])
             rows.append([("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY"), ("✋ Tutup", f"y:/tutup {k}")])
+            rows.append([("✏️ Koreksi modal (USDT posisi)", f"t:/modify {k} USDT")])          # QC 80
     if not rows:
         rows.append([("📭 Belum ada posisi. Lihat sinyal", "c:/sinyal4j")])
     else:
@@ -345,7 +354,7 @@ def catat_pemilik(ids, uid, nama=""):
 # ---------- v173 QC 71: pesan menu pribadi dibersihkan otomatis supaya grup tidak penuh tombol orang lain ----------
 # Telegram tidak bisa menampilkan pesan grup hanya untuk satu orang. Jadi: menu tombol pribadi (Kelola Posisi, Modal, konfirmasi)
 # DIHAPUS setelah BERSIH_DETIK, dan balasan perintah pribadi (status, tp, entry) DILEPAS tombolnya (teks laporan tetap).
-BERSIH_DETIK = int(os.environ.get("QSE_MENU_HAPUS", "60") or 0)
+BERSIH_DETIK = int(os.environ.get("QSE_MENU_HAPUS", "180") or 0)          # QC 80: 60 -> 180 detik, tombol TP sering hilang sebelum ditekan
 
 
 def jadwal_bersih(ids, mode="hapus", detik=None):
@@ -422,11 +431,13 @@ def dari_tombol(cq):
         return None
     if jenis == "t":
         cmd, petunjuk = isi, TANYA.get(isi, "Ketik isinya")
+        if isi.startswith("/modify ") and isi.endswith(" USDT"):          # QC 80 koreksi modal
+            petunjuk = "ketik nilai posisi yang masih jalan di Bybit dalam USDT, contoh: 398"
         d = _st(); d.setdefault("tunggu", {})[uid] = {"cmd": cmd, "t": time.time()}; _st(d)
         # tanpa force_reply: force_reply menyembunyikan keyboard menu bawah
         _api("sendMessage", text=f"✍️ <b>{html.escape(nm)}</b>, {petunjuk}\nCukup ketik biasa lalu kirim (berlaku 10 menit). "
                                  f"Hanya ketikan {html.escape(nm)} yang dipakai.",
-             parse_mode="HTML", reply_markup=keyboard())
+             parse_mode="HTML", **({"reply_markup": keyboard()} if MENU_TETAP() else {}))
         return None
     if jenis == "y":
         _kirim_milik(uid, nm, text=f"👤 <b>{html.escape(nm)}</b>, yakin jalankan <b>{html.escape(isi.replace('/', '').upper())}</b> di harga sekarang?",

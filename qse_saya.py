@@ -1999,7 +1999,9 @@ def tutup(args, label="TUTUP"):
                 rows.append(f"{sym} {it['arah']} {label} {pct:g}% dari sisa posisi di {fp(px, t)}\nHasil bagian ini {r:+.2f}R"
                             + (f" = <b>{pu_b:+.2f} USDT</b>" if pu_b is not None else "")
                             + f" | sisa posisi {it['sisa'] * 100:.0f}% | sudah direalisasi {_real(it):+.2f}R"
-                            + (f" = <b>{pu_t:+.2f} USDT</b>" if pu_t is not None else ""))
+                            + (f" = <b>{pu_t:+.2f} USDT</b>" if pu_t is not None else "")
+                            + (f"\n💵 Entry yang masih jalan <b>{float(it['usdt']) * it['sisa']:,.2f} USDT</b> (awal {float(it['usdt']):,.2f}). "
+                               f"Tidak cocok dengan Bybit? /modify {kd0} usdt ANGKA (isi nilai posisi yang tersisa)" if it.get("usdt") else ""))
                 if r > 0 and it["status"] == "TERISI" and not it.get("tps_ts"):
                     # ambil profit sebagian manual = TP sebagian: TP 20% otomatis tidak dicatat lagi, SL ke entry
                     it["tps_ts"] = now
@@ -2130,7 +2132,11 @@ def ubah_level(args):
             it["sisa"], it["real"] = _sisa(it), _real(it)
             L = it["arah"] == "LONG"
             for k, v in baru.items():
-                if k in ("usdt", "lev"):
+                if k == "usdt":          # QC 80 koreksi modal: angka yang diketik = nilai posisi yang masih jalan sekarang
+                    it["usdt_lama"] = it.get("usdt")
+                    it[k] = v / it["sisa"] if it["status"] in ("TERISI", "TP1") and it["sisa"] > 0.001 else v
+                    continue
+                if k == "lev":
                     it[k] = v
                     continue
                 val = it["entry"] if v == "ENTRY" else v
@@ -2147,6 +2153,10 @@ def ubah_level(args):
             if "usdt" in baru or "lev" in baru:
                 rows.append(f"{sym} {it['arah']}: " + teks_ukuran(dict(usdt=it.get("usdt"), lev=it.get("lev"), kelas=it.get("kelas")),
                                                                     it["entry"], it.get("sl0", it["sl"]), sym))
+                if "usdt" in baru and abs(it["sisa"] - 1) > 0.005 and it["status"] in ("TERISI", "TP1"):
+                    rows.append(f"✏️ Koreksi modal: entry yang masih jalan {float(it['usdt']) * it['sisa']:,.2f} USDT "
+                                f"(sisa {it['sisa'] * 100:.0f}% posisi), entry awal dihitung ulang {float(it['usdt']):,.2f} USDT. "
+                                "PNL USDT di Status ikut angka ini.")
                 if not any(k in baru for k in ("sl", "tp1", "tp2")):
                     continue
             rows.append(f"{sym} {it['arah']} diperbarui\nSL {fp(it['sl'], t)} | TP1 {fp(it['tp1'], t)} | TP2 {fp(it['tp2'], t)}\n"
@@ -3120,7 +3130,12 @@ def floating(it, px):
         usd = MD.pnl_usdt(it, r)
     except Exception:
         usd = None
-    return dict(pct=pct, r=r, real=real, sisa=sisa, roe=pct * lev if lev else None, lev=lev, usdt=it.get("usdt"), usd=usd)
+    # QC 80: sesudah TP sebagian, entry yang masih jalan = entry awal x sisa. PNL dipisah: terkunci (sudah ditutup) dan berjalan (sisa)
+    u0 = it.get("usdt")
+    usd_real = (MD.pnl_usdt(it, real) if usd is not None else None)
+    return dict(pct=pct, r=r, real=real, sisa=sisa, roe=pct * lev if lev else None, lev=lev, usdt=u0, usd=usd,
+                usdt_sisa=(float(u0) * sisa if u0 else None), usd_real=usd_real,
+                usd_jalan=(usd - usd_real if usd is not None and usd_real is not None else None))
 
 
 def baris_pnl(fl, uid=None):
@@ -3140,8 +3155,14 @@ def baris_pnl(fl, uid=None):
     if lev:
         rows.append(f"📊 PNL ROE: <b>{fl['pct'] * lev:+.2f}%</b> (pada {lev:g}x)")
     if usd is not None:
-        rows.append(f"💵 PNL: <b>{'+' if usd >= 0 else '-'}{abs(usd):.2f} USDT</b>"
-                    + (f" (entry {fl['usdt']:,.0f} USDT dicatat)" if fl.get("usdt") else " (perkiraan dari profil Modal)"))
+        if fl.get("usdt") and abs(fl.get("sisa", 1) - 1) > 0.005 and fl.get("usd_jalan") is not None:
+            ket = (f" (entry jalan <b>{fl['usdt_sisa']:,.2f} USDT</b>, sisa {fl['sisa'] * 100:.0f}% dari {fl['usdt']:,.2f})"
+                   f"\n     terkunci {fl['usd_real']:+.2f} USDT  ·  berjalan di sisa posisi {fl['usd_jalan']:+.2f} USDT")
+        elif fl.get("usdt"):
+            ket = f" (entry {fl['usdt']:,.2f} USDT dicatat)"
+        else:
+            ket = " (perkiraan dari profil Modal)"
+        rows.append(f"💵 PNL: <b>{'+' if usd >= 0 else '-'}{abs(usd):.2f} USDT</b>" + ket)
     rows.append(f"📏 Harga bergerak {abs(fl['pct']):.2f}% {'searah' if fl['pct'] >= 0 else 'melawan arah'} entry"
                 + (f"  ·  sudah terkunci {fl['real']:+.2f}R" if abs(fl["real"]) > 0.005 else ""))
     return rows

@@ -157,7 +157,9 @@ def _markup(teks, markup, terakhir):
 
 
 def _keyboard():
-    if os.environ.get("QSE_KEYBOARD", "1") == "0":
+    # QC 80: menu bawah tidak lagi ditempel di setiap pesan robot (membuat menu terbuka sendiri dan mudah kepencet).
+    # QSE_MENU_TETAP=1 atau QSE_KEYBOARD=1 mengembalikan cara lama.
+    if os.environ.get("QSE_KEYBOARD", os.environ.get("QSE_MENU_TETAP", "0")) != "1":
         return None
     try:
         import qse_menu as _QM
