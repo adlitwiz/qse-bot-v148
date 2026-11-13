@@ -5284,12 +5284,19 @@ def sinyal_jalur(jam=False):
 
 
 
+SIAGA_AMBANG = float(os.environ.get("QSE_SIAGA_AMBANG", "0.5"))
+
+
 @per_orang
 def siaga_berita():
-    """60-75 menit sebelum CPI atau FOMC: posisi yang sedang untung ditutup, yang rugi ditahan.
-    Uji 2022-2026, 4366 posisi jalur terbukti yang melewati CPI/FOMC (data 1 jam):
-    tahan semua +2439R, tutup semua 1 jam sebelum +2602R, tutup yang untung saja +2712R.
-    Posisi rugi yang ditutup justru lebih jelek (-388R lawan -278R ditahan). Berita lain belum bisa diuji."""
+    """60-75 menit sebelum CPI atau FOMC (QC 93 HIDUNG ABDUL): posisi yang untung minimal +0.5R ditutup, sisanya ditahan dengan SL tetap.
+    Uji v197 (riset/upgrade/run_v197_hidung.py, riset/berita/hasil_v197_hidung.txt): posisi siaran yang sedang jalan saat CPI/FOMC,
+    aturan keluar live, biaya 0.15%, beda lawan tahan:
+      tutup yang untung >= +0.5R : latih Jul22-24 +23.4R, uji 2025-Okt26 +75.6R, 12 bulan +66.9R, 6 bulan +51.5R (plus di semua periode,
+                                   ambang 0.5 sampai 3R semua plus).
+      tutup semua yang untung (aturan lama): latih -21.0R, uji +87.0R. Menutup untung kecil 0 sampai +1R merusak latih (-113R).
+      CL posisi minus (ide QC 93): latih +3.4R, uji -24.6R, 12 bulan -12.9R. Sesudah rilis (H+1) lebih jelek. TIDAK dipasang.
+    NFP dan PCE: tutup yang untung rugi di uji (-114R), CL minus hampir nol (+2R). Tidak ada aksi."""
     try:
         import qse_berita as BR
         kal = BR.kalender()
@@ -5306,19 +5313,28 @@ def siaga_berita():
     if kunci in d.get("siaga", []):
         return []
     ubah(lambda dd: dd.update(siaga=(dd.get("siaga", []) + [kunci])[-50:]))
-    jalan = [it for it in d["open"].values() if it["status"] in ("TERISI", "TP1")]
+    return siaga_baris(e["judul"], [it for it in d["open"].values() if it["status"] in ("TERISI", "TP1")])
+
+
+def siaga_baris(judul, jalan, harga=None):
+    """Baris SIAGA untuk posisi jalan. harga = fungsi sym -> harga (untuk tes)."""
+    harga = harga or harga_live
+    a = SIAGA_AMBANG
     if not jalan:
-        return [f"📅 <b>{e['judul']}</b> sekitar 1 jam lagi. Tidak ada posisi jalan. Sinyal baru ditahan sampai 1 jam sesudah rilis."]
-    rows = [f"📅 <b>{e['judul']}</b> sekitar 1 jam lagi.\nAturan teruji: posisi UNTUNG ditutup sekarang, posisi RUGI ditahan dengan SL tetap. "
-            "Uji 2022-2026 (4366 posisi): tahan semua +2439R, tutup yang untung saja +2712R."]
+        return [f"👃 <b>HIDUNG ABDUL</b>: {judul} sekitar 1 jam lagi. Tidak ada posisi jalan. Sinyal baru ditahan sampai 1 jam sesudah rilis."]
+    rows = [f"👃 <b>HIDUNG ABDUL</b>: {judul} sekitar 1 jam lagi.\nAturan teruji: posisi untung minimal <b>+{a:g}R</b> ditutup sekarang. "
+            f"Untung kecil dan posisi minus DITAHAN dengan SL tetap (CL sebelum atau sesudah berita terbukti rugi). "
+            f"Uji Jul 2022-Okt 2026: plus di latih, uji, 12 bulan, 6 bulan (+23R, +76R, +67R, +52R lawan tahan semua)."]
     for it in jalan:
-        px = harga_live(it["sym"])
+        px = harga(it["sym"])
         fl = floating(it, px) if px else None
         kd = it["sym"].replace("USDT", "")
-        if fl and fl["r"] > 0:
-            rows.append(f"✅ <b>{it['sym']} {it['arah']}</b> untung {fl['r']:+.2f}R. TUTUP sekarang dengan MARKET, lalu /tutup {kd} HARGA")
+        if fl and fl["r"] >= a:
+            rows.append(f"✅ <b>{it['sym']} {it['arah']}</b> untung {fl['r']:+.2f}R. <b>TUTUP sekarang</b> dengan MARKET, lalu /tutup {kd} HARGA")
+        elif fl and fl["r"] > 0:
+            rows.append(f"⏸️ <b>{it['sym']} {it['arah']}</b> untung kecil {fl['r']:+.2f}R (di bawah +{a:g}R). Tahan, SL tetap.")
         else:
-            rows.append(f"⏸️ <b>{it['sym']} {it['arah']}</b> " + (f"rugi {fl['r']:+.2f}R" if fl else "") + ". Tahan, biarkan SL bekerja.")
+            rows.append(f"⏸️ <b>{it['sym']} {it['arah']}</b> " + (f"minus {fl['r']:+.2f}R" if fl else "") + ". Tahan, biarkan SL bekerja. Jangan CL.")
     return rows
 
 

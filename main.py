@@ -1459,7 +1459,7 @@ def cek_cepat(now, paksa=False):
     for e in BR.pengingat():
         info.append(f"⚠️ BERITA BESAR {TG.e(e['judul'])} {BR.jam_wib(e['ts'])}. Sinyal jalur tetap jalan (uji 2021-2026: "
                     f"sinyal yang masuk dekat FOMC tidak lebih jelek). Posisi jalan: untuk CPI/FOMC robot mengirim SIAGA 1 jam "
-                    f"sebelum (tutup yang untung, tahan yang rugi), berita lain tahan sesuai aturan jalur.")
+                    f"sebelum (tutup yang untung >= +0.5R, tahan sisanya), berita lain tahan sesuai aturan jalur.")
     if ctx["kirim_guncang"]:
         g = ctx["kirim_guncang"]
         info.append(f"⚠️ PASAR BERGEJOLAK: BTC {'NAIK' if g['pct'] > 0 else 'TURUN'} tajam, {g['x']:.1f} kali gerak normal, 3 jam terakhir {g['pct']:+.1f}%. "
@@ -2377,9 +2377,14 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
             import qse_strat as ST_
             for sym, arah, ket, it_, kartu_, lv in ring:
                 pr = ST_.prioritas(kunci, it_)
-                ring_rb.append((sym, arah, pendek, ik, lot, ket, pr, ST_.label_nama(it_), lv))
-                kartu_rb.append((pr, f"{GARIS}\n🔹 <b>{nama}</b>  ·  " + ("🟦 KELAS UTAMA  ·  " if UTAMA_4J else "")
-                                 + f"{ik} {tk}  ·  {MD.teks_kelas(lot)}  ·  PF jalur {pr[1]:.2f}\n" + kartu_))
+                try:          # QC 98: satu label kelas saja, dari keputusan per sinyal (sama dengan saringan siaran)
+                    import qse_ditahan as DT_k
+                    kl_ = DT_k.kelas(kunci, it_)[0]
+                except Exception:
+                    kl_ = MD.kelas_dari(SY.lot_angka(lot))
+                ring_rb.append((sym, arah, pendek, ik, "1x" if kl_ == "UTAMA" else "0.2x", ket, pr, ST_.label_nama(it_), lv))
+                kartu_rb.append((pr, f"{GARIS}\n🔹 <b>{nama}</b>  ·  {MD.IKON_KELAS[kl_]} KELAS {kl_}  ·  "
+                                 + f"{ik} {tk}  ·  PF jalur {pr[1]:.2f}\n" + kartu_))
         try:
             import qse_ichimoku as IC
             d_ = IC.lihat()["open"]

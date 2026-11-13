@@ -256,7 +256,7 @@ def kalender_semua(hari=7, now_ms=None):
 
 HARI_ID = ("Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu")
 LEGENDA = ("<b>Arti tanda</b> (uji gerak BTC 2021-2026 di jam rilis dibanding jam yang sama minggu biasa)\n"
-           "🔴 <b>besar</b>: FOMC 2.5x, CPI 2.4x. Robot kirim SIAGA 1 jam sebelum: posisi untung ditutup, yang rugi ditahan\n"
+           "🔴 <b>besar</b>: FOMC 2.5x, CPI 2.4x. Robot kirim SIAGA 1 jam sebelum: posisi untung >= +0.5R ditutup, sisanya ditahan\n"
            "🟠 <b>sedang</b>: NFP 1.7x, PCE 1.35x hanya di jam pertama, lalu normal. Data AS lain yang berdampak tinggi juga 🟠\n"
            "⚪ <b>kecil</b>: ECB, BoJ, BoC, GDP, earnings. BTC tidak bergerak lebih dari biasa\n"
            "🔓 <b>token unlock</b> 1% pasokan atau lebih: 7 hari sebelumnya koin rata-rata -3% lawan BTC. LONG baru ditahan\n"

@@ -1885,9 +1885,15 @@ def kartu(k, no, it, a):
     if k == "ema_short" and not ju:
         lot_b = "0.2x"          # QC 62: EMA Cross SHORT kelas ringan (2026 -128R, saringan latih tidak membalik), kecuali jagoan sejati
         kp_teks = (kp_teks + "\n" if kp_teks else "") + "🟨 EMA Cross SHORT kelas ringan: rugi di 2026 (uji -128R)"
+    import qse_modal as MD
+    kelas_k = MD.kelas_dari(SY.lot_angka(lot_b))
+    try:          # QC 98: kelas per sinyal (qse_ditahan.kelas, dipakai juga untuk saringan siaran 4 jam) menang atas cap lot jalur.
+        import qse_ditahan as DT_k          # Contoh SPCX SHORT konfluensi 3 teknik: dulu tertulis KELAS UTAMA dan KELAS RINGAN sekaligus
+        kelas_k = DT_k.kelas(k, it)[0]
+    except Exception as ex:
+        print("[WARN] kelas kartu", ex)
     try:
-        import qse_modal as MD
-        lot = MD.baris_lot(it["entry"], it["sl"], kelas=MD.kelas_dari(SY.lot_angka(lot_b)), konf=1 + len(it.get("combo") or []),
+        lot = MD.baris_lot(it["entry"], it["sl"], kelas=kelas_k, konf=1 + len(it.get("combo") or []),
                            arah=it["arah"], bj=it.get("btc_j"))          # QC 88 lot per konfluensi
     except Exception:
         lot = ""
@@ -1901,7 +1907,7 @@ def kartu(k, no, it, a):
         SY.GARIS,
         *jg,
         f"{'🟢' if L else '🔴'} <b>{no}. {it['sym']} {it['arah']}</b>  ·  {cfg['nama']} 4J",
-        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  <b>{MD.teks_kelas(lot_b)}</b> (margin dan leverage tiap orang di baris bawah)",
+        f"{ik} <b>BISA DIIKUTI</b>  ·  {tkb}  ·  <b>{MD.IKON_KELAS[kelas_k]} KELAS {kelas_k}</b> (margin dan leverage tiap orang di baris bawah)",
         *([cuaca] if cuaca else []),
         *([kp_teks] if kp_teks else []),
         *combo_teks(it),

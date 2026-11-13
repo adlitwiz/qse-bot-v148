@@ -1004,6 +1004,21 @@ def _tugas_menit():
         _gerak_serentak()
     except Exception as ex:
         print("[WARN] gerak serentak", ex)
+    try:          # QC 92 Kebelet Spot: support 4J ACM/BAR/PSG, kartu beli Spot saat harga menyentuh level
+        import qse_kebelet as KB
+        KB.cek()
+    except Exception as ex:
+        print("[WARN] kebelet", ex)
+    try:          # QC 92 CFD Harian: emas, perak, US100, US500 sesudah candle harian tutup
+        import qse_cfd as QCF
+        QCF.cek()
+    except Exception as ex:
+        print("[WARN] cfd", ex)
+    try:          # QC 95 CFD 4J mode catat: RSI 50 + Volume emas dan perak, trade kertas, tidak dikirim ke grup
+        import qse_cfd4j as QC4
+        QC4.cek()
+    except Exception as ex:
+        print("[WARN] cfd4j", ex)
     try:          # QC 86 alarm gawat: BTC 2% dalam 1 jam melawan posisi untung yang SL-nya belum di entry
         import qse_gawat as QG
         QG.cek()

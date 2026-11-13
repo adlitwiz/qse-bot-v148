@@ -67,7 +67,7 @@ BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "Robot jalan otomatis: scan tiap 4 jam dan per jam, pantau posisi tiap menit, berita, peta BTC pagi 07:05 WIB, "
            "dan aturan jaga modal: TP 20% di +0.5R lalu SL ke entry, jam ke-12, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun. "
            "EMA Cross SHORT: tanpa TP sebagian, SL ke entry di +0.4R lalu SL berjalan. McGinley: sisa posisi trailing 3 ATR. "
-           "Robot hanya memberi sinyal koin Futures Bybit. "
+           "Sinyal utama koin Futures Bybit, plus jalur terpisah Kebelet Spot dan CFD Harian. "
            "Semua fitur ada di tombol bawah. Balasan dan tombol pribadi (posisi, status, modal, entry) hanya bisa ditekan pemiliknya, "
            "namanya tertulis di judul pesan.\n\n"
            "📊 <b>Status</b>: hasil hari ini, slot, dan tombol per posisi kamu\n"
@@ -82,7 +82,9 @@ BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "📰 <b>Berita</b>: kabar terbaru dan yang viral 6 jam dalam satu pesan\n"
            "📈 <b>Laporan</b>: mingguan, evaluasi, uji mundur, laporan 4J\n"
            "🪰 <b>Lalat Abdul</b>: lapar, dopamin, serotonin, GABA, pola disukai dan dibenci, pilihan trade harian lalat\n"
-           "😴 <b>Mode Tidur</b>: posisi dijaga otomatis saat kamu tidur\n\n"
+           "😴 <b>Mode Tidur</b>: posisi dijaga otomatis saat kamu tidur\n"
+           "🪰⚡ <b>/kebelet</b>: jalur Spot ACM, BAR, PSG (beli saat sentuh support, LONG saja)\n"
+           "📊 <b>/cfd</b>: jalur CFD Harian emas, perak, US100, US500 (Bybit TradFi)\n\n"
            "Perintah ketik lama tetap jalan untuk yang sudah hafal.")
 BANTUAN_SEMUA = BANTUAN
 
@@ -335,6 +337,16 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/rencana", "/sniper"):
         import qse_rencana as RC
         return RC.teks(args[0] if args else "utama")
+    if cmd in ("/kebelet", "/spot"):          # QC 92 rapor jalur Kebelet Spot
+        import qse_kebelet as KB
+        return KB.rapor()
+    if cmd in ("/cfd", "/emas"):              # QC 92 rapor jalur CFD Harian
+        import qse_cfd as QCF
+        try:
+            import qse_cfd4j as QC4
+            return QCF.rapor() + "\n\n" + QC4.rapor()
+        except Exception:
+            return QCF.rapor()
     if cmd in ("/gurita", "/octopus"):
         import qse_gurita as GR
         try:
@@ -399,7 +411,7 @@ def balas(cmd, args, dari_main=False):
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/bantuan": "INFO"}
 
 
 def _sisa_posisi():

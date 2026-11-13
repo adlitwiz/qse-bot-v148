@@ -115,8 +115,25 @@ def kelas_teks(r):
     return "🟨 KELAS RINGAN" if r["ringan"] else "🟦 KELAS UTAMA"
 
 
-def kartu(r, no=None):
-    """Satu sinyal = satu bubble. Keputusan tegas, level lengkap, tanpa daftar koin lain."""
+def status_rutin(r):
+    """QC 94: label di /sinyal4j (pindai paksa) supaya jelas kenapa sinyal ini ikut atau tidak ikut siaran rutin 4 jam.
+    Uji v198 (riset/upgrade/run_v198_rutin.py, hasil_v198_rutin.txt): sinyal yang tidak disiarkan rutin PF 0.89 / 0.98 / 0.80 / 0.84
+    (latih, uji, 12 bulan, 6 bulan), yang disiarkan PF 1.30 / 1.52 / 1.16 / 1.26. Scan rutin sengaja tidak dilonggarkan."""
+    if r.get("intrabar"):
+        return "📡 Candle 4J masih berjalan: ikut scan 1 jam kalau kelasnya lolos uji intrabar."
+    if r.get("mundur"):
+        return "🕓 Sinyal candle 4J SEBELUMNYA: masuk sudah telat 4-8 jam, tidak dikirim ulang scan rutin (uji telat PF 1.30-1.41, lebih lemah)."
+    if r.get("ringan"):
+        return ("🟨 Tidak disiarkan rutin 4 jam: kelas ringan (1 teknik koin peringkat lebih dari 110, melawan BTC, atau kelompok lemah). "
+                "Uji kelompok ini rugi, PF 0.80-0.98. Lebih baik dilewati.")
+    if r.get("konf", 1) >= 2:
+        return "📡 Konfluensi Kelas Utama: kelas yang sama dengan siaran rutin (uji PF 1.52-1.76)."
+    return ("📡 1 teknik Kelas Utama: siaran rutin mengirimnya saat candle 4J tutup (uji PF 1.14-1.39). "
+            "Kalau baru terlihat sekarang, masuknya telat, hasil uji telat 1-3 jam PF 1.14-1.25.")
+
+
+def kartu(r, no=None, bj=None, paksa=False):
+    """Satu sinyal = satu bubble. Keputusan tegas, level lengkap, saran entry USDT tiap orang (QC 92), tanpa daftar koin lain."""
     import qse_saya as SY
     tunggu = r["geser"] > 0.25
     kpt = f"⏳ PASANG LIMIT di {SY.fp(r['entry_robot'], r['tick'])}" if tunggu else "✅ AMBIL SEKARANG — MARKET"
@@ -139,9 +156,18 @@ def kartu(r, no=None):
     else:
         blok = SY.blok_salin(px, r["sl"] + (px - r["px"]), order=o, tick=r["tick"], catatan_tp="tanpa, pakai SL berjalan", sym=r["sym"], arah=r["arah"],
                              sebagian=True)
+    try:          # QC 92: saran entry USDT dan leverage tiap orang, sama dengan kartu jalur 4J (kelas, konfluensi QC 88)
+        import qse_modal as MD
+        lot = MD.baris_lot(px, r["sl"] + (px - r["px"]), kelas="RINGAN" if r["ringan"] else "UTAMA", konf=r.get("konf", 1),
+                           arah=r["arah"], bj=bj)
+    except Exception as ex:
+        print("[WARN] radar lot", ex)
+        lot = ""
     return (f"{'🟢' if r['arah'] == 'LONG' else '🔴'} <b>{r['sym']} {r['arah']}</b>  ·  {kelas_teks(r)}"
             + (f"  ·  #{no}" if no else "") + f"\n🏷 Teknik: {tek}\n🧭 Keputusan: <b>{kpt}</b>\nℹ️ " + "  ·  ".join(ket) + "\n" + blok
-            + "\n📲 TP awal: tutup 20% lalu SL ke entry. Sisa posisi ikut SL berjalan.")
+            + "\n📲 TP awal: tutup 20% lalu SL ke entry. Sisa posisi ikut SL berjalan."
+            + (f"\n💰 Saran entry:\n{lot}" if lot else "")
+            + (f"\n{status_rutin(r)}" if paksa else ""))
 
 
 def pasar_teks(inf, judul, n_utama, n_ringan):
@@ -295,7 +321,7 @@ def bubble(valid, lewat, inf, judul="SCAN 1 JAM", maks=6, hanya_utama=False, ota
     """List bubble: [pasar, kartu..., otak]. hanya_utama: kelas ringan tidak ditampilkan."""
     tampil = [r for r in valid if not (hanya_utama and r["ringan"])][:maks]
     out = [pasar_teks(inf, judul, sum(1 for r in tampil if not r["ringan"]), sum(1 for r in tampil if r["ringan"]))]
-    out += [kartu(r, no) for no, r in enumerate(tampil, 1)]
+    out += [kartu(r, no, inf.get("bj"), paksa=judul == "PINDAI PAKSA") for no, r in enumerate(tampil, 1)]
     if otak:
         out.append(otak_teks(tampil, lewat, inf.get("bj")))
     return out
