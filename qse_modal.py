@@ -478,6 +478,26 @@ def baris_slot():
 # Leverage saran = 50 / jarak SL% (dibulatkan ke bawah, 1x sampai 20x): harga likuidasi kira-kira 2x lebih jauh dari SL,
 # jadi SL selalu kena lebih dulu. Contoh SL 3% -> 16x, SL 9% -> 5x.
 KELAS = {"UTAMA": 1.0, "RINGAN": 0.2}
+# QC 88 LOT PER KONFLUENSI (riset/upgrade/run_v192_lot.py, hasil_v192_lot.txt). Frekuensi sinyal tidak berubah, hanya besar lot.
+# Konfluensi 2+ teknik searah (konf_utama) x1.5, sinyal 1 teknik x0.75. Uji siaran QC 85, untung per satuan risiko rata-rata:
+# latih +1217R -> +1419R, uji +1797R -> +1965R, 12 bulan +393R -> +419R, 6 bulan +226R -> +262R, 4.3 tahun +3014R -> +3389R (+12%).
+# PF 1.55 -> 1.63. Drawdown 199R -> 207R (+4%). Kelas Ringan tidak berubah. Matikan: QSE_LOT_KONF=0.
+LOT_KONF = float(os.environ.get("QSE_LOT_KONF_KALI", "1.5"))
+LOT_TUNGGAL = float(os.environ.get("QSE_LOT_TUNGGAL_KALI", "0.75"))
+
+
+def kali_konf(kelas, konf=None, arah=None, bj=None):
+    """Pengali lot QC 88 dan catatannya. (1.0, '') kalau tidak berlaku."""
+    if kelas != "UTAMA" or konf is None or os.environ.get("QSE_LOT_KONF", "1") == "0":
+        return 1.0, ""
+    try:
+        import qse_strat as ST
+        kuat = ST.konf_utama(arah, bj, konf)
+    except Exception:
+        kuat = konf >= 2
+    if kuat:
+        return LOT_KONF, f"⭐ Konfluensi {konf} teknik: lot {LOT_KONF:g}x (uji 2022-2026 PF 1.78-2.05, untung per risiko naik di semua periode)"
+    return LOT_TUNGGAL, f"1 teknik: lot {LOT_TUNGGAL:g}x (uji PF 1.27-1.60, lebih lemah dari konfluensi)"
 IKON_KELAS = {"UTAMA": "🟦", "RINGAN": "🟨"}
 
 
@@ -492,22 +512,22 @@ def kelas_dari(kali):
     return "UTAMA" if (kali or 0) >= 0.25 else "RINGAN"
 
 
-def _baris_lot_netral(sl_pct, kelas, lev=None):
+def _baris_lot_netral(sl_pct, kelas, lev=None, kali_lot=1.0):
     lv = lev_saran(sl_pct)
-    risiko = RISK_PCT * KELAS[kelas]
+    risiko = RISK_PCT * KELAS[kelas] * kali_lot
     nilai = risiko / sl_pct * 100
     return (f"{IKON_KELAS[kelas]} <b>KELAS {kelas}</b>: margin <b>{nilai / lv:.2f}% modal</b>, leverage <b>{lv}x</b> "
             f"(nilai posisi {nilai:.1f}% modal, rugi kalau SL kena {risiko:g}% modal, SL {sl_pct:.1f}%)")
 
 
-def _baris_lot_dolar(nama, p, sl_pct, kelas, lev=None, catatan=""):
+def _baris_lot_dolar(nama, p, sl_pct, kelas, lev=None, catatan="", kali_lot=1.0):
     """Satu orang yang sudah isi modal: margin dolar dan leverage saran, siap diisi di Bybit."""
-    k = KELAS[kelas]
+    k = KELAS[kelas] * kali_lot
     lv = min(int(p.get("lev") or 20), lev_saran(sl_pct))          # tidak melewati leverage pilihan orang itu di menu Modal
     if p.get("entry"):
         # 9 Nov malam (permintaan user): orang yang isi entry per koin melihat angka yang dia ketik di Bybit,
         # entry USDT dan leverage miliknya. Kelas ringan memakai angka ringan miliknya (bawaan 2/3 entry utama).
-        posisi = p["entry"] if kelas == "UTAMA" else (p.get("ringan") or p["entry"] * 2 / 3)
+        posisi = (p["entry"] * kali_lot) if kelas == "UTAMA" else (p.get("ringan") or p["entry"] * 2 / 3)
         lv = int(p.get("lev") or 10)
         rugi = posisi * sl_pct / 100
         teks = (f"{IKON_KELAS[kelas]} <b>KELAS {kelas} · {nama}: entry {posisi:,.0f} USDT, leverage {lv}x</b> "
@@ -533,7 +553,7 @@ def _baris_lot_dolar(nama, p, sl_pct, kelas, lev=None, catatan=""):
     return teks
 
 
-def baris_lot(entry, sl, kali=1.0, lev=None, kelas=None):
+def baris_lot(entry, sl, kali=1.0, lev=None, kelas=None, konf=None, arah=None, bj=None):
     """Ukuran posisi per orang dalam KELAS UTAMA atau KELAS RINGAN: margin dolar dan leverage saran (9 Nov 2026).
     Orang yang sedang kena 3 SL beruntun otomatis KELAS RINGAN sampai 1 TP (QC 54). Belum isi /modal: tampilan persen modal."""
     if entry <= 0 or abs(entry - sl) <= 0:
@@ -557,12 +577,16 @@ def baris_lot(entry, sl, kali=1.0, lev=None, kelas=None):
                     kl, cat = "RINGAN", f"🧯 {mr['n']} SL beruntun: kelas ringan sampai 1 TP, geser SL ke entry saat untung +0.3R"
             except Exception:
                 pass
+            kk, ck = kali_konf(kl, konf, arah, bj)
             if p:
-                baris.append(_baris_lot_dolar(html.escape(str(SY.nama_pengguna(u))), p, sl_pct, kl, lev, cat))
+                baris.append(_baris_lot_dolar(html.escape(str(SY.nama_pengguna(u))), p, sl_pct, kl, lev, cat, kk))
             else:
                 netral = True
+        kk, ck = kali_konf(kelas, konf, arah, bj)
         if netral or not baris:
-            baris.append(_baris_lot_netral(sl_pct, kelas, lev))
+            baris.append(_baris_lot_netral(sl_pct, kelas, lev, kk))
+        if ck:
+            baris.append(ck)
         return "\n".join(baris)
     except Exception:
         return _baris_lot_netral(sl_pct, kelas, lev)

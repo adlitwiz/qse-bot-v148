@@ -323,7 +323,10 @@ def modal_libur(m, now=None):
         if x.get("R", 0) <= -0.8 and now - x.get("selesai", 0) <= MODAL_ARAH_JAM * 3600:
             n[x.get("arah")] = n.get(x.get("arah"), 0) + 1
     return {a: c for a, c in n.items() if c >= MODAL_ARAH_SL}
-MODAL_SLOT = int(os.environ.get("QSE_GURITA_SLOT", "8"))
+# QC 89 (riset/upgrade/run_v194_gurita.py, hasil_v194_gurita.txt): 8 -> 12 slot. Risiko per trade tetap 1.5%. Sinyal bagus yang dulu
+# terlewat karena slot penuh ikut diambil (trade +15%). Saldo dari 150 USDT: latih 1041 -> 1121, uji 975 -> 2870, 12 bulan 198 -> 254,
+# 6 bulan 176 -> 178, 2026 199 -> 245. Drawdown latih 29% -> 34%, periode lain naik 0-1 poin. 6 slot dan 10 slot gagal di latih.
+MODAL_SLOT = int(os.environ.get("QSE_GURITA_SLOT", "12"))
 # QC 80 (run_v184_gurita5th.py, Jul 2022 sampai Okt 2026): 8 slot, risiko 1.5 kali untuk 3+ teknik, risiko separuh saat saldo turun lebih
 # dari 10% dari puncak. Latih (Jul 2022-2024) 150 -> 513 DD 24% (dasar 5 slot 478 DD 22%), uji (2025-Okt 2026) 466 DD 23% (dasar 308 DD 28%),
 # 4.3 tahun 1596 DD 24% (dasar 982 DD 28%), 12 bulan terakhir 170 (dasar 175). Lebih buruk dari dasar di 2023 (143 vs 199).
@@ -331,10 +334,10 @@ MODAL_KALI3 = float(os.environ.get("QSE_GURITA_KALI3", "1.5"))            # peng
 MODAL_REM_DD = float(os.environ.get("QSE_GURITA_REM_DD", "10"))           # persen turun dari puncak, 0 = rem mati
 MODAL_REM_KALI = float(os.environ.get("QSE_GURITA_REM_KALI", "0.5"))
 MODAL_SEGAR, MODAL_GESER = 2 * 3600, 0.5                                  # sinyal paling lama 2 jam dan harga masih dalam 0.5R dari entry
-MODAL_UJI = ("Uji modal 150 USDT (Jul 2022 sampai Okt 2026), sinyal 2+ teknik searah BTC, keluar aturan live, 8 posisi, risiko 1.5% saldo "
-             "(3+ teknik x1.5, separuh saat saldo turun lebih dari 10% dari puncak): latih sampai 2024 jadi 690 (drawdown 33%), uji 2025-2026 "
-             "jadi 628 (drawdown 29%, 13 dari 22 bulan untung), 12 bulan terakhir jadi 178. Rugi tetap 5-7 USDT per SL lebih cepat tetapi "
-             "saldo pernah jatuh ke 21 USDT di 2022, jadi tidak dipakai.")
+MODAL_UJI = ("Uji modal 150 USDT (Jul 2022 sampai Okt 2026), sinyal 2+ teknik searah BTC, keluar aturan live, 12 posisi, risiko 1.5% saldo "
+             "(3+ teknik x1.5, separuh saat saldo turun lebih dari 10% dari puncak), arah libur sesudah 2 SL, tren tua dua arah (QC 89): "
+             "latih sampai 2024 jadi 1121 (drawdown 34%), uji 2025-2026 jadi 2870 (drawdown 26%), 12 bulan terakhir jadi 254, "
+             "Januari-Oktober 2026 jadi 245, 6 bulan terakhir jadi 178. Uji mundur, tanpa funding dan slippage.")
 
 
 def modal_risiko(m, konf):
@@ -412,7 +415,7 @@ def modal_buru(d):
     for k, it in _sumber():
         try:
             t0 = it.get("t", 0); key = f"{k}|{it.get('sym')}|{int(t0)}"
-            if key in sudah or now - t0 > MODAL_SEGAR or it.get("uji_live") or it["sym"] in pakai:
+            if key in sudah or now - t0 > MODAL_SEGAR or it.get("uji_live") or it.get("radar") or it["sym"] in pakai:
                 continue
             konf = len(it.get("combo") or []) + 1
             if konf < 2 or it.get("arah") in libur:
@@ -475,6 +478,13 @@ def modal_teks(d):
         rows.append(f"• {p['sym']} {p['arah']} ({p['jalur']}, {p.get('konf', 2)} teknik) risiko {p['usd']:.2f} USDT")
     for a, c in modal_libur(m).items():
         rows.append(f"⏸️ {a} libur: {c} SL searah dalam {MODAL_ARAH_JAM:g} jam terakhir, gurita tidak mengambil {a} baru dulu")
+    try:          # QC 83: tren tua = SHORT baru ditahan robot, gurita ikut
+        import qse_strat as ST
+        ut = ST.umur_teks()
+        if "JENUH" in ut:
+            rows.append(ut)
+    except Exception as ex:
+        print("[WARN] gurita tren tua", ex)
     rows.append("🧪 " + MODAL_UJI)
     return "\n".join(rows)
 
@@ -866,6 +876,21 @@ def _bar(x):
     return "▰" * n + "▱" * (10 - n)
 
 
+PETA_LENGAN = 1
+PETA_PELUANG = 0.5
+PETA_R = 0.1
+
+
+def peta_layak(r):
+    """Baris peta yang pantas ditampilkan: arah terkuatnya dipegang lengan aktif, peluang dan rata analog positif."""
+    try:
+        L = r["pCL"] >= r["pCS"]
+        return ((r["kL"] if L else r["kS"]) >= PETA_LENGAN and max(r["pCL"], r["pCS"]) >= PETA_PELUANG
+                and (r["pRL"] if L else r["pRS"]) > PETA_R)
+    except Exception:
+        return False
+
+
 def teks():
     import qse_saya as SY
     o, d = otak()
@@ -896,17 +921,20 @@ def teks():
                 + f". Rapor {rp['n']} terakhir WR {rp['wr'] * 100:.0f}%, total {rp['tot']:+.2f}R. Aktif kalau {RAPOR_N} sinyal WR >= "
                 f"{RAPOR_WR * 100:.0f}% dan total positif. Jalan sekarang {len(pk)}.")
     rows.append(modal_teks(d))
-    pt = d.get("peta") or []
-    if pt:
-        rows.append(f"\n🔮 <b>Peta masa depan 3 candle 4J</b> (diperbarui {time.strftime('%H:%M', time.gmtime(d.get('peta_t', 0) + 7 * 3600))} WIB). "
-                    "Peluang TP1 1 ATR sebelum SL 1.5 ATR dalam 3 candle, dari 50 potongan sejarah paling mirip. Uji: peluang ini "
-                    "terkalibrasi (prediksi 30% -> nyata 30%, 45% -> 45%), tapi belum membuat sinyal untung (QC 52).")
-        for r in pt[:5]:
-            L = r["pCL"] >= r["pCS"]; dd = 1 if L else -1; e, A = r["close"], r["atr"]
-            rows.append(f"• <b>{r['sym']} {'LONG' if L else 'SHORT'}</b> peluang {max(r['pCL'], r['pCS']) * 100:.0f}%, analog "
-                        f"{(r['pRL'] if L else r['pRS']):+.2f}R, lengan {r['kL'] if L else r['kS']}, rezim {r['rezim']}\n"
-                        + SY.blok_salin(e, e - dd * 1.5 * A, e + dd * A, e + dd * 2 * A, "MARKET", SY.tick_of(None, e), sym=r["sym"],
-                                        arah="LONG" if L else "SHORT"))
+    # QC 83: daftar mentah (lengan 0, analog tipis) tidak ditampilkan lagi. Yang muncul hanya koin yang dicengkeram minimal 1 lengan
+    # aktif, peluang TP1 cepat 50% ke atas, dan rata hasil analog di atas +0.1R. Ini pantauan arah, bukan kartu entry: aturan peta ini
+    # di uji 2025-2026 belum untung (-20.9R, 476 sinyal), jadi level order tidak ditulis. Sinyal gurita yang dipakai = Gurita Modal di atas.
+    pt = [r for r in (d.get("peta") or []) if peta_layak(r)]
+    if d.get("peta"):
+        jam_ = time.strftime('%H:%M', time.gmtime(d.get('peta_t', 0) + 7 * 3600))
+        if pt:
+            rows.append(f"\n🔮 <b>Peta 3 candle 4J</b> ({jam_} WIB): {len(pt)} koin didukung lengan aktif dan analog positif. Pantauan arah, bukan kartu entry.")
+            for r in pt[:5]:
+                L = r["pCL"] >= r["pCS"]
+                rows.append(f"• <b>{r['sym']} {'LONG' if L else 'SHORT'}</b> peluang {max(r['pCL'], r['pCS']) * 100:.0f}%, analog "
+                            f"{(r['pRL'] if L else r['pRS']):+.2f}R, {r['kL'] if L else r['kS']} lengan, rezim {r['rezim']}")
+        else:
+            rows.append(f"\n🔮 <b>Peta 3 candle 4J</b> ({jam_} WIB): belum ada koin yang didukung lengan aktif dengan analog positif. Gurita menunggu.")
     rows.append("")
     for jl, x in sorted(o.lengan.items()):
         m = sum(x) / len(x) if x else 0

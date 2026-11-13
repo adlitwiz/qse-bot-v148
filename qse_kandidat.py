@@ -66,6 +66,39 @@ def cari(df, arah):
     return [x for x in out if "entry" in x]
 
 
+def sibuk(now=None, jam=12):
+    """QC 83 (kasus AVAX): koin yang TIDAK boleh muncul sebagai kandidat kelas ringan. Isinya koin yang sedang dipegang anggota (order
+    atau posisi), koin yang baru disiarkan scan 1 jam atau kartu jalur dalam `jam` jam terakhir, dan koin dengan posisi jalur yang masih
+    berjalan. Kandidat untuk koin itu hanya membingungkan: sinyal Market yang lebih kuat sudah ada."""
+    import time
+    now = now or time.time()
+    out = set()
+    try:
+        import qse_saya as SY
+        for u in SY.daftar_pengguna():
+            for it in SY._baca(SY._path_uid(u))["open"].values():
+                if it.get("status") in ("MENUNGGU", "TERISI", "TP1"):
+                    out.add(it.get("sym"))
+    except Exception as ex:
+        print("[WARN] kandidat sibuk pengguna", ex)
+    try:
+        import qse_radar as RD
+        for k, v in (RD._baca().get("kirim") or {}).items():
+            ts = v[0] if isinstance(v, list) else v
+            if now - ts < jam * 3600:
+                out.add(k.split("|")[0])
+    except Exception as ex:
+        print("[WARN] kandidat sibuk radar", ex)
+    try:
+        import qse_ditahan as DT
+        for _, _, it in DT._sumber():
+            if now - it.get("t", 0) < jam * 3600 and not it.get("uji_live"):
+                out.add(it.get("sym"))
+    except Exception as ex:
+        print("[WARN] kandidat sibuk jalur", ex)
+    return out
+
+
 def teks(harga=None, rs=None, n=2):
     import qse_strat as ST
     import qse_saya as SY
@@ -74,7 +107,8 @@ def teks(harga=None, rs=None, n=2):
     for r in rs or []:
         if r.get("tf", "240") == "240" and r.get("symbol"):
             syms.append((-(r.get("tk") or {}).get("turnover", 0), r["symbol"]))
-    syms = [s for _, s in sorted(syms)][:MAKS_KOIN]
+    lewati = sibuk()
+    syms = [s for _, s in sorted(syms) if s not in lewati][:MAKS_KOIN]
     calon = []
     for s in syms:
         try:

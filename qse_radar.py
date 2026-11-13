@@ -348,6 +348,11 @@ def jalankan(now=None, paksa=False):
     baru = baru[:6]
     for r in baru:
         d["kirim"][f"{r['sym']}|{r['arah']}"] = [now, "RINGAN" if r["ringan"] else "UTAMA"]
+        if r.get("intrabar"):          # QC 83: kartu intrabar langsung punya posisi jalur, supaya /entry dan /status ikut aturan jalur
+            try:
+                ST.buka_radar(r, now)
+            except Exception as ex:
+                print("[WARN] radar buka jalur", r.get("sym"), ex)
     d["kirim"] = {k: t for k, t in d["kirim"].items() if now - (t[0] if isinstance(t, list) else t) < 2 * 86400}
     _tulis(d)
     if baru:

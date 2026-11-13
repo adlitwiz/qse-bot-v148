@@ -394,6 +394,209 @@ def btc_naik():
     return bool(c[-1] > _ema(c, 50)[-1])
 
 
+# QC 83 TREN TUA (riset/upgrade/run_v187*.py, hasil_v187_kompas.txt): sinyal SHORT searah BTC paling bagus di awal tren turun dan rugi
+# saat BTC 4J sudah 3 sampai 7 hari terus di bawah EMA 50 (pasar jenuh jual). Siaran 2022-2026: SHORT umur 0-2 hari PF 1.61 (latih) / 1.93
+# (uji), umur 3-7 hari PF 0.46 / 0.47, rugi di tiap tahun 2022-2026 (total -322R dari 1847 sinyal), 12 bulan terakhir PF 0.68 (-56R).
+# Umur di atas 7 hari tidak konsisten (latih rugi, uji untung) jadi tidak ditahan. LONG tua (> 5 hari) impas di latih, tidak dipasang.
+# QC 84 (run_v188*.py, hasil_v188_tua_tajam.txt), standar user: yang disiarkan harus kelompok PF >= 1.45 di 4.3 tahun, 12 bulan, dan
+# 6 bulan terakhir. Kelompok PF < 1.30 ditahan ke uji kertas. Berlaku DUA ARAH.
+# Tren TURUN tua (BTC 4J 3-7 hari di bawah EMA 50). Konfluensi dan kelas koin TIDAK menolong SHORT di sini (2 teknik PF 0.26 / 0.41,
+# 3+ teknik 0.20 / 0.06, koin kelas A ketat 0.38 / 0.89). Yang memisahkan untung dan rugi adalah candle 4J BTC yang baru tutup:
+#   SHORT pantulan (BTC 4J tutup naik >= 0.1%, bukan EMA Cross): latih PF 1.62, uji 1.97, 12 bulan 2.68, 6 bulan 5.87, 101 sinyal. DISIARKAN.
+#   SHORT lain (mengejar candle merah, atau EMA Cross): PF 0.34 / 0.29, -346R dari 1464 sinyal. DITAHAN.
+#   LONG pantulan saat BTC 4J tutup naik: PF 1.73 / 1.98, 12 bulan 2.85, 6 bulan 2.95, 257 sinyal (2+ teknik PF 2.35). DISIARKAN.
+#   LONG saat BTC 4J tutup turun: PF 0.19 / 0.67, 67 sinyal. DITAHAN.
+#   Ichimoku SHORT (modul sendiri): latih 0.77, uji 1.49, tidak terbukti rugi, tidak digerbang.
+# Tren NAIK tua (BTC 4J lebih dari 5 hari di atas EMA 50):
+#   LONG searah: latih PF 0.97, uji 0.64, 12 bulan 0.62, 6 bulan 0.82, -88R dari 2075 sinyal, rugi di 4 dari 5 tahun. Tidak ada
+#   bagiannya yang PF >= 1.45 di semua periode (kelas A 0.78, 3+ teknik latih 0.85). DITAHAN semua teknik, termasuk Ichimoku dan Order Block.
+#   SHORT melawan: PF 0.79 / 0.82, 6 bulan 0.33. DITAHAN.
+# Hasil siaran: PF 1.40 -> 1.61, +2561R -> +3048R. 12 bulan PF 1.16 -> 1.28 (+276R -> +400R). 6 bulan PF 1.26 -> 1.33 (+212R -> +242R).
+# Kelas Utama PF 1.73 -> 1.98. Sinyal ditahan 17.4%. HARGA yang dibayar: saat BTC lama di atas EMA 50 grup bisa tanpa sinyal berhari-hari
+# (terpanjang 24.7 hari, Okt-Nov 2023, 22 kali jeda 4 hari atau lebih dalam 4.3 tahun). Varian aktif QSE_TUA_LONG_MAKS=7 (LONG ditahan
+# hanya hari ke-5 sampai ke-7): PF 1.55, +3014R, 12 bulan 1.26, 6 bulan 1.30, jeda terpanjang 3.3 hari. Katup sepi (QSE_TUA_SEPI_JAM=48)
+# tersedia tetapi mati: user memilih tidak entry daripada menerima sinyal dari kelompok PF kecil.
+# Matikan semua: QSE_TREN_TUA=0. Tahan semua SHORT 3-7 hari seperti QC 83: QSE_TUA_SEMUA=1.
+TUA_MIN = float(os.environ.get("QSE_TUA_MIN", "3"))
+TUA_MAKS = float(os.environ.get("QSE_TUA_MAKS", "7"))
+TUA_PANTUL = float(os.environ.get("QSE_TUA_PANTUL", "0.1"))             # persen gerak candle 4J BTC terakhir
+TUA_LONG_MIN = float(os.environ.get("QSE_TUA_LONG_MIN", "5"))
+TUA_LONG_MAKS = float(os.environ.get("QSE_TUA_LONG_MAKS", "7"))         # QC 85: varian AKTIF jadi bawaan. 0 = tanpa batas atas (varian ketat)
+# QC 85 KATUP HARIAN (run_v189_harian.py, hasil_v189_harian.txt): kalau sampai jam 16 WIB belum ada sinyal siaran hari itu, sinyal tahanan
+# tren tua berikutnya dilepas (satu per hari). 4.3 tahun: 80 sinyal dilepas, PF 1.16, +3.9R. Hari kosong 110 -> 37 dari 1571, 12 bulan
+# 27 -> 8 dari 365. Total siaran +3014R -> +3018R, PF tetap 1.55. Sisa hari kosong = hari tanpa sinyal apa pun, juga yang ditahan.
+# Matikan: QSE_TUA_HARIAN_JAM=0.
+TUA_HARIAN_JAM = float(os.environ.get("QSE_TUA_HARIAN_JAM", "16"))
+TUA_SEPI_JAM = float(os.environ.get("QSE_TUA_SEPI_JAM", "0"))           # katup sepi, 0 = mati
+_UMUR = {}
+
+
+def umur_dari(c):
+    """(sisi, hari) dari harga tutup 4J: sisi +1 di atas EMA 50, -1 di bawah. hari = lama beruntun di sisi itu."""
+    c = np.asarray(c, float)
+    if len(c) < 100:
+        return None
+    s = c > _ema(c, 50)
+    n = 1
+    while n < len(s) and s[-1 - n] == s[-1]:
+        n += 1
+    return (1 if s[-1] else -1), n * 4 / 24.0
+
+
+def _muat_umur():
+    c = _UMUR.get("v")
+    if c and time.time() - c[0] < 600 and int(c[0] // 14400) == int(time.time() // 14400):          # candle 4J baru = hitung ulang
+        return
+    df = _k4("BTCUSDT", 400)
+    v, r4 = None, None
+    if df is not None and len(df) >= 100:
+        cl = df["close"].values.astype(float)
+        v = umur_dari(cl)
+        r4 = float((cl[-1] / cl[-2] - 1) * 100)
+    _UMUR["v"] = (time.time(), v)
+    _UMUR["r4"] = r4
+
+
+def umur_tren():
+    """Umur tren BTC 4J sekarang, cache 10 menit. None kalau data tidak ada."""
+    _muat_umur()
+    return _UMUR["v"][1]
+
+
+def btc_candle():
+    """Gerak candle 4J BTC yang baru tutup, dalam persen. None kalau data tidak ada."""
+    _muat_umur()
+    return _UMUR.get("r4")
+
+
+def sepi_jam(now=None):
+    """Jam sejak sinyal siaran terakhir (kartu jalur yang bukan uji live, atau kartu scan 1 jam). 0 kalau tidak ada catatan."""
+    now = now or time.time()
+    akhir = float(_UMUR.get("katup_t") or 0)
+    try:
+        for k in STRAT:
+            d = lihat(k)
+            for it in list(d["open"].values()) + list(d.get("closed", [])[-40:]):
+                if not it.get("uji_live") and not it.get("otak_saring"):
+                    akhir = max(akhir, float(it.get("t") or 0))
+    except Exception as ex:
+        print("[WARN] sepi jalur", ex)
+    try:
+        import qse_radar as RD
+        for v in (RD._baca().get("kirim") or {}).values():
+            akhir = max(akhir, float(v[0] if isinstance(v, list) else v))
+    except Exception:
+        pass
+    return (now - akhir) / 3600 if akhir > 0 else 0.0
+
+
+def fase_tua(u=None):
+    """'TURUN' saat BTC 4J 3-7 hari di bawah EMA 50, 'NAIK' saat lebih dari 5 hari di atas, selain itu ''."""
+    u = umur_tren() if u is None else u
+    if not u or os.environ.get("QSE_TREN_TUA", "1") == "0":
+        return ""
+    if u[0] == -1 and TUA_MIN < u[1] <= TUA_MAKS:
+        return "TURUN"
+    if u[0] == 1 and u[1] > TUA_LONG_MIN and (TUA_LONG_MAKS <= 0 or u[1] <= TUA_LONG_MAKS):
+        return "NAIK"
+    return ""
+
+
+def akhir_siaran():
+    """Waktu (epoch detik) sinyal siaran terakhir: kartu jalur bukan uji live, kartu scan 1 jam, atau katup yang terpakai."""
+    akhir = float(_UMUR.get("katup_t") or 0)
+    try:
+        for k in STRAT:
+            d = lihat(k)
+            for it in list(d["open"].values()) + list(d.get("closed", [])[-40:]):
+                if not it.get("uji_live") and not it.get("otak_saring"):
+                    akhir = max(akhir, float(it.get("t") or 0))
+    except Exception as ex:
+        print("[WARN] akhir siaran jalur", ex)
+    try:
+        import qse_radar as RD
+        for v in (RD._baca().get("kirim") or {}).values():
+            akhir = max(akhir, float(v[0] if isinstance(v, list) else v))
+    except Exception:
+        pass
+    return akhir
+
+
+def katup_harian(now=None, akhir=None):
+    """True kalau sudah lewat jam TUA_HARIAN_JAM WIB dan belum ada sinyal siaran sejak jam 00:00 WIB hari ini."""
+    if TUA_HARIAN_JAM <= 0:
+        return False
+    now = now or time.time()
+    wib = now + 7 * 3600
+    if (wib % 86400) / 3600 < TUA_HARIAN_JAM:
+        return False
+    awal_hari = now - (wib % 86400)
+    a = akhir_siaran() if akhir is None else akhir
+    return a < awal_hari
+
+
+def tren_tua(arah, umur=None, k=None, r4=None, sepi=None, pakai_katup=False, now=None, akhir=None):
+    """Alasan sinyal ditahan ke uji kertas karena tren BTC sudah tua (QC 84, dua arah), atau ''. k = kunci teknik."""
+    alasan = _tren_tua(arah, umur, k, r4, sepi, pakai_katup)
+    if alasan and k is not None and katup_harian(now, akhir):
+        if pakai_katup:
+            _UMUR["katup_t"] = now or time.time()
+            print(f"[TREN TUA] katup harian: belum ada sinyal sejak 00:00 WIB, sinyal {k} {arah} dilepas ({alasan})")
+        return ""
+    return alasan
+
+
+def _tren_tua(arah, umur, k, r4, sepi, pakai_katup):
+    u = umur if umur is not None else umur_tren()
+    fase = fase_tua(u)
+    if not fase:
+        return ""
+    if fase == "NAIK":
+        if arah == "LONG":
+            return f"tren naik BTC sudah {u[1]:.1f} hari di atas EMA 50 4J, jenuh beli (uji LONG hari ke-5 sampai ke-7 PF 0.65, -83R)"
+        return f"SHORT melawan tren naik BTC yang sudah {u[1]:.1f} hari (uji PF 0.80)"
+    r4 = btc_candle() if r4 is None else r4
+    if arah == "LONG":
+        if r4 is not None and r4 < 0:
+            return f"LONG saat tren turun BTC {u[1]:.1f} hari dan candle 4J BTC terakhir tutup turun (uji PF 0.38)"
+        return ""          # LONG pantulan saat BTC 4J tutup naik: uji PF 1.85
+    dasar = f"tren turun BTC sudah {u[1]:.1f} hari di bawah EMA 50 4J (jenuh jual)"
+    if os.environ.get("QSE_TUA_SEMUA", "0") == "1":
+        return dasar + ", uji SHORT umur 3-7 hari PF 0.47"
+    if k == "ichimoku":
+        return ""          # modul sendiri, hasil campur (latih 0.77, uji 1.49)
+    if k != "ema_short" and r4 is not None and r4 >= TUA_PANTUL:
+        return ""          # SHORT pantulan: uji PF 1.62 / 1.97
+    if TUA_SEPI_JAM > 0 and k is not None:
+        sp = sepi_jam() if sepi is None else sepi
+        if sp >= TUA_SEPI_JAM:
+            if pakai_katup:
+                _UMUR["katup_t"] = time.time()
+            return ""
+    return dasar + (", EMA Cross di tren tua (uji PF 0.45)" if k == "ema_short" and r4 is not None and r4 >= TUA_PANTUL else
+                    f", candle 4J BTC terakhir belum memantul {TUA_PANTUL:g}%: SHORT di sini mengejar candle merah (uji PF 0.32, -346R)")
+
+
+def umur_teks():
+    """Baris umur tren untuk kompas dan laporan. '' kalau data tidak ada."""
+    u = umur_tren()
+    if not u:
+        return ""
+    sisi = "di atas" if u[0] > 0 else "di bawah"
+    fase = fase_tua(u)
+    r4 = btc_candle()
+    if fase == "TURUN":
+        ket = ("⏳ JENUH JUAL. Candle 4J BTC terakhir "
+               + (f"naik {r4:+.2f}%: SHORT pantulan non EMA Cross dan LONG pantulan boleh keluar (uji PF 1.8)" if r4 is not None and r4 >= TUA_PANTUL else
+                  f"{r4:+.2f}%: SHORT baru ditahan (uji PF 0.32)" + (", LONG pantulan boleh keluar" if r4 >= 0 else ", LONG juga ditahan")
+                  if r4 is not None else "belum terbaca, SHORT ditahan"))
+    elif fase == "NAIK":
+        ket = "⏳ JENUH BELI: LONG baru dan SHORT melawan ditahan ke uji kertas sampai hari ke-7 (uji LONG hari ke-5 sampai ke-7 PF 0.65)"
+    else:
+        ket = ("tren muda, sinyal searah paling bagus (uji PF 1.6-1.9)" if u[1] <= 2 else "tren berjalan")
+    return f"⏳ Umur tren: BTC 4J sudah {u[1]:.1f} hari {sisi} EMA 50  ·  {ket}"
+
+
 def btc_jarak():
     """Jarak harga tutup BTC 4J terakhir ke EMA 50 dalam persen (plus = di atas). None kalau data tidak ada."""
     df = _k4("BTCUSDT", 400)
@@ -458,12 +661,16 @@ PERINGKAT_TUNGGAL = int(os.environ.get("QSE_PERINGKAT_TUNGGAL", "110"))
 PERINGKAT_RINGAN = 110          # teknik tunggal di atas peringkat ini: kelas ringan
 
 
-def uji_live(k, arah, bj, peringkat, konf):
+def uji_live(k, arah, bj, peringkat, konf, umur=None, r4=None, sepi=None):
     """Alasan sinyal masuk UJI LIVE (dicatat sebagai trade kertas, tidak disiarkan), atau ''. Saklar QSE_UJI_LIVE=0."""
     if os.environ.get("QSE_UJI_LIVE", "1") == "0":
         return ""
     if peringkat and peringkat > TOP_KOIN:
         return "koin di luar 150 teratas (uji -0.11 / +0.10 / -0.15R)"
+    if bj is not None:          # QC 84: umur tren dua arah (jenuh jual 3-7 hari, jenuh beli di atas 5 hari)
+        tt = tren_tua(arah, umur, k=k, r4=r4, sepi=sepi, pakai_katup=True)
+        if tt:
+            return tt
     if konf >= 2:
         return ""
     if peringkat and peringkat > PERINGKAT_TUNGGAL:
@@ -1544,6 +1751,59 @@ def pindai_sekarang(batas=60, top=None, intrabar=False):
     return valid, lewat, dict(n=n_selesai, total=len(pindai), detik=time.time() - t0, bj=bj, netral=btc_netral(bj))
 
 
+def buka_radar(r, now=None):
+    """QC 83 (kasus AVAX): kartu scan 1 jam dari candle 4J yang MASIH BERJALAN (intrabar) belum punya posisi jalur, jadi /entry tidak
+    menemukan jalurnya: nilai tidak tercatat dan posisi memakai TP1/TP2 umum, bukan TP 20% + SL berjalan seperti isi kartu. Fungsi ini
+    membuka posisi jalur untuk kartu itu saat kartu dikirim, dengan level yang sama dengan kartu. Sesudah itu /entry, /status, SL berjalan,
+    dan kabar keluar memakai mesin jalur yang sama dengan sinyal candle tutup. Return True kalau posisi jalur dibuat."""
+    k = r.get("k")
+    cfg = STRAT.get(k)
+    if not cfg or cfg.get("manual") or not r.get("intrabar"):
+        return False
+    sym, arah = r["sym"], r["arah"]
+    if any(it["sym"] == sym for kk in STRAT for it in lihat(kk)["open"].values()):
+        return False          # satu koin satu jalur
+    now = now or time.time()
+    L = arah == "LONG"
+    px, risk = float(r["px"]), float(r["risk"])
+    if not (px > 0 and risk > 0):
+        return False
+    sl = px - risk if L else px + risk
+    try:
+        raw = B._raw(sym, "240", 600)
+    except Exception as ex:
+        print("[WARN] buka radar data", sym, ex)
+        raw = None
+    t4 = int(r.get("t4") or 0)          # candle 4J berjalan saat kartu dibuat. Candle itu ikut dikelola begitu tutup
+    it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now, last=(t4 - H4) if t4 else 0, close=px,
+              tick=r.get("tick") or 0.0001, sl_atr=cfg.get("sl_atr", SL_ATR), trail_atr=cfg.get("trail_atr", TRAIL_ATR),
+              trail_pct_2r=cfg.get("trail_pct_2r"), be_r=cfg.get("be_r"), intrabar=int(r["intrabar"]), radar=True,
+              peringkat=r.get("peringkat") or 0, uji_live="", mutu=0, mutu_plus=[], btc_j=btc_jarak(), netral_buka=bool(r.get("netral")))
+    if cfg.get("tp_r"):
+        it.update(tp=px + cfg["tp_r"] * risk if L else px - cfg["tp_r"] * risk, maks_bar=cfg["maks_bar"])
+    if raw is not None and len(raw) >= 262:
+        try:
+            sk, mp, _ = mutu(raw, arah)
+            it.update(mutu=sk, mutu_plus=mp)
+        except Exception as ex:
+            print("[WARN] buka radar mutu", ex)
+        try:
+            it["combo"] = _combo(raw, k, arah, btc_naik(), sym)
+            it["combo_emas"] = combo_emas(k, it["combo"])
+            it["combo_fix"] = combo_fix(k, it["combo"])
+            it["combo_raja"] = combo_raja(it["combo"])
+            it["vol_tinggi"] = vol_tinggi()
+        except Exception as ex:
+            print("[WARN] buka radar combo", ex)
+    key = f"{sym}|{int(now)}"
+
+    def simpan(dd):
+        dd["open"][key] = it
+    _ubah(k, simpan)
+    print(f"[STRAT {k}] {sym} {arah} posisi jalur dibuka dari kartu scan 1 jam (intrabar jam ke-{it['intrabar']})")
+    return True
+
+
 def pindai_teks(maks=6):
     """Teks /sinyal4j: hasil pindai paksa. QC 73: tiap bagian jadi bubble sendiri (dipisah TG.PISAH)."""
     import qse_radar as RD
@@ -1627,7 +1887,8 @@ def kartu(k, no, it, a):
         kp_teks = (kp_teks + "\n" if kp_teks else "") + "🟨 EMA Cross SHORT kelas ringan: rugi di 2026 (uji -128R)"
     try:
         import qse_modal as MD
-        lot = MD.baris_lot(it["entry"], it["sl"], kelas=MD.kelas_dari(SY.lot_angka(lot_b)))
+        lot = MD.baris_lot(it["entry"], it["sl"], kelas=MD.kelas_dari(SY.lot_angka(lot_b)), konf=1 + len(it.get("combo") or []),
+                           arah=it["arah"], bj=it.get("btc_j"))          # QC 88 lot per konfluensi
     except Exception:
         lot = ""
     jarak = it.get("trail_atr", TRAIL_ATR) * a

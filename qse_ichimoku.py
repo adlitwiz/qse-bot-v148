@@ -359,8 +359,15 @@ def _jalankan(baru_ok=True):
             continue
         import qse_otak as OT
         OT.tandai(it, "ichimoku", df)          # otak robot: peluang rendah = tetap dicatat, tidak dikirim
+        try:          # QC 84: tren BTC tua (jenuh beli atau jenuh jual) = trade kertas, tidak disiarkan
+            import qse_strat as ST_t
+            it["uji_live"] = ST_t.tren_tua(arah, k="ichimoku")
+        except Exception as ex:
+            print("[WARN] ichimoku tren tua", ex)
+        if it.get("uji_live"):
+            print(f"[ICHIMOKU] {sym} {arah} UJI LIVE (trade kertas, tidak disiarkan): {it['uji_live']}")
         baru.append(it)
-        if OT.tersaring(it):
+        if OT.tersaring(it) or it.get("uji_live"):
             continue
         PO.pesan(sym, arah)
         try:
@@ -378,7 +385,8 @@ def _jalankan(baru_ok=True):
         lot_b, cat_hari = PO.lot_hari(lot_b, it.get("dom_turun"))
         try:
             import qse_modal as MD
-            lot = MD.baris_lot(px, sl, SY.lot_angka(lot_b))
+            lot = MD.baris_lot(px, sl, SY.lot_angka(lot_b), konf=1 + len(it.get("combo") or []), arah=arah,
+                               bj=__import__("qse_strat").btc_jarak())
         except Exception:
             lot = ""
         out.append("\n".join([

@@ -1345,6 +1345,22 @@ def _kartu_jam(results, b1, led):
         for nm, bag in grup.items():
             rows.append(f"👤 <b>Posisi {TG.e(nm) if nm else 'kamu'}</b> ({len(bag)})\n" + "\n".join(bag))
         rows.append("↳ Diam, biarkan SL dan TP jalur bekerja. Gerak BTC 1 jam bukan alasan keluar.")
+    # QC 83 (kasus POWR Adli): order yang BELUM terisi ikut tampil per orang, dengan jarak harga ke entry
+    try:
+        antre = [it for it in SY.lihat()["open"].values() if it["status"] == "MENUNGGU"]
+        if antre:
+            peta = {r["symbol"]: r for r in results}
+            grup = {}
+            for it in antre:
+                px = (peta.get(it["sym"]) or {}).get("live") or SY.harga_live(it["sym"])
+                t_ = it.get("tick") or 0.0001
+                grup.setdefault(it.get("oleh") or "", []).append(
+                    f"⏳ {it['sym']} {it['arah']} {it.get('order', '')} entry {TG.fp(it['entry'], t_)}"
+                    + (f", harga {TG.fp(px, t_)}, {abs(px - it['entry']) / it['entry'] * 100:.2f}% lagi" if px else ""))
+            for nm, bag in grup.items():
+                rows.append(f"👤 <b>Order menunggu {TG.e(nm) if nm else 'kamu'}</b> ({len(bag)})\n" + "\n".join(bag))
+    except Exception as ex:
+        print("[WARN] order menunggu per jam", ex)
     try:
         sv = SY.sinyal_jalur(jam=True)
         if sv:

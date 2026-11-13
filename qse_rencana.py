@@ -12,7 +12,7 @@ PATH = os.path.join(STATE_DIR, "rencana.json")
 # off = jarak entry dari level (ATR 4J), sk = SL di luar level, t1/t2 = TP dari entry, mx = batas tahan (candle 4J), dist = jarak maks level dari harga
 PARAM = dict(off=0.0, sk=1.0, t1=0.5, t2=0.8, mx=6, dist=2.0, fil="semua", lot=0.25)
 UJI = ("Uji 183 koin, latih 2023-2024, uji 2025-2026: koin umum -0.08R per trade (WR 62%). Spesialis 🥇 PSG/ACM/BAR +0.12R, "
-       "WR 75%. Perak 🥈 CITY/NEXO/PORTO/LAZIO uji +0.045R, WR 71% (dipilih memakai data uji). Rincian hasil_v158_spesialis.txt.")
+       "WR 75%. Perak 🥈 CITY/NEXO/PORTO/LAZIO uji +0.045R, WR 71% (dipilih memakai data uji).")
 CACHE_DETIK = 1800
 # v170 QC 66 (riset/upgrade/run_v170_fan.py, hasil_v170_fan.txt): token klub turun rutin Minggu 15:00 UTC sampai Senin 00:00 UTC
 # (Minggu 22:00 sampai Senin 07:00 WIB). 12 dari 12 token klub negatif di latih DAN uji, rata -0.68% dalam 9 jam, uji -0.9%, turun 60%.

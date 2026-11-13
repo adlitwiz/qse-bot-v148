@@ -1004,6 +1004,11 @@ def _tugas_menit():
         _gerak_serentak()
     except Exception as ex:
         print("[WARN] gerak serentak", ex)
+    try:          # QC 86 alarm gawat: BTC 2% dalam 1 jam melawan posisi untung yang SL-nya belum di entry
+        import qse_gawat as QG
+        QG.cek()
+    except Exception as ex:
+        print("[WARN] gawat", ex)
     try:
         ps = SY.posisi_serentak()
         if ps:
@@ -1087,6 +1092,11 @@ def _pekerja():
         except Exception as ex:
             print("[WARN] pekerja", ex)
         try:
+            import qse_gawat as QG
+            QG.ulang()          # QC 86: kirim, hapus, kirim lagi tiap 60 detik sampai OKE
+        except Exception as ex:
+            print("[WARN] gawat ulang", ex)
+        try:
             QM.sapu()          # QC 71: hapus menu pribadi yang sudah lewat 60 detik
         except Exception as ex:
             print("[WARN] sapu menu", ex)
@@ -1160,6 +1170,12 @@ def main():
                 continue
             fr = (cq or m).get("from") or {}
             nm_ = " ".join(x for x in (fr.get("first_name"), fr.get("last_name")) if x) or fr.get("username") or ""
+            try:          # QC 86: tombol OKE alarm gawat, atau ketik "oke"
+                import qse_gawat as QG
+                if QG.dari_update(cq, None if cq else m.get("text"), str(fr.get("id", "")), nm_):
+                    continue
+            except Exception as ex:
+                print("[WARN] gawat oke", ex, flush=True)
             try:
                 c_ = QM.dari_tombol(cq) if cq else QM.dari_pesan(m.get("text"), fr.get("id"), nm_)
             except Exception as ex:

@@ -318,8 +318,15 @@ def _jalankan(baru_ok=True):
             continue
         import qse_otak as OT
         OT.tandai(it, "orderblock", df)          # otak robot: peluang rendah = tetap dicatat, tidak dikirim
+        try:          # QC 84: tren naik BTC tua (jenuh beli) = trade kertas, tidak disiarkan
+            import qse_strat as ST_
+            it["uji_live"] = ST_.tren_tua("LONG", k="orderblock")
+        except Exception as ex:
+            print("[WARN] orderblock tren tua", ex)
+        if it.get("uji_live"):
+            print(f"[ORDERBLOCK] {sym} LONG UJI LIVE (trade kertas, tidak disiarkan): {it['uji_live']}")
         baru.append(it)
-        if not OT.tersaring(it):
+        if not OT.tersaring(it) and not it.get("uji_live"):
             PO.pesan(sym, "LONG")
             out.append(kartu(len(baru), it, sg))
 
@@ -367,7 +374,7 @@ def kartu(no, it, sg):
     lot_b, cat_hari = PO_h.lot_hari(lot_b)
     try:
         import qse_modal as MD
-        lot = MD.baris_lot(it["entry"], it["sl"], SY.lot_angka(lot_b))
+        lot = MD.baris_lot(it["entry"], it["sl"], SY.lot_angka(lot_b), konf=1 + len(it.get("combo") or []), arah="LONG")
     except Exception:
         lot = ""
     pc = it["risk"] / it["entry"] * 100

@@ -63,13 +63,19 @@ def karakter_sesi(d1, sesi, now=None):
 
 def rotasi(tk):
     rows = []
-    try:
-        import qse_btcarah as BA
-        d = BA._btcd()
-        if d:
-            rows.append(f"• BTC.D {d:.1f}%")
-    except Exception:
-        pass
+    try:          # QC 83: USDT.D kembali tampil, dengan perubahan 24 jam dan arah arus uang, di samping BTC.D
+        import qse_kompas as KP
+        rows += KP.baris_dominasi()
+    except Exception as ex:
+        print("[WARN] sesi dominasi", ex)
+    if not any("BTC.D" in r for r in rows):
+        try:
+            import qse_btcarah as BA
+            d = BA._btcd()
+            if d:
+                rows.append(f"• BTC.D {d:.1f}%")
+        except Exception:
+            pass
     try:
         import qse_altseason as AS
         u = AS.ukur()

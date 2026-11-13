@@ -234,7 +234,37 @@ def blok(k=None, singkat=False):
             "", f"➡️ <b>{k['aksi']}</b>",
             ("⛔ Kartu LONG jalur selama status ini diberi peringatan dan turun ke KELAS RINGAN. Uji 2023-2026: blokir total tidak konsisten "
              "menaikkan hasil, jadi pilihan akhir di tangan kamu." if k["blok_long"] else "✅ Sinyal LONG dan SHORT boleh keluar.")]
+    try:          # QC 83: umur tren (titik jenuh)
+        import qse_strat as ST
+        ut = ST.umur_teks()
+        if ut:
+            rows.insert(4, ut)
+    except Exception as ex:
+        print("[WARN] kompas umur tren", ex)
     return "\n".join(rows)
+
+
+def baris_dominasi(k=None):
+    """QC 83: baris USDT.D dan BTC.D untuk laporan sesi (bagian Rotasi dana): angka asli, perubahan 24 jam, arah arus uang."""
+    rows = []
+    try:
+        k = k or kompas()
+        cg = _cg(); ch = _cg_24j()
+        u = (k or {}).get("usdt") or {}; b = (k or {}).get("btcd") or {}
+        if cg and cg.get("usdt"):
+            arus = ("🔺 NAIK" + (", tembus resistance 24 jam" if u.get("tembus") else "") + ": uang ditarik ke tunai, altcoin tertekan" if u.get("naik") else
+                    "🔻 TURUN: uang masuk ke kripto" if u.get("turun") else "➖ datar: arus uang belum memihak")
+            rows.append(f"• USDT.D {cg['usdt']:.2f}%" + (f" ({ch['usdt']:+.2f} poin dalam {ch['jam']:.0f} jam)" if ch else "")
+                        + (f"  ·  indeks 24 jam {u['ch24']:+.2f}%" if u.get("ch24") is not None else "") + f"  ·  {arus}")
+        elif u.get("ch24") is not None:
+            arus = "🔺 NAIK: uang ditarik ke tunai" if u.get("naik") else "🔻 TURUN: uang masuk ke kripto" if u.get("turun") else "➖ datar"
+            rows.append(f"• USDT.D indeks 24 jam {u['ch24']:+.2f}%  ·  {arus} (angka persen CoinGecko belum terbaca)")
+        if cg and cg.get("btc"):
+            arah = "🔺 NAIK: BTC lebih kuat dari altcoin" if b.get("naik") else "🔻 TURUN: altcoin lebih kuat" if b.get("turun") else "➖ datar"
+            rows.append(f"• BTC.D {cg['btc']:.2f}%" + (f" ({ch['btc']:+.2f} poin dalam {ch['jam']:.0f} jam)" if ch else "") + f"  ·  {arah}")
+    except Exception as ex:
+        print("[WARN] kompas dominasi", ex)
+    return rows
 
 
 def label(arah):

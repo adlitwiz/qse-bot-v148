@@ -197,7 +197,7 @@ def teks(p=None, singkat=False):
         f"• Likuiditas di bawah (stop long): {lb}",
         f"👉 {fk} (skor {p['skor']:+d} dari -8 sampai +8)" + (f". Target sapuan berikutnya: {target}" if target else ""),
         "Ini peta kondisi, bukan ramalan harga BTC: uji 2019-2026 tebakan arah BTC 24 jam dari FOKUS benar 44-53% (lempar koin). "
-        "Gunanya untuk sinyal altcoin: searah FOKUS rata +0.10R per sinyal, lawan FOKUS +0.02R (riset/v150/hasil_fokus_btc.txt). "
+        "Gunanya untuk sinyal altcoin: searah FOKUS rata +0.10R per sinyal, lawan FOKUS +0.02R. "
         "Menahan semua sinyal lawan FOKUS menurunkan profit 2025-2026, jadi tetap dikirim dengan tanda.",
     ])
 

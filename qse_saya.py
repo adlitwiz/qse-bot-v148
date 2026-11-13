@@ -1985,7 +1985,7 @@ def tutup(args, label="TUTUP"):
                 else:
                     rows.append(f"{sym} {it['arah']} belum terisi, tidak ada posisi yang bisa ditutup sebagian")
                 continue
-            r = _tutup_bagian(it, pct / 100, px)
+            r = _tutup_bagian(it, pct / 100, px, awal=True)
             if it["sisa"] <= 0.001:
                 it = d["open"].pop(k)
                 it.update(status="SELESAI", why="TUTUP", result_r=round(_real(it), 3), exit=px, closed_ts=now)
@@ -1996,7 +1996,7 @@ def tutup(args, label="TUTUP"):
             else:
                 _MD = __import__("qse_modal")
                 pu_b, pu_t = _MD.pnl_usdt(it, r), _MD.pnl_usdt(it, _real(it))
-                rows.append(f"{sym} {it['arah']} {label} {pct:g}% dari sisa posisi di {fp(px, t)}\nHasil bagian ini {r:+.2f}R"
+                rows.append(f"{sym} {it['arah']} {label} {pct:g}% dari posisi awal di {fp(px, t)}\nHasil bagian ini {r:+.2f}R"
                             + (f" = <b>{pu_b:+.2f} USDT</b>" if pu_b is not None else "")
                             + f" | sisa posisi {it['sisa'] * 100:.0f}% | sudah direalisasi {_real(it):+.2f}R"
                             + (f" = <b>{pu_t:+.2f} USDT</b>" if pu_t is not None else "")
@@ -2457,7 +2457,7 @@ def teks_jeda(jd):
             + (f"Dihitung dari catatan kamu sendiri: {teks_dihitung(jd)}. Catatan orang lain tidak ikut dihitung.\n"
                if jd.get("dihitung") else "")
             + f"👉 <b>Jangan buka posisi baru sampai {_jam_wib(jd['sampai'])}</b>. Posisi yang masih jalan tetap ikut SL dan TP.\n"
-            "Uji 2021-2026 (satu orang): jeda ini memangkas drawdown dari 27R ke 17R, total profit sama. Uji v150 (hasil_g19.txt): "
+            "Uji 2021-2026 (satu orang): jeda ini memangkas drawdown dari 27R ke 17R, total profit sama. Uji v150: "
             "tetap mengirim sinyal peluang tertinggi selama jeda justru menaikkan drawdown 29R ke 39R, jadi jeda penuh tetap dipakai. "
             "Kartu sinyal baru ditahan untuk kamu sampai jeda selesai.")
 
@@ -2474,10 +2474,20 @@ def _jeda_pesan(d, now):
     return []
 
 
-def _tutup_bagian(it, frac, px):
-    """Tutup frac (0-1) dari SISA posisi di harga px. Return R yang direalisasi dari bagian ini."""
+def _puncak(it):
+    """Ukuran posisi terbesar yang pernah dipegang (1.0 = lot awal, lebih kalau ada gabungan). Dasar hitung persen TP manual."""
+    return max(float(it.get("puncak") or 0.0), _sisa(it))
+
+
+def _tutup_bagian(it, frac, px, awal=False):
+    """Tutup sebagian posisi di harga px. Return R yang direalisasi dari bagian ini.
+    awal=False: frac (0-1) dari SISA posisi (TP 20% robot, TP1 50%, tutup penuh).
+    awal=True (QC 83, TP manual 25/50/75%): frac dari POSISI AWAL, sama dengan Bybit kalau kamu menutup jumlah yang sama tiap kali.
+    Contoh entry 400 USDT: TP 25% dua kali = 100 + 100, sisa 200 (50%), bukan 225 (56%)."""
     sisa = _sisa(it)
-    bag = sisa * min(max(frac, 0.0), 1.0)
+    it["puncak"] = _puncak(it)
+    frac = min(max(frac, 0.0), 1.0)
+    bag = sisa if frac >= 0.999 else min(sisa, frac * it["puncak"]) if awal else sisa * frac
     r = bag * _r_at(it, px)
     it["real"] = _real(it) + r
     it["sisa"] = sisa - bag
@@ -2494,6 +2504,8 @@ def _gabung_ke(base, it):
     x = _sisa(it) * rb / ri
     sb = _sisa(base)
     base["entry"] = (sb * base["entry"] + x * it["entry"]) / (sb + x)
+    if base.get("puncak"):
+        base["puncak"] = float(base["puncak"]) + x          # QC 83: dasar persen TP manual ikut membesar saat posisi digabung
     base["risk0"], base["real"], base["sisa"] = rb, _real(base) + _real(it), sb + x
     base["alert"] = sorted(set(base.get("alert", [])) | set(it.get("alert", [])))
     if not base.get("lev") and it.get("lev"):
@@ -3133,8 +3145,11 @@ def floating(it, px):
     # QC 80: sesudah TP sebagian, entry yang masih jalan = entry awal x sisa. PNL dipisah: terkunci (sudah ditutup) dan berjalan (sisa)
     u0 = it.get("usdt")
     usd_real = (MD.pnl_usdt(it, real) if usd is not None else None)
+    # QC 86: Value (USDT) di layar posisi Bybit = qty x harga sekarang (mark), bukan modal entry. SHORT untung = Value turun, LONG untung
+    # = Value naik. Contoh TIA SHORT entry 0.4228, 354.6 koin: entry 149.9 USDT, harga 0.4196 -> Value 148.79, untung +1.13 USDT.
+    qty = (float(u0) * sisa / e) if u0 and e else None
     return dict(pct=pct, r=r, real=real, sisa=sisa, roe=pct * lev if lev else None, lev=lev, usdt=u0, usd=usd,
-                usdt_sisa=(float(u0) * sisa if u0 else None), usd_real=usd_real,
+                usdt_sisa=(float(u0) * sisa if u0 else None), usd_real=usd_real, qty=qty, value=(qty * px if qty else None),
                 usd_jalan=(usd - usd_real if usd is not None and usd_real is not None else None))
 
 
@@ -3156,13 +3171,23 @@ def baris_pnl(fl, uid=None):
         rows.append(f"📊 PNL ROE: <b>{fl['pct'] * lev:+.2f}%</b> (pada {lev:g}x)")
     if usd is not None:
         if fl.get("usdt") and abs(fl.get("sisa", 1) - 1) > 0.005 and fl.get("usd_jalan") is not None:
-            ket = (f" (entry jalan <b>{fl['usdt_sisa']:,.2f} USDT</b>, sisa {fl['sisa'] * 100:.0f}% dari {fl['usdt']:,.2f})"
-                   f"\n     terkunci {fl['usd_real']:+.2f} USDT  ·  berjalan di sisa posisi {fl['usd_jalan']:+.2f} USDT")
+            # QC 83: angka utama = PNL berjalan di sisa posisi (sama dengan Unrealized PNL di layar posisi Bybit). Yang sudah terkunci di bawahnya
+            uj = fl["usd_jalan"]
+            rows.append(f"💵 PNL Bybit (berjalan di sisa posisi): <b>{'+' if uj >= 0 else '-'}{abs(uj):.2f} USDT</b> "
+                        f"(entry jalan <b>{fl['usdt_sisa']:,.2f} USDT</b>, sisa {fl['sisa'] * 100:.0f}% dari {fl['usdt']:,.2f})")
+            rows.append(f"💰 Profit sudah terkunci (realized): <b>{fl['usd_real']:+.2f} USDT</b>  ·  total trade {usd:+.2f} USDT")
+            usd = None
         elif fl.get("usdt"):
             ket = f" (entry {fl['usdt']:,.2f} USDT dicatat)"
         else:
             ket = " (perkiraan dari profil Modal)"
-        rows.append(f"💵 PNL: <b>{'+' if usd >= 0 else '-'}{abs(usd):.2f} USDT</b>" + ket)
+        if usd is not None:
+            rows.append(f"💵 PNL: <b>{'+' if usd >= 0 else '-'}{abs(usd):.2f} USDT</b>" + ket)
+    if fl.get("value"):
+        rows.append(f"🧾 Value Bybit sekarang: <b>{fl['value']:,.2f} USDT</b> ({fl['qty']:,.4g} koin x harga sekarang)  ·  saat entry "
+                    f"{fl['usdt_sisa']:,.2f}. Value {'naik' if fl['value'] >= fl['usdt_sisa'] else 'turun'} karena harga "
+                    f"{'naik' if fl['value'] >= fl['usdt_sisa'] else 'turun'}, bukan modal berkurang"
+                    + (" (SHORT untung saat Value turun)" if fl["value"] < fl["usdt_sisa"] and fl["pct"] > 0 else ""))
     rows.append(f"📏 Harga bergerak {abs(fl['pct']):.2f}% {'searah' if fl['pct'] >= 0 else 'melawan arah'} entry"
                 + (f"  ·  sudah terkunci {fl['real']:+.2f}R" if abs(fl["real"]) > 0.005 else ""))
     return rows
@@ -3648,7 +3673,13 @@ def blok_posisi(no, it, px, r=None, pasar=None):
                     + (f", skor setup {it['skor']}/100" if it.get("skor") is not None else ""))
     else:
         asal.append(f"📍 Teknik: <b>{TG_e(inf['nama'])}</b>")
-        asal.append(f"🏅 Nilai: {teks_nilai(inf['skor'])}")
+        if inf["skor"] is None:          # QC 83: teknik tanpa skor label (Tembus Trendline, GZH) tidak lagi ditulis "tidak tercatat"
+            try:
+                asal.append("🏅 Nilai: jalur terbukti, " + bukti_pendek(inf["jalur"], it.get("arah")))
+            except Exception:
+                asal.append("🏅 Nilai: jalur terbukti")
+        else:
+            asal.append(f"🏅 Nilai: {teks_nilai(inf['skor'])}")
         if inf["label"]:
             asal.append("🏷 Label: " + "  ·  ".join(inf["label"]))
     sisa = _sisa(it)
