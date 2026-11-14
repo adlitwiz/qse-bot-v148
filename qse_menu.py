@@ -11,7 +11,7 @@ import requests
 from config import STATE_DIR
 
 PATH = os.path.join(STATE_DIR, "menu.json")
-VERSI = 9                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
+VERSI = 10                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
 
 UTAMA = [["📊 Status", "📝 Entry", "₿ Cek BTC"],          # QC 100b: Sinyal 4J pindah ke tengah baris 2, tidak di atas tengah yang sering kepencet
          ["💼 Modal", "📡 Sinyal 4J", "🎯 Kelola Posisi"],
@@ -131,9 +131,9 @@ def _api(metode, **data):
 def keyboard():
     """QC 80: menu bawah tidak lagi memaksa terbuka. is_persistent mati supaya bisa dilipat lewat ikon kotak di kolom ketik, dan
     menu hanya dikirim sekali per versi atau saat /menu (bukan di setiap pesan robot). QSE_MENU_TETAP=1 mengembalikan cara lama."""
-    # QC 100b: one_time_keyboard, menu otomatis terlipat lagi sesudah satu tombol ditekan, jadi tidak terbuka terus dan tidak mudah kepencet.
+    # QC 103: one_time_keyboard (QC 100b) dicabut. Di grup, Telegram iPhone membuang menu bawah seluruhnya sesudah satu tombol ditekan.
     return {"keyboard": [[{"text": t} for t in r] for r in UTAMA], "resize_keyboard": True, "is_persistent": MENU_TETAP(),
-            "one_time_keyboard": not MENU_TETAP(), "input_field_placeholder": "Menu QSE: ikon kotak di kanan"}
+            "input_field_placeholder": "Menu QSE: ikon kotak di kanan"}
 
 
 def MENU_TETAP():
@@ -160,8 +160,8 @@ def _tanpa_salin(mk):
     return {"inline_keyboard": rows} if rows else keyboard()
 
 
-def kirim_menu(teks="🤖 <b>QSE v150 | MENU</b>\nTata letak menu diperbarui. Menu terlipat sendiri sesudah satu tombol ditekan. "
-                     "Buka lagi lewat ikon kotak di kanan kolom ketik, atau ketik /menu."):
+def kirim_menu(teks="🤖 <b>QSE v150 | MENU</b>\nMenu bawah dipasang lagi. Lipat dan buka lewat ikon kotak di kanan kolom ketik. "
+                     "Kalau menu hilang, ketik /menu."):
     js = _api("sendMessage", text=teks, parse_mode="HTML", reply_markup=keyboard())
     if js.get("ok"):
         _st({"versi": VERSI})
