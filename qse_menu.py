@@ -215,7 +215,8 @@ def _posisi_rows(uid, nama=""):
             rows.append([("💰 TP 25%", f"c:/tp {k} 25%"), ("💰 TP 50%", f"c:/tp {k} 50%")])
             rows.append([("💰 TP 75%", f"c:/tp {k} 75%"), ("🏆 TP penuh", f"y:/tp {k} 100%")])
             rows.append([("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY"), ("✋ Tutup", f"y:/tutup {k}")])
-            rows.append([("✏️ Koreksi modal (USDT posisi)", f"t:/modify {k} USDT")])          # QC 80
+            rows.append([("✏️ Koreksi SL", f"t:/modify {k} {a} SL"), ("✏️ Koreksi modal", f"t:/modify {k} USDT")])          # QC 80, 102
+            rows.append([("✏️ Koreksi TP1", f"t:/modify {k} {a} TP1"), ("✏️ Koreksi TP2", f"t:/modify {k} {a} TP2")])          # QC 102
             rows.append([(f"➕ Tambah / serok {a}", f"t:/tambah {k} {a}"), ("🗑️ Salah catat", f"y:/salah {k} {a}")])          # QC 101
     if not rows:
         rows.append([("📭 Belum ada posisi. Lihat sinyal", "c:/sinyal4j")])
@@ -463,6 +464,9 @@ def dari_tombol(cq):
         return None
     if jenis == "t":
         cmd, petunjuk = isi, TANYA.get(isi, "Ketik isinya")
+        if isi.startswith("/modify ") and isi.split()[-1] in ("SL", "TP1", "TP2"):          # QC 102 koreksi level
+            lv = isi.split()[-1]
+            petunjuk = f"ketik harga {lv} baru sesuai yang terpasang di Bybit, contoh: 72.5" + (". Ketik ENTRY untuk SL ke harga entry" if lv == "SL" else "")
         if isi.startswith("/tambah "):          # QC 101 tambah posisi jalan
             petunjuk = "ketik USDT tambahan yang baru kamu masukkan di Bybit, contoh: 100. Kalau harganya beda, ketik 100 68.95"
         if isi.startswith("/modify ") and isi.endswith(" USDT"):          # QC 80 koreksi modal

@@ -2235,6 +2235,16 @@ def ubah_level(args):
                 if k == "sl" and it["status"] == "MENUNGGU" and ((L and val >= it["entry"]) or ((not L) and val <= it["entry"])):
                     rows.append(f"{sym}: SL harus di bawah entry untuk LONG dan di atas entry untuk SHORT")
                     continue
+                if k == "sl" and it["status"] in ("TERISI", "TP1") and v != "ENTRY":          # QC 102: SL salah sisi = langsung kena
+                    _px = harga_live(sym) or 0
+                    if _px and ((L and val >= _px) or ((not L) and val <= _px)):
+                        rows.append(f"{sym} {it['arah']}: SL {fp(val, it['tick'])} sudah dilewati harga sekarang {fp(_px, it['tick'])}. "
+                                    f"Cek lagi angkanya, SL {'LONG di bawah' if L else 'SHORT di atas'} harga.")
+                        continue
+                if k in ("tp1", "tp2") and ((L and val <= it["entry"]) or ((not L) and val >= it["entry"])):
+                    rows.append(f"{sym} {it['arah']}: {k.upper()} {fp(val, it['tick'])} harus {'di atas' if L else 'di bawah'} entry "
+                                f"{fp(it['entry'], it['tick'])}.")
+                    continue
                 it[k] = val
                 if k == "sl":
                     it["sl_manual"] = True
