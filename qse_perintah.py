@@ -68,7 +68,7 @@ BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "dan aturan jaga modal: TP 20% di +0.5R lalu SL ke entry, jam ke-12, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun. "
            "EMA Cross SHORT: tanpa TP sebagian, SL ke entry di +0.4R lalu SL berjalan. McGinley: sisa posisi trailing 3 ATR. "
            "Sinyal utama koin Futures Bybit, plus jalur terpisah Kebelet Spot dan CFD Harian. "
-           "Semua fitur ada di tombol bawah. Balasan dan tombol pribadi (posisi, status, modal, entry) hanya bisa ditekan pemiliknya, "
+           "<b>Semua fitur ada di tombol bawah</b>, termasuk 📚 Semua Fitur dan 🌐 Spot dan CFD. Perintah garis miring hanya cadangan. Balasan dan tombol pribadi (posisi, status, modal, entry) hanya bisa ditekan pemiliknya, "
            "namanya tertulis di judul pesan.\n\n"
            "📊 <b>Status</b>: hasil hari ini, slot, dan tombol per posisi kamu\n"
            "📡 <b>Sinyal 4J</b>: sinyal valid sekarang plus rencana Sniper S/R, tiap kartu punya tombol 📋 Salin Setup\n"
@@ -84,7 +84,8 @@ BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "🪰 <b>Lalat Abdul</b>: lapar, dopamin, serotonin, GABA, pola disukai dan dibenci, pilihan trade harian lalat\n"
            "😴 <b>Mode Tidur</b>: posisi dijaga otomatis saat kamu tidur\n"
            "🪰⚡ <b>/kebelet</b>: jalur Spot ACM, BAR, PSG (beli saat sentuh support, LONG saja)\n"
-           "📊 <b>/cfd</b>: jalur CFD Harian emas, perak, US100, US500 (Bybit TradFi)\n\n"
+           "📊 <b>/cfd</b>: jalur CFD Harian emas, perak, US100, US500 (Bybit TradFi)\n"
+           "🧭 <b>/himbauan</b>: info duluan BTC rawan dump atau pump untuk ambil profit posisi jalan\n\n"
            "Perintah ketik lama tetap jalan untuk yang sudah hafal.")
 BANTUAN_SEMUA = BANTUAN
 
@@ -340,6 +341,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/kebelet", "/spot"):          # QC 92 rapor jalur Kebelet Spot
         import qse_kebelet as KB
         return KB.rapor()
+    if cmd in ("/himbauan", "/duluan"):       # QC 100 himbauan BTC rawan dump atau pump
+        import qse_himbauan as QH
+        return QH.rapor()
     if cmd in ("/cfd", "/emas"):              # QC 92 rapor jalur CFD Harian
         import qse_cfd as QCF
         try:
@@ -411,7 +415,7 @@ def balas(cmd, args, dari_main=False):
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/himbauan": "HIMBAUAN BTC", "/bantuan": "INFO"}
 
 
 def _sisa_posisi():

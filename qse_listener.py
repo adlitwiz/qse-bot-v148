@@ -1019,6 +1019,11 @@ def _tugas_menit():
         QC4.cek()
     except Exception as ex:
         print("[WARN] cfd4j", ex)
+    try:          # QC 100 himbauan BTC: rawan dump (L/S ritel tinggi) atau rawan pump (funding rendah), info duluan untuk posisi jalan
+        import qse_himbauan as QH
+        QH.cek()
+    except Exception as ex:
+        print("[WARN] himbauan", ex)
     try:          # QC 86 alarm gawat: BTC 2% dalam 1 jam melawan posisi untung yang SL-nya belum di entry
         import qse_gawat as QG
         QG.cek()

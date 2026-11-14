@@ -11,17 +11,19 @@ import requests
 from config import STATE_DIR
 
 PATH = os.path.join(STATE_DIR, "menu.json")
-VERSI = 6                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
+VERSI = 8                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
 
 UTAMA = [["📊 Status", "📡 Sinyal 4J", "₿ Cek BTC"],
          ["💼 Modal", "📝 Entry", "🎯 Kelola Posisi"],
          ["🔔 Alarm", "🧩 Jalur Sinyal", "🔎 Cek Koin"],
          ["📰 Berita", "📈 Laporan", "🪰 Lalat Abdul"],
-         ["🐙 Otak Gurita", "😴 Mode Tidur", "❓ Info"]]
+         ["🐙 Otak Gurita", "🌐 Spot dan CFD", "😴 Mode Tidur"],
+         ["📚 Semua Fitur", "❓ Info"]]          # QC 99: menu jadi pintu utama, slash command cadangan
 # label -> perintah. None = buka sub menu inline
 LABEL = {"📊 Status": "/status", "📡 Sinyal 4J": "/sinyal4j", "₿ Cek BTC": "/cek BTC", "💼 Modal": None, "📝 Entry": None,
          "🎯 Kelola Posisi": None, "🔔 Alarm": None, "🧩 Jalur Sinyal": None, "🔎 Cek Koin": None,
-         "📰 Berita": "/berita", "📈 Laporan": None, "🪰 Lalat Abdul": "/lalat", "🐙 Otak Gurita": "/gurita", "😴 Mode Tidur": "/tidur", "❓ Info": "/bantuan"}
+         "📰 Berita": "/berita", "📈 Laporan": None, "🪰 Lalat Abdul": "/lalat", "🐙 Otak Gurita": "/gurita", "😴 Mode Tidur": "/tidur", "❓ Info": "/bantuan",
+         "🌐 Spot dan CFD": None, "📚 Semua Fitur": None}
 # label lama v150 awal, tetap dikenali kalau keyboard lama masih tampil
 LAMA = {"🧠 Otak Lalat": "🪰 Lalat Abdul", "🪰 Otak Lalat": "🪰 Lalat Abdul", "Cek BTC": "₿ Cek BTC"}
 
@@ -47,6 +49,22 @@ SUB = {
         [("₿ BTC", "c:/cek BTC"), ("Ξ ETH", "c:/cek ETH"), ("◎ SOL", "c:/cek SOL")],
         [("🧐 Koin lain", "t:/cek"), ("🧭 Arah dan pola", "t:/arah")],
         [("🧪 Kalibrasi DASBOR", "t:/kalibrasi")]]),
+    "🌐 Spot dan CFD": ("🌐 <b>SPOT DAN CFD</b>\nJalur terpisah dari sinyal futures kripto, buku dan rapor sendiri.", [
+        [("🪰⚡ Kebelet Spot (ACM, BAR, PSG)", "c:/kebelet")],
+        [("📊 CFD Harian + catat 4J emas", "c:/cfd")]]),
+    "📚 Semua Fitur": ("📚 <b>SEMUA FITUR BOT</b>\nSemua fitur ada di tombol. Perintah garis miring hanya cadangan.", [
+        [("📊 Status", "c:/status"), ("📡 Sinyal 4J", "c:/sinyal4j")],
+        [("₿ Cek BTC", "c:/cek BTC"), ("🔎 Cek Koin", "m:🔎 Cek Koin")],
+        [("📝 Entry", "m:📝 Entry"), ("🎯 Kelola Posisi", "m:🎯 Kelola Posisi")],
+        [("💼 Modal", "m:💼 Modal"), ("🔔 Alarm", "m:🔔 Alarm")],
+        [("🧩 Jalur Sinyal", "m:🧩 Jalur Sinyal"), ("📈 Laporan", "m:📈 Laporan")],
+        [("📰 Berita", "c:/berita"), ("🪰 Lalat Abdul", "c:/lalat")],
+        [("🐙 Otak Gurita", "c:/gurita"), ("😴 Mode Tidur", "c:/tidur")],
+        [("🌐 Spot dan CFD", "m:🌐 Spot dan CFD"), ("❤️ Nyawa / proteksi", "c:/nyawa")],
+        [("🧭 Himbauan BTC rawan dump/pump", "c:/himbauan")],
+        [("🛡️ SL sudah di entry", "t:/slok"), ("🗑️ Hapus catatan salah", "t:/hapus")],
+        [("🔀 Pindah posisi ke orang lain", "t:/pindah")],
+        [("❓ Info lengkap", "c:/bantuan")]]),
     "📈 Laporan": ("📈 <b>LAPORAN</b>", [
         [("📅 Mingguan", "c:/mingguan"), ("📚 Evaluasi trade", "c:/evaluasi")],
         [("🧪 Uji mundur", "c:/uji"), ("📊 Laporan 4J", "c:/laporan4j")],
@@ -65,6 +83,9 @@ TANYA = {
     "/arah": "Ketik nama koin, contoh: SOL",
     "/kalibrasi": "Ketik nama koin, contoh: ETHFI",
     "/modal": "Ketik modal dalam dolar, contoh: 155",
+    "/slok": "Ketik koin yang SL-nya sudah kamu pindah ke entry di Bybit, contoh: SOL",
+    "/hapus": "Ketik koin catatan selesai yang salah, contoh: PENDLE atau PENDLE short",
+    "/pindah": "Ketik koin dan nama pemilik, contoh: BCH ADLI",
     "/modal ENTRY": "Ketik entry per koin dalam dolar, contoh: 150",
     "/modal LEV": "Ketik leverage, contoh: 10",
     "/modal RISIKO": "Ketik risiko persen modal per trade, contoh: 1",
