@@ -62,7 +62,7 @@ def mulai_laporan4j():
 
 # v172 QC 70: perintah yang isinya milik pengirim (posisi, modal, catatan). Balasannya bernama dan tombolnya terkunci ke pengirim.
 PRIBADI = {"/entry", "/status", "/milikku", "/punyaku", "/tutup", "/tp", "/sl", "/batal", "/tpall", "/tpsemua", "/slall", "/slsemua", "/ubah",
-           "/modify", "/modif", "/edit", "/modal", "/pindah", "/kelola", "/be", "/hapus", "/catat"}
+           "/modify", "/modif", "/edit", "/modal", "/pindah", "/kelola", "/be", "/hapus", "/catat", "/serok", "/tambah", "/add", "/salah"}
 BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "Robot jalan otomatis: scan tiap 4 jam dan per jam, pantau posisi tiap menit, berita, peta BTC pagi 07:05 WIB, "
            "dan aturan jaga modal: TP 20% di +0.5R lalu SL ke entry, jam ke-12, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun. "
@@ -85,7 +85,8 @@ BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "😴 <b>Mode Tidur</b>: posisi dijaga otomatis saat kamu tidur\n"
            "🪰⚡ <b>/kebelet</b>: jalur Spot ACM, BAR, PSG (beli saat sentuh support, LONG saja)\n"
            "📊 <b>/cfd</b>: jalur CFD Harian emas, perak, US100, US500 (Bybit TradFi)\n"
-           "🧭 <b>/himbauan</b>: info duluan BTC rawan dump atau pump untuk ambil profit posisi jalan\n\n"
+           "🧭 <b>/himbauan</b>: info duluan BTC rawan dump atau pump untuk ambil profit posisi jalan\n"
+           "➕ <b>Tambah / serok</b>: Kelola Posisi > ➕ Tambah, ketik USDT tambahan. Entry rata-rata dihitung seperti Bybit\n\n"
            "Perintah ketik lama tetap jalan untuk yang sudah hafal.")
 BANTUAN_SEMUA = BANTUAN
 
@@ -179,6 +180,10 @@ def balas(cmd, args, dari_main=False):
         return SY.kalibrasi_teks(args[0]) if args else "Format: /kalibrasi ETHFI"
     if cmd == "/serok":
         return SY.serok(args)
+    if cmd in ("/tambah", "/add"):            # QC 101 tambah posisi jalan dalam USDT, entry rata-rata seperti Bybit
+        return SY.tambah(args)
+    if cmd == "/salah":                       # QC 101 buang catatan posisi jalan yang salah
+        return SY.buang_salah(args)
     if cmd == "/hapus":
         return SY.hapus(args)
     if cmd in ("/ubah", "/modify", "/modif", "/edit"):
@@ -449,7 +454,7 @@ def proses(cmds, dari_main=False):
         finally:
             SY.pakai(None)
         if isi:
-            ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
+            ikon = {"/entry": "📝", "/cek": "🧐", "/cekdetail": "🧐", "/tutup": "✋", "/tp": "💰", "/sl": "🛑", "/ubah": "✏️", "/modify": "✏️", "/modif": "✏️", "/edit": "✏️", "/hapus": "🗑️", "/serok": "➕", "/tambah": "➕", "/salah": "🗑️", "/kalibrasi": "🧪", "/tespin": "📌", "/batal": "❌", "/alert": "🔔", "/alarm": "🔔", "/tunggu": "⏳", "/close": "⏳", "/evaluasi": "📚",
                     "/uji": "🧪", "/mingguan": "📅", "/pekan": "📅", "/modal": "💼", "/scan": "🔎", "/laporan4j": "📊", "/laporan": "📊", "/susul": "📊", "/berita": "📰", "/kabar": "📰", "/viral": "🔥", "/trending": "🔥", "/hits": "🔥", "/hot": "🔥", "/info": "📰", "/ujimomentum": "⚡", "/jalur": "📒", "/rekapjalur": "📒", "/altseason": "🌈", "/jagoan": "👑", "/koinjagoan": "👑", "/ichimoku": "📈", "/pelengkap": "🧩", "/lab": "🧪", "/papan": "🧪", "/menu": "🤖", "/sektor": "🧩", "/ob": "⭐", "/strategi": "📈", "/strat": "📈", "/ema": "📈", "/rsi": "📈", "/orderblock": "⭐", "/smc": "⭐", "/arah": "🧭", "/tren": "🧭", "/ichi": "📈", "/alt": "🌈", "/ujimom": "⚡", "/news": "📰", "/sinyal4j": "📡", "/sinyal4": "📡",
                     "/sinyal": "📡", "/sinyal1j": "📡", "/sinyal1": "📡",
                     "/bantuan": "❓", "/milikku": "👤", "/pindah": "🔀", "/mode": "🎚️", "/tpall": "💰", "/tpsemua": "💰", "/slall": "🛑", "/slsemua": "🛑", "/punyaku": "👤", "/help": "❓", "/start": "❓"}

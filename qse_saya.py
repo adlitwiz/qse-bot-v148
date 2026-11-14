@@ -1651,8 +1651,25 @@ def sinyal_terakhir(sym, arah, harga, hari=3):
     return None
 
 
+def posisi_lawan(sym, arah):
+    """QC 101: posisi jalan koin yang sama dengan arah berlawanan (milik pengirim). None kalau tidak ada."""
+    if not sym or not arah:
+        return None
+    return next((v for v in _load()["open"].values() if v["sym"] == sym and v["status"] in ("TERISI", "TP1") and v["arah"] != arah), None)
+
+
 def entry(args):
+    paksa = "PAKSA" in args          # QC 101: catat arah berlawanan dengan sengaja (hedge)
+    args = [a for a in args if a != "PAKSA"]
     arah, order, sym, harga, kv = parse_entry(args)
+    lw = None if paksa else posisi_lawan(sym, arah)
+    if lw:
+        kd = sym.replace("USDT", "")
+        return (f"⚠️ <b>ARAH BERLAWANAN, belum dicatat</b>\nKamu punya <b>{sym} {lw['arah']}</b> yang masih jalan. "
+                f"Di Bybit mode one-way, order {arah} di koin yang sama MENUTUP posisi {lw['arah']} kamu, bukan menambah.\n"
+                f"Kalau maksudnya serok atau tambah posisi {lw['arah']}, tekan <b>➕ Tambah {lw['arah']}</b> lalu ketik jumlah USDT tambahan, "
+                f"contoh /tambah {kd} {lw['arah']} 100.\n"
+                f"Kalau memang sengaja buka {arah} (mode hedge), tekan tombol catat {arah} atau ketik /entry {kd} {arah} PAKSA.")
     if not arah or not sym:
         if harga and kv.get("SL"):
             return ("Koin tidak ketemu dari harga entry itu. Tambahkan nama koinnya di depan, contoh:\n"
@@ -2073,6 +2090,81 @@ def serok(args):
                 + (f" (dibatasi dari {lot_minta:g}x)" if lot_minta and lot_minta > maks else "") +
                 f"\nEntry rata-rata baru {fp(e_baru, t)} | ukuran sekarang {it['sisa']:.2f}x lot awal"
                 f"\nKalau kena SL {fp(sl, t)}: {rugi_baru:+.2f}R. TP tetap, cek lagi dengan /status")
+    return ubah(f)
+
+
+def tambah(args):
+    """QC 101 /tambah KOIN [long|short] USDT [harga]: tambah posisi jalan seperti di Bybit (serok di harga lebih jelek juga boleh).
+    Entry baru = rata-rata tertimbang jumlah koin (sama dengan Avg Entry Bybit). Ukuran dalam lot awal naik sebanding jumlah koin,
+    jadi R dan PNL USDT tetap konsisten. SL dan TP tidak berubah."""
+    if not args:
+        return "Format: /tambah HYPE SHORT 100 (USDT tambahan di harga sekarang) atau /tambah HYPE SHORT 100 68.95"
+    sym = args[0] if args[0].endswith("USDT") else args[0] + "USDT"
+    arah = next((a for a in args[1:] if a in ("LONG", "SHORT")), None)
+    angka = [_angka(a.replace("$", "")) for a in args[1:] if a not in ("LONG", "SHORT", "USDT", "MARKET", "$")
+             and _angka(a.replace("$", "")) is not None]
+    if not angka or angka[0] <= 0:
+        return f"Ketik jumlah USDT tambahan, contoh /tambah {sym.replace('USDT', '')} {arah or 'SHORT'} 100"
+    uadd = angka[0]
+    px = angka[1] if len(angka) > 1 else harga_live(sym)
+    if not px:
+        return "Harga tidak bisa diambil, tulis harganya: /tambah KOIN ARAH USDT HARGA"
+
+    def f(d):
+        it = next((v for v in d["open"].values() if v["sym"] == sym and v["status"] in ("TERISI", "TP1")
+                   and (arah is None or v["arah"] == arah)), None)
+        if not it:
+            return f"Tidak ada posisi jalan {sym}" + (f" {arah}" if arah else "") + ". Untuk posisi baru pakai 📝 Entry."
+        if not it.get("usdt"):
+            kd = sym.replace("USDT", "")
+            return (f"Isi dulu besar posisi {sym} {it['arah']} yang lama: /modify {kd} {it['arah']} USDT ANGKA "
+                    "(nilai entry yang masih jalan), lalu ulangi /tambah.")
+        L = it["arah"] == "LONG"
+        t = it["tick"]
+        sl = it["entry"] if it["status"] == "TP1" and not it.get("sl_manual") else it["sl"]
+        if (L and px <= sl) or ((not L) and px >= sl):
+            return "Harga tambah sudah melewati SL. Tutup posisi dulu, jangan tambah."
+        it["risk0"], it["sisa"], it["real"] = _risk0(it), _sisa(it), _real(it)
+        n0 = float(it["usdt"]) * it["sisa"]
+        c0 = n0 / it["entry"]
+        cadd = uadd / px
+        x = cadd / (c0 / it["sisa"])
+        e_lama = it["entry"]
+        it["entry"] = (n0 + uadd) / (c0 + cadd)
+        it["sisa"] = it["sisa"] + x
+        it["usdt"] = (n0 + uadd) / it["sisa"]
+        if it.get("puncak"):
+            it["puncak"] = float(it["puncak"]) + x
+        it.setdefault("serok", []).append(dict(harga=px, lot=round(x, 4), usdt=uadd, ts=int(time.time() * 1000)))
+        rugi = it["real"] + it["sisa"] * _r_at(it, sl)
+        try:
+            import qse_modal as MD
+            k = MD.usdt_per_r(it)
+            rugi_u = f" ({rugi * k:+.2f} USDT)" if k else ""
+        except Exception:
+            rugi_u = ""
+        return (f"➕ <b>{sym} {it['arah']} ditambah {uadd:,.2f} USDT</b> di {fp(px, t)}\n"
+                f"Entry rata-rata {fp(e_lama, t)} jadi <b>{fp(it['entry'], t)}</b> (samakan dengan Avg Entry di Bybit)\n"
+                f"Nilai entry sekarang {n0 + uadd:,.2f} USDT, {c0 + cadd:,.4g} koin\n"
+                f"SL {fp(sl, t)} | TP1 {fp(it['tp1'], t)} | TP2 {fp(it['tp2'], t)} tetap\n"
+                f"Kalau kena SL: total {rugi:+.2f}R{rugi_u}")
+    return ubah(f)
+
+
+def buang_salah(args):
+    """QC 101 /salah KOIN LONG|SHORT: buang posisi jalan yang salah catat (misal salah tekan arah). Tidak masuk riwayat dan rapor."""
+    if len(args) < 2 or not any(a in ("LONG", "SHORT") for a in args[1:]):
+        return "Format: /salah HYPE LONG (buang catatan posisi jalan yang salah, tidak dihitung di rapor)"
+    sym = args[0] if args[0].endswith("USDT") else args[0] + "USDT"
+    arah = next(a for a in args[1:] if a in ("LONG", "SHORT"))
+
+    def f(d):
+        ks = [k for k, v in d["open"].items() if v["sym"] == sym and v["arah"] == arah]
+        if not ks:
+            return f"Tidak ada catatan {sym} {arah} yang jalan."
+        for k in ks:
+            d["open"].pop(k)
+        return f"🗑️ Catatan {sym} {arah} dibuang ({len(ks)} posisi). Tidak masuk riwayat dan rapor. Posisi di Bybit tidak tersentuh."
     return ubah(f)
 
 

@@ -11,10 +11,10 @@ import requests
 from config import STATE_DIR
 
 PATH = os.path.join(STATE_DIR, "menu.json")
-VERSI = 8                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
+VERSI = 9                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
 
-UTAMA = [["📊 Status", "📡 Sinyal 4J", "₿ Cek BTC"],
-         ["💼 Modal", "📝 Entry", "🎯 Kelola Posisi"],
+UTAMA = [["📊 Status", "📝 Entry", "₿ Cek BTC"],          # QC 100b: Sinyal 4J pindah ke tengah baris 2, tidak di atas tengah yang sering kepencet
+         ["💼 Modal", "📡 Sinyal 4J", "🎯 Kelola Posisi"],
          ["🔔 Alarm", "🧩 Jalur Sinyal", "🔎 Cek Koin"],
          ["📰 Berita", "📈 Laporan", "🪰 Lalat Abdul"],
          ["🐙 Otak Gurita", "🌐 Spot dan CFD", "😴 Mode Tidur"],
@@ -131,8 +131,9 @@ def _api(metode, **data):
 def keyboard():
     """QC 80: menu bawah tidak lagi memaksa terbuka. is_persistent mati supaya bisa dilipat lewat ikon kotak di kolom ketik, dan
     menu hanya dikirim sekali per versi atau saat /menu (bukan di setiap pesan robot). QSE_MENU_TETAP=1 mengembalikan cara lama."""
+    # QC 100b: one_time_keyboard, menu otomatis terlipat lagi sesudah satu tombol ditekan, jadi tidak terbuka terus dan tidak mudah kepencet.
     return {"keyboard": [[{"text": t} for t in r] for r in UTAMA], "resize_keyboard": True, "is_persistent": MENU_TETAP(),
-            "input_field_placeholder": "Menu QSE: ikon kotak di kanan"}
+            "one_time_keyboard": not MENU_TETAP(), "input_field_placeholder": "Menu QSE: ikon kotak di kanan"}
 
 
 def MENU_TETAP():
@@ -159,8 +160,8 @@ def _tanpa_salin(mk):
     return {"inline_keyboard": rows} if rows else keyboard()
 
 
-def kirim_menu(teks="🤖 <b>QSE v150 | MENU</b>\nMenu sekarang tidak terbuka sendiri. Buka dan lipat lewat ikon kotak di kanan kolom ketik, "
-                     "atau ketik /menu."):
+def kirim_menu(teks="🤖 <b>QSE v150 | MENU</b>\nTata letak menu diperbarui. Menu terlipat sendiri sesudah satu tombol ditekan. "
+                     "Buka lagi lewat ikon kotak di kanan kolom ketik, atau ketik /menu."):
     js = _api("sendMessage", text=teks, parse_mode="HTML", reply_markup=keyboard())
     if js.get("ok"):
         _st({"versi": VERSI})
@@ -215,6 +216,7 @@ def _posisi_rows(uid, nama=""):
             rows.append([("💰 TP 75%", f"c:/tp {k} 75%"), ("🏆 TP penuh", f"y:/tp {k} 100%")])
             rows.append([("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY"), ("✋ Tutup", f"y:/tutup {k}")])
             rows.append([("✏️ Koreksi modal (USDT posisi)", f"t:/modify {k} USDT")])          # QC 80
+            rows.append([(f"➕ Tambah / serok {a}", f"t:/tambah {k} {a}"), ("🗑️ Salah catat", f"y:/salah {k} {a}")])          # QC 101
     if not rows:
         rows.append([("📭 Belum ada posisi. Lihat sinyal", "c:/sinyal4j")])
     else:
@@ -314,6 +316,15 @@ def tombol_untuk(cmd, args, isi, uid=None, nama=""):
         extra = [[("🔄 Segarkan", "c:/lalat"), ("🧬 Sinapsis lengkap", "c:/lalat SINAPSIS")], [("🍽️ Paksa cari makan", "c:/lalat BURU")],
                  [("⚡ Refleks masuk", "y:/lalat REFLEKS MASUK"), ("⚡ Refleks keluar", "y:/lalat REFLEKS KELUAR")],
                  [("🍽️ Lapar bertingkat nyala/mati", "y:/lalat LAPAR")]]
+    elif cmd == "/entry" and "ARAH BERLAWANAN" in (isi or ""):          # QC 101 salah tekan arah: tawarkan tambah posisi lama
+        import re
+        g = re.search(r"punya <b>([A-Z0-9]+)USDT (LONG|SHORT)</b>", isi)
+        if g:
+            kd, lama = g.group(1), g.group(2)
+            baru = "SHORT" if lama == "LONG" else "LONG"
+            extra = [[(f"➕ Tambah {lama} (serok)", f"t:/tambah {kd} {lama}")],
+                     [(f"{'🟢' if baru == 'LONG' else '🔴'} Tetap catat {baru} baru", f"y:/entry {kd} {baru} MARKET PAKSA")],
+                     [("🎯 Kelola Posisi", "m:🎯 Kelola Posisi")]]
     elif cmd == "/entry" and "TERCATAT" in (isi or ""):
         import re
         g = re.search(r"([A-Z0-9]+)USDT (LONG|SHORT)", isi)
@@ -452,6 +463,8 @@ def dari_tombol(cq):
         return None
     if jenis == "t":
         cmd, petunjuk = isi, TANYA.get(isi, "Ketik isinya")
+        if isi.startswith("/tambah "):          # QC 101 tambah posisi jalan
+            petunjuk = "ketik USDT tambahan yang baru kamu masukkan di Bybit, contoh: 100. Kalau harganya beda, ketik 100 68.95"
         if isi.startswith("/modify ") and isi.endswith(" USDT"):          # QC 80 koreksi modal
             petunjuk = "ketik nilai posisi yang masih jalan di Bybit dalam USDT, contoh: 398"
         d = _st(); d.setdefault("tunggu", {})[uid] = {"cmd": cmd, "t": time.time()}; _st(d)
