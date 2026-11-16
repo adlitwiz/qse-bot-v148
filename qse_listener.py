@@ -73,6 +73,8 @@ def _tugas_berkala():
             nb = NW.cek(simbol)
             if nb:
                 TG.send(["📰 <b>QSE v150 | NEWS PENTING</b>\n\n" + "\n\n".join(nb)])
+            for m_ in NW.mulut(simbol):          # QC 104 kabar kilat berita baru terbit yang mungkin berdampak
+                TG.send(["🗣 <b>QSE v150 | MULUT ABDUL</b>\n\n" + m_])
         except Exception as ex:
             print("[WARN] news", ex)
     if now - st.get("t15", 0) >= 900:
@@ -1019,9 +1021,19 @@ def _tugas_menit():
         QC4.cek()
     except Exception as ex:
         print("[WARN] cfd4j", ex)
+    try:          # QC 104 otopsi rugi: tiap SL atau cutloss dianalisa dan diberi prompt untuk Fable
+        import qse_otopsi as QO
+        for m_ in QO.cek():
+            TG.send(["🔬 <b>QSE v150 | OTOPSI RUGI</b>\n\n" + m_])
+    except Exception as ex:
+        print("[WARN] otopsi", ex)
     try:          # QC 100 himbauan BTC: rawan dump (L/S ritel tinggi) atau rawan pump (funding rendah), info duluan untuk posisi jalan
         import qse_himbauan as QH
         QH.cek()
+        QH.cek4j()          # QC 104 perubahan arah BTC 4J
+        import qse_vonis as QV
+        for m_ in QV.cek():          # QC 104 vonis pasar berubah LONG <-> SHORT
+            TG.send(["🧭 <b>QSE v150 | VONIS PASAR</b>\n\n" + m_])
     except Exception as ex:
         print("[WARN] himbauan", ex)
     try:          # QC 86 alarm gawat: BTC 2% dalam 1 jam melawan posisi untung yang SL-nya belum di entry
@@ -1203,7 +1215,7 @@ def main():
                 c_ = None
             if c_:
                 if c_[0] in ("/menu", "/start"):
-                    QM.kirim_menu()
+                    QM.kirim_menu(); QM.kirim_menu_inline()
                     continue
                 cmds.append((c_[0], c_[1], str(fr.get("id", "")) or None, nm_))
                 continue
@@ -1212,7 +1224,7 @@ def main():
                 continue
             parts = txt.split()
             if parts[0].split("@")[0].lower() in ("/menu", "/start"):
-                QM.kirim_menu()
+                QM.kirim_menu(); QM.kirim_menu_inline()
                 continue
             cmds.append((parts[0].split("@")[0].lower(), parts[1:], str(fr.get("id", "")) or None,
                          " ".join(x for x in (fr.get("first_name"), fr.get("last_name")) if x) or fr.get("username") or ""))

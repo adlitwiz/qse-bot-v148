@@ -225,13 +225,23 @@ def _ambil_json(nama, x):
     return out
 
 
+_CACHE_SEMUA = {"t": 0.0, "v": None}
+
+
 def ambil_semua(sumber=None):
-    """Semua sumber diambil bersamaan (maks 8 koneksi). Return list (nama, daftar berita) urut seperti SUMBER."""
+    """Semua sumber diambil bersamaan (maks 8 koneksi). Return list (nama, daftar berita) urut seperti SUMBER.
+    QC 104: hasil sumber bawaan disimpan 45 detik supaya NEWS PENTING dan MULUT ABDUL memakai satu unduhan."""
     from concurrent.futures import ThreadPoolExecutor
+    bawaan = sumber is None
+    if bawaan and _CACHE_SEMUA["v"] is not None and time.time() - _CACHE_SEMUA["t"] < 45:
+        return _CACHE_SEMUA["v"]
     sumber = list(sumber or SUMBER)
     with ThreadPoolExecutor(min(8, len(sumber))) as ex:
         hasil = list(ex.map(lambda z: _ambil(*z), sumber))
-    return [(nm, h) for (nm, _), h in zip(sumber, hasil)]
+    out = [(nm, h) for (nm, _), h in zip(sumber, hasil)]
+    if bawaan:
+        _CACHE_SEMUA.update(t=time.time(), v=out)
+    return out
 
 
 def _ambil(nama, url):
@@ -594,6 +604,114 @@ def cek(simbol, maks=2):
             out.append("\n".join(rows))
     c["kirim"] = list(sudah)[-1500:]
     c["topik"] = {k: v for k, v in topik.items() if now - v < 86400}
+    _save(c)
+    return out
+
+
+# ---------------- QC 104 🗣 MULUT ABDUL: kabar kilat berita yang baru terbit dan mungkin berdampak ----------------
+MULUT_UMUR = 600          # hanya berita yang terbit paling lama 10 menit lalu
+MULUT_JEDA = 3 * 3600     # topik sama (jenis + koin) paling sering sekali per 3 jam
+
+
+def dampak_mulut(kat, arah, kuat):
+    """('TINGGI'|'SEDANG'|None, alasan). TINGGI: jenis berita dengan sejarah gerak BTC 24 jam >= 1.5% (5+ kejadian), atau jenis
+    kejutan (hack, bursa kolaps, delisting, krisis bank, guncangan makro). SEDANG: jenis lain yang dikenal, atau kata kunci kuat."""
+    d = DAMPAK.get(kat) if kat else None
+    if d and d.get("n", 0) >= 5 and abs(d.get("b24", 0)) >= 1.5:
+        return "TINGGI", f"sejarah {d['n']} kejadian: BTC 24 jam {d['b24']:+.1f}%, naik di {d['naik']}% kejadian"
+    if kat in ("HACK", "EXCHANGE_COLLAPSE", "BANK_CRISIS", "MACRO_SHOCK", "GOV_SELLING", "WAR"):
+        return "TINGGI", "jenis kejutan, pasar biasanya bereaksi cepat"
+    if d:
+        return "SEDANG", f"sejarah {d['n']} kejadian: BTC 24 jam {d['b24']:+.1f}%, naik di {d['naik']}% kejadian (arah tidak konsisten)"
+    if kat:
+        return "SEDANG", "jenis berita dikenal, belum ada data sejarah"
+    if kuat == "KUAT":
+        return "SEDANG", "kata kunci kuat, belum ada data sejarah"
+    return None, ""
+
+
+def _posisi_mulut(koin, arah_t):
+    """Baris posisi tiap orang yang tersentuh berita, pemilik posisi berlawanan di-tag."""
+    try:
+        import qse_saya as SY
+        luas = koin[0] in ("BTC", "ETH")
+        rows = []
+        for u in SY.daftar_pengguna():
+            pos = [v for v in SY._baca(SY._path_uid(u))["open"].values()
+                   if v.get("status") in ("TERISI", "TP1") and (luas or v.get("sym") == koin[0] + "USDT")]
+            beda = sorted({f"{v['sym'].replace('USDT', '')} {v['arah']}" for v in pos if arah_t and v["arah"] != arah_t})
+            sama = sorted({f"{v['sym'].replace('USDT', '')} {v['arah']}" for v in pos if arah_t and v["arah"] == arah_t})
+            if beda:
+                rows.append(f"👤 {SY.sebut(u)}: posisi berlawanan berita: <b>{', '.join(beda)}</b>. Cek Status, pastikan SL terpasang."
+                            + (f" Searah: {', '.join(sama)}." if sama else ""))
+            elif sama:
+                rows.append(f"👤 <b>{html.escape(str(SY.nama_pengguna(u)))}</b>: posisi searah berita: {', '.join(sama)}.")
+        return rows
+    except Exception as ex:
+        print("[WARN] mulut posisi", ex)
+        return []
+
+
+def mulut(simbol, maks=2, now=None, data=None):
+    """Kabar kilat. Berita yang (1) terbit <= 10 menit lalu, (2) jenisnya dikenal atau kata kuncinya kuat, (3) menyebut koin Bybit
+    atau makro, (4) BELUM dikirim NEWS PENTING. Info cepat, bukan sinyal: arah dan dampaknya perkiraan dari sejarah jenis berita.
+    Saklar QSE_MULUT=0 mati."""
+    if os.environ.get("QSE_MULUT", "1") == "0":
+        return []
+    c = _load()
+    sudah = set(c.get("mulut", []))
+    topik = c.get("mulut_topik", {})
+    awal = "mulut" not in c
+    now = now or time.time()
+    out = []
+    for nama, daftar in (data if data is not None else ambil_semua()):
+        for b in daftar:
+            kunci = re.sub(r"\W+", "", b["judul"].lower())[:90]
+            if not kunci or kunci in sudah:
+                continue
+            sudah.add(kunci)
+            pub = b.get("pub")
+            if awal or len(out) >= maks or not pub or not (0 <= now - pub <= MULUT_UMUR) or "reddit" in b["sumber"].lower():
+                continue
+            isi = "" if "google" in b["sumber"].lower() else b.get("isi", "")
+            teks = b["judul"] + " " + isi[:200]
+            kat = kategori(teks)
+            arah, kuat = _nilai(teks)
+            if kat:
+                arah = arah_sejarah(kat) or arah
+            if kat and terbukti(kat) and arah:
+                continue          # sudah jatah NEWS PENTING
+            tingkat, alasan = dampak_mulut(kat, arah, kuat)
+            if not tingkat:
+                continue
+            if any(w in (b.get("link") or "").lower() + " " + b["judul"].lower() for w in
+                   ("/video", "podcast", "opinion", "price prediction", "price analysis", "sponsored", "press-release")):
+                continue          # bukan berita kejadian
+            koin_asli = _koin(teks, simbol)
+            koin = koin_asli or (["BTC"] if kat and "BTCUSDT" in simbol else [])
+            if not koin:
+                continue
+            if kat == "HACK" and not koin_asli:
+                tingkat, alasan = "SEDANG", "peretasan di luar koin yang dipantau, dampak ke BTC biasanya kecil"
+            tk = f"{kat or 'KW'}|{koin[0]}"
+            if now - topik.get(tk, 0) < MULUT_JEDA:
+                continue
+            topik[tk] = now
+            arah_t = "LONG" if arah > 0 else "SHORT" if arah < 0 else ""
+            judul = TG.e(terjemah(b["judul"])[:160])
+            if b.get("link"):
+                judul = f'<a href="{html.escape(b["link"], quote=True)}">{judul}</a>'
+            rows = [f"🗣 <b>MULUT ABDUL</b> · terbit {max(0, (now - pub) / 60):.0f} menit lalu · {TG.e(b['sumber'])}",
+                    f"<b>{judul}</b>",
+                    f"🎯 Kemungkinan dampak: <b>{tingkat}</b> untuk {', '.join(koin)}"
+                    + (f" · condong {'🟢 naik' if arah > 0 else '🔴 turun'}" if arah else " · arah belum jelas")
+                    + (f" · {LABEL.get(kat, kat)}" if kat else ""),
+                    f"📚 {alasan[0].upper() + alasan[1:]}."]
+            rows += _posisi_mulut(koin, arah_t)
+            rows.append("Info kilat, bukan sinyal. Jangan entry dari berita. Posisi jalan ikuti SL dan TP, kecuali ada pesan Hidung Abdul atau Gawat.")
+            out.append("\n".join(rows))
+    c["mulut"] = list(sudah)[-1500:]
+    c["mulut_topik"] = {k: v for k, v in topik.items() if now - v < 86400}
     _save(c)
     return out
 

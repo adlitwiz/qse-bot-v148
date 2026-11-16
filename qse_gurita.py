@@ -400,6 +400,91 @@ def modal_kelola(d):
     return out
 
 
+# QC 104b PROTEKSI BUKU GURITA (riset/upgrade/run_v209_gurita_proteksi.py, hasil_v209_gurita_proteksi.txt). Buku 12 slot dari 150 USDT:
+#   dasar QC 89                    : latih 1121, uji 2870, 12 bulan 254, 6 bulan 178, 2026 245, drawdown 34% / 26%.
+#   + Hidung Abdul (SHORT >= +0.3R ditutup 1 jam sebelum CPI/FOMC): 1582, 3366, 288, 196, 320.
+#   + Himbauan pump (SHORT >= +0.5R) : 1145, 3225, 270, 179, 257.   + Himbauan dump (LONG >= +0.5R): 1126, 2870, 254, 178, 245.
+#   + ketiganya (dipasang)          : latih 1687, uji 3814, 12 bulan 304, 6 bulan 196, 2026 333, drawdown 30% / 26%. Naik di semua periode.
+# Perubahan arah BTC 4J juga naik (gabungan semua: 1638, 4666, 308, 195) tapi latih di bawah pilihan ini dan drawdown uji 27%, tidak dipasang.
+# Saklar QSE_GURITA_PROTEKSI=0 mati.
+PROTEKSI_BIAYA = 0.0015
+
+
+def _r_jalan(it, px):
+    """R berjalan posisi robot di harga px, memakai jejak aturan keluar live (v9: TP 20% di +0.5R sudah masuk real), sesudah biaya."""
+    e = float(it["entry"])
+    risk = abs(e - float(it.get("sl0", it["sl"]))) or float(it.get("risk") or 0) or 1e-12
+    dd = 1 if it["arah"] == "LONG" else -1
+    v = it.get("v9") or {}
+    if v.get("R") is not None:
+        return float(v["R"])
+    return float(v.get("real", 0.0)) + float(v.get("sisa", 1.0)) * (px - e) * dd / risk - PROTEKSI_BIAYA * e / risk
+
+
+def modal_proteksi(d, arah, amb, sebab, harga=None):
+    """Tutup posisi buku gurita berarah 'arah' yang untungnya minimal 'amb' R. Return pesan."""
+    m = _modal(d); out = []; sisa = []
+    if harga is None:
+        import qse_saya as SY
+        harga = SY.harga_live
+    for p in m["buka"]:
+        R = None
+        try:
+            if p["arah"] == arah:
+                it = _buku(p["jalur"]).get("open", {}).get(f"{p['sym']}|{p['tk']}")
+                px = harga(p["sym"]) if it else None
+                if it and px:
+                    r = _r_jalan(it, px)
+                    if r >= amb:
+                        R = r
+        except Exception as ex:
+            print("[WARN] gurita proteksi", p.get("sym"), ex)
+        if R is None:
+            sisa.append(p); continue
+        usd = R * p["usd"]; m["saldo"] = round(m["saldo"] + usd, 2); m["puncak"] = max(m["puncak"], m["saldo"])
+        m["tutup"].append(dict(key=p["key"], sym=p["sym"], arah=p["arah"], jalur=p["jalur"], R=round(R, 2), usd=round(usd, 2),
+                               saldo=m["saldo"], selesai=time.time(), proteksi=sebab))
+        out.append(f"🛡️ 🐙 Gurita modal {p['sym']} {p['arah']} ditutup lebih awal ({sebab}) {R:+.2f}R = {usd:+.2f} USDT. "
+                   f"Saldo buku gurita {m['saldo']:.2f} USDT. Slot kosong untuk sinyal berikutnya.")
+    m["buka"] = sisa; m["tutup"] = m["tutup"][-500:]
+    return out
+
+
+def modal_proteksi_cek(d, now=None, kal=None, him=None, harga=None):
+    """Tiap 15 menit. Hidung Abdul: 45-75 menit sebelum CPI/FOMC, SHORT >= +0.3R. Himbauan BTC yang baru terkirim (30 menit terakhir):
+    rawan dump LONG >= +0.5R, rawan pump SHORT >= +0.5R."""
+    if os.environ.get("QSE_GURITA_PROTEKSI", "1") == "0":
+        return []
+    m = _modal(d); now = now or time.time(); out = []
+    pr = m.setdefault("prot", {})
+    try:
+        if kal is None:
+            import qse_berita as BR
+            kal = BR.kalender()
+        for e in kal:
+            if 45 * 60000 <= e["ts"] - now * 1000 <= 75 * 60000 and any(k in e["judul"].upper() for k in ("CPI", "FOMC", "FEDERAL FUNDS", "INTEREST RATE", "FED ")):
+                kunci = f"b{e['ts']}"
+                if kunci not in pr:
+                    pr[kunci] = now
+                    out += modal_proteksi(d, "SHORT", 0.3, "Hidung Abdul, " + str(e["judul"])[:30], harga)
+    except Exception as ex:
+        print("[WARN] gurita proteksi berita", ex)
+    try:
+        if him is None:
+            import qse_himbauan as QH
+            him = QH._baca().get("kirim") or {}
+        for jenis, arah in (("dump", "LONG"), ("pump", "SHORT")):
+            tk = float(him.get(jenis) or 0)
+            if tk and now - tk <= 1800 and pr.get("h" + jenis) != tk:
+                pr["h" + jenis] = tk
+                out += modal_proteksi(d, arah, 0.5, "Himbauan BTC rawan " + jenis, harga)
+    except Exception as ex:
+        print("[WARN] gurita proteksi himbauan", ex)
+    for k in [k for k, v in pr.items() if isinstance(v, (int, float)) and k.startswith("b") and now - v > 7 * 86400]:
+        pr.pop(k, None)
+    return out
+
+
 def modal_buru(d):
     """Pilih sinyal 2+ teknik searah yang searah BTC, paling banyak MODAL_SLOT posisi, satu per koin. Return kartu baru."""
     import qse_saya as SY
@@ -407,18 +492,28 @@ def modal_buru(d):
     m = _modal(d); now = time.time(); out = []
     sudah = {p["key"] for p in m["buka"]} | {x.get("key") for x in m["tutup"][-300:]}
     pakai = {p["sym"] for p in m["buka"]}
+    # QC 104 catatan pemeriksaan: kenapa sinyal jalur tidak jadi sinyal gurita. Tampil di menu Otak Gurita.
+    dg = dict(t=now, jalur=0, segar=0, tunggal=0, libur=0, lawan_btc=0, geser=0, lolos=0, slot=len(m["buka"]))
+    m["diag"] = dg
     if len(m["buka"]) >= MODAL_SLOT or m["saldo"] <= 5:
+        dg["penuh"] = True
         return out
     bj0 = [None, False]
     libur = modal_libur(m, now)
     calon = []
     for k, it in _sumber():
         try:
+            dg["jalur"] += 1
             t0 = it.get("t", 0); key = f"{k}|{it.get('sym')}|{int(t0)}"
             if key in sudah or now - t0 > MODAL_SEGAR or it.get("uji_live") or it.get("radar") or it["sym"] in pakai:
                 continue
+            dg["segar"] += 1
             konf = len(it.get("combo") or []) + 1
-            if konf < 2 or it.get("arah") in libur:
+            if konf < 2:
+                dg["tunggal"] += 1
+                continue
+            if it.get("arah") in libur:
+                dg["libur"] += 1
                 continue
             bj = it.get("btc_j")
             if bj is None:
@@ -427,6 +522,7 @@ def modal_buru(d):
                 bj = bj0[0]
             L = it["arah"] == "LONG"
             if bj is None or not ST.konf_utama(it["arah"], bj, konf) or (bj < 0 and L) or (bj > 0 and not L):
+                dg["lawan_btc"] += 1
                 continue
             calon.append((-konf, it.get("peringkat") or 999, k, it, key, bj, konf))
         except Exception as ex:
@@ -441,7 +537,9 @@ def modal_buru(d):
         e0 = float(it["entry"]); sl = float(it.get("sl0", it["sl"])); r0 = abs(e0 - sl)
         px = SY.harga_live(it["sym"]) or e0
         if r0 <= 0 or abs(px - e0) / r0 > MODAL_GESER or (px - sl) * dd <= 0:
+            dg["geser"] += 1
             continue
+        dg["lolos"] += 1
         risk = abs(px - sl); sl_pct = risk / px * 100
         rp, rcat = modal_risiko(m, konf)
         usd = round(m["saldo"] * rp / 100, 2); nilai = usd / (sl_pct / 100); lev = MD.lev_saran(sl_pct)
@@ -485,6 +583,18 @@ def modal_teks(d):
             rows.append(ut)
     except Exception as ex:
         print("[WARN] gurita tren tua", ex)
+    dg = m.get("diag")
+    if dg:          # QC 104
+        umur = (time.time() - dg.get("t", 0)) / 60
+        rows.append(f"🔎 Pemeriksaan terakhir {umur:.0f} menit lalu: {dg.get('jalur', 0)} posisi jalur robot, {dg.get('segar', 0)} masih segar "
+                    f"(umur di bawah 2 jam, belum diambil). Dari yang segar: {dg.get('tunggal', 0)} teknik tunggal, {dg.get('libur', 0)} arah libur, "
+                    f"{dg.get('lawan_btc', 0)} melawan BTC 4J, {dg.get('geser', 0)} harga sudah bergeser lebih dari 0.5R, "
+                    f"<b>{dg.get('lolos', 0)} jadi sinyal</b>." + (" Slot gurita penuh." if dg.get("penuh") else "")
+                    + (" Sinyal gurita butuh 2+ teknik searah BTC di koin yang sama, jadi wajar kosong saat jalur sepi." if not dg.get("lolos") else ""))
+        if umur > 45:
+            rows.append("⚠️ Gurita belum memeriksa lebih dari 45 menit. Cek apakah listener jalan (sudo systemctl status qse-listener).")
+    else:
+        rows.append("🔎 Gurita belum pernah memeriksa sejak pasang. Tunggu 15 menit, lalu buka lagi.")
     rows.append("🧪 " + MODAL_UJI)
     return "\n".join(rows)
 
@@ -824,6 +934,7 @@ def jalankan():
             print("[WARN] gurita buru", ex)
         try:
             pesan += modal_kelola(d)
+            pesan += modal_proteksi_cek(d)          # QC 104b
             pesan += modal_buru(d)
         except Exception as ex:
             print("[WARN] gurita modal", ex)

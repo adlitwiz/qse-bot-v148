@@ -404,6 +404,7 @@ def cek(now=None, data=None):
             return []
     d["coba"] = now
     semua = []
+    terbaca, dekat = 0, []
     cache = {}          # QC 96: indeks kas dicek tiap jam (bursa tutup di jam berbeda), satu unduhan per simbol
     for kode, ysym, nama, bsym, jenis in INST:
         try:
@@ -416,8 +417,17 @@ def cek(now=None, data=None):
             if len(tgl) < 210:
                 continue
             semua += proses(d, kode, jenis, nama, bsym, tgl, O, H, L, C)
+            terbaca += 1
+            try:          # QC 104: seberapa dekat ke sinyal, untuk menu Spot dan CFD
+                if jenis in ("dip", "dipsaham") and kode not in d["buka"]:
+                    r2_ = rsi2(C)[-1]
+                    if C[-1] > sma(C, 200)[-1]:
+                        dekat.append((round(r2_, 1), nama))
+            except Exception:
+                pass
         except Exception as ex:
             print("[WARN] cfd", kode, ex)
+    d["diag"] = dict(t=now, terbaca=terbaca, total=len(INST), dekat=sorted(dekat)[:4])
     _tulis(d)
     if semua:
         teks = "📊 <b>CFD HARIAN · Bybit TradFi</b>\n\n" + "\n\n".join(semua) + "\n\n🧪 " + UJI
@@ -449,6 +459,17 @@ def rapor():
         else:
             rows.append(f"• {n} ({b}){' DIP' if k.endswith('.DIP') else ' AKHIR BULAN' if k.endswith('.TOM') else ''} BUY jalan, "
                         f"SL {p['e'] - p['sl']:+.2f} poin dari harga masuk")
+    dg = d.get("diag")
+    if dg:          # QC 104
+        rows.append(f"🔎 Pemeriksaan terakhir {time.strftime('%d/%m %H:%M', time.gmtime(dg['t'] + 7 * 3600))} WIB: "
+                    f"{dg['terbaca']} dari {dg['total']} aturan terbaca dari Yahoo."
+                    + (" Paling dekat sinyal DIP (RSI2 harus di bawah 5): " + ", ".join(f"{n} {r:g}" for r, n in dg["dekat"]) + "." if dg.get("dekat") else ""))
+        rows.append("Sinyal AKHIR BULAN berikutnya: hari kerja terakhir bulan ini, sesudah bursa tutup. Uji: rata 4 sampai 5 sinyal per minggu, "
+                    "tapi datangnya bergerombol (saat pasar turun 2 hari dan di akhir bulan).")
+        if time.time() - dg["t"] > 3 * 3600:
+            rows.append("⚠️ CFD belum memeriksa lebih dari 3 jam. Cek apakah listener jalan.")
+    else:
+        rows.append("🔎 CFD belum memeriksa sejak pasang. Pemeriksaan jalan tiap jam.")
     rows.append("Aturan: Emas dan Perak breakout 20 hari + SL berjalan 3 ATR. 8 indeks: DIP (RSI2 di bawah 5, jual RSI2 di atas 70) "
                 "dan AKHIR BULAN (beli hari kerja terakhir, tahan 3 hari), keduanya hanya saat indeks di atas SMA200.")
     rows.append(UJI)

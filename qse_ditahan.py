@@ -223,6 +223,12 @@ def kelas(k, it, prio=None):
             return "UTAMA", f"⭐ konfluensi {len(it['combo']) + 1} teknik searah"
     except Exception:
         pass
+    try:          # QC 104 rawan sapu: entry menempel swing 20 candle, SL di seberang kolam stop
+        if ST_.rawan_sapu(it.get("kolam"), 1):
+            return "RINGAN", (f"rawan sapu: swing 20 candle 4J hanya {it['kolam']:.1f}R dari entry, SL di seberang kolam stop "
+                              "(uji PF 0.59-0.80 di 4 periode)")
+    except Exception:
+        pass
     if it.get("netral_buka"):
         return "RINGAN", "BTC netral: arah ini dibuka tanpa izin BTC (uji tidak konsisten)"
     if (it.get("peringkat") or 0) > 110:

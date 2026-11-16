@@ -62,7 +62,7 @@ def mulai_laporan4j():
 
 # v172 QC 70: perintah yang isinya milik pengirim (posisi, modal, catatan). Balasannya bernama dan tombolnya terkunci ke pengirim.
 PRIBADI = {"/entry", "/status", "/milikku", "/punyaku", "/tutup", "/tp", "/sl", "/batal", "/tpall", "/tpsemua", "/slall", "/slsemua", "/ubah",
-           "/modify", "/modif", "/edit", "/modal", "/pindah", "/kelola", "/be", "/hapus", "/catat", "/serok", "/tambah", "/add", "/salah"}
+           "/modify", "/modif", "/edit", "/modal", "/pindah", "/kelola", "/be", "/hapus", "/catat", "/serok", "/tambah", "/add", "/salah", "/otopsi", "/evalrugi", "/pasar", "/vonis", "/arahpasar"}
 BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "Robot jalan otomatis: scan tiap 4 jam dan per jam, pantau posisi tiap menit, berita, peta BTC pagi 07:05 WIB, "
            "dan aturan jaga modal: TP 20% di +0.5R lalu SL ke entry, jam ke-12, batas 30 jam, jeda 24 jam setelah 3 rugi beruntun. "
@@ -86,6 +86,8 @@ BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "🪰⚡ <b>/kebelet</b>: jalur Spot ACM, BAR, PSG (beli saat sentuh support, LONG saja)\n"
            "📊 <b>/cfd</b>: jalur CFD Harian emas, perak, US100, US500 (Bybit TradFi)\n"
            "🧭 <b>/himbauan</b>: info duluan BTC rawan dump atau pump untuk ambil profit posisi jalan\n"
+           "🧭 <b>/pasar</b>: vonis arah semua altcoin detik ini dari BTC, USDT.D, BTC.D, lebar pasar, funding, rasio L/S\n"
+           "🔬 <b>/otopsi</b>: tiap SL atau cutloss dianalisa otomatis, plus prompt siap kirim ke Fable\n"
            "➕ <b>Tambah / serok</b>: Kelola Posisi > ➕ Tambah, ketik USDT tambahan. Entry rata-rata dihitung seperti Bybit\n\n"
            "Perintah ketik lama tetap jalan untuk yang sudah hafal.")
 BANTUAN_SEMUA = BANTUAN
@@ -276,6 +278,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/mingguan", "/pekan"):
         import qse_mingguan as MG
         return MG.teks()
+    if cmd in ("/pasar", "/vonis", "/arahpasar") or (cmd in ("/arah", "/tren") and (not args or args[0] in ("SEMUA", "PASAR", "ALT", "ALTCOIN"))):
+        import qse_vonis as QV          # QC 104: /arah tanpa koin = vonis arah seluruh altcoin detik ini
+        return QV.teks()
     if cmd in ("/arah", "/tren"):
         import qse_arah as AR
         return AR.teks(args)
@@ -346,6 +351,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/kebelet", "/spot"):          # QC 92 rapor jalur Kebelet Spot
         import qse_kebelet as KB
         return KB.rapor()
+    if cmd in ("/otopsi", "/evalrugi"):       # QC 104 rekap rugi dan prompt gabungan untuk Fable
+        import qse_otopsi as QO
+        return QO.rekap(int(SY._angka(args[0]) or 14) if args else 14)
     if cmd in ("/himbauan", "/duluan"):       # QC 100 himbauan BTC rawan dump atau pump
         import qse_himbauan as QH
         return QH.rapor()
@@ -420,7 +428,7 @@ def balas(cmd, args, dari_main=False):
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/himbauan": "HIMBAUAN BTC", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
 
 
 def _sisa_posisi():

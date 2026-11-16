@@ -228,7 +228,7 @@ def jalankan(simbol=None):
         out += _kelola(d)
     except Exception as ex:
         print("[WARN] gzh2 kelola", ex)
-    if d.get("c4") == c4 or not (120 <= now - c4 <= 900):
+    if d.get("c4") == c4 or not (120 <= now - c4 <= 1800):          # QC 104: jendela 15 jadi 30 menit, tahan kalau listener sedang sibuk
         _tulis(d)
         return out
     d["c4"] = c4
@@ -246,19 +246,24 @@ def jalankan(simbol=None):
                 simbol = sorted({r["symbol"] for r in json.load(f)})
         except Exception:
             simbol = []
+    dg = dict(t=now, koin=len(simbol), data=0, setup=0, baru=0, mode="SHORT" if cari_short else "LONG")          # QC 104
+    d["diag"] = dg
     for s in simbol:
         if any(it["sym"] == s for it in d["open"].values()):
             continue
         df = ST._k4(s, 400)
         if df is None or len(df) < 120:
             continue
+        dg["data"] += 1
         x = (setup_short if cari_short else setup_terakhir)(df["high"].values.astype(float), df["low"].values.astype(float),
                                                             df["close"].values.astype(float))
         if not x:
             continue
+        dg["setup"] += 1
         kunci = f"{s}|{x['start']:.10g}|{x['end']:.10g}"
         if kunci in d["kaki"]:
             continue
+        dg["baru"] += 1
         d["kaki"][kunci] = int(now)
         t_ms = int(df.index[-1])
         d["open"][f"{s}|{t_ms}"] = dict(sym=s, t_ms=t_ms, t=now, **x)
@@ -277,4 +282,13 @@ def teks():
         rows.append(f"• {it['sym']} {it.get('arah', 'LONG')} entry {it['entry']:.6g} SL {it['sl']:.6g} TP {it['tp']:.6g}")
     if d.get("catatan"):
         rows.append(d["catatan"])
+    dg = d.get("diag")
+    if dg:          # QC 104
+        rows.append(f"🔎 Pemeriksaan terakhir {time.strftime('%d/%m %H:%M', time.gmtime(dg['t'] + 7 * 3600))} WIB, mode {dg['mode']}: "
+                    f"{dg['koin']} koin, {dg['data']} terbaca, {dg['setup']} punya pola pantulan, <b>{dg['baru']} sinyal baru</b>. "
+                    "Uji: sekitar 1 sinyal per 4 sampai 5 hari.")
+        if time.time() - dg["t"] > 5 * 3600:
+            rows.append("⚠️ GZH belum memeriksa lebih dari 5 jam. Cek apakah listener jalan.")
+    else:
+        rows.append("🔎 GZH belum memeriksa sejak pasang. Pemeriksaan jalan tiap candle 4J tutup.")
     return "\n".join(rows)

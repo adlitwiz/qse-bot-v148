@@ -92,10 +92,35 @@ def kelas_intrabar(r, bj):
     return True
 
 
+# QC 104b perluasan scan 1 jam (riset/upgrade/run_v210_jam.py, hasil_v210_jam.txt). 1.521 kombinasi teknik x arah x jam x gerak x syarat,
+# standar PF >= 1.40 di latih, uji, 12 bulan, 6 bulan. Lolos 10, dipasang 2 yang jam tetangganya juga bagus (bukan kebetulan satu jam):
+#   Ichimoku SHORT jam ke-3, gerak 0-0.4R, swing 10 candle <= 2.58 ATR: PF 1.78 / 1.70 / 1.81 / 2.44 (n 157 / 83 / 46 / 25).
+#       Tetangga: jam 1 PF 1.51 / 1.37 / 1.54 / 2.17, jam 2 PF 2.32 / 1.18 / 1.39 / 2.72.
+#   SMC CHoCH SHORT jam ke-2, gerak 0-0.4R, swing 10 candle <= 2.58 ATR: PF 1.50 / 1.78 / 1.84 / 2.56 (n 108 / 84 / 51 / 23).
+#       Tetangga: jam 1 PF 1.34 / 1.81 / 1.54 / 2.48. Jam 3 PF 1.68 / 0.78 / 0.70 / 0.78, jadi jam 3 tidak dipasang.
+# Tidak dipasang walau lolos angka: MSB HPZ LONG jam 2 (jam 1 PF 0.95) dan McGinley SHORT jam 3 swing jauh (jam 1 latih PF 0.91).
+TERUJI_SYARAT = {("ichimoku", "SHORT"): dict(jam=(2.5, 3.25), geser=0.4, sw=2.58, label="PF 1.70-2.44"),
+                 ("smc_choch", "SHORT"): dict(jam=(1.5, 2.25), geser=0.4, sw=2.58, label="PF 1.50-2.56")}
+
+
+def momentum_syarat(r, now=None):
+    q = TERUJI_SYARAT.get((r["k"], r["arah"]))
+    if not q or os.environ.get("QSE_MOMENTUM_BARU", "1") == "0" or r["mundur"] or r.get("intrabar") or r["ringan"] or not r.get("t4"):
+        return False
+    jam = ((now or time.time()) - (r["t4"] / 1000 + 14400)) / 3600
+    sw = r.get("sw_atr")
+    if not (q["jam"][0] < jam <= q["jam"][1]) or not (0 <= r["geser"] <= q["geser"]) or sw is None or sw > q["sw"]:
+        return False
+    r["momentum"] = q["label"]
+    return True
+
+
 def momentum(r, now=None):
     """True kalau sinyal tunggal ini lolos MOMENTUM: teknik dan arah terdaftar, candle 4J terakhir, harga sudah bergerak searah (0 sampai
     0.5R), umur sejak candle tutup tidak lewat batas jam. Yang TERUJI dan bukan kelas ringan diberi label PF (r["momentum"]). Yang
     belum teruji wajib candle 1 jam terakhir searah, lalu dikirim sebagai KELAS RINGAN."""
+    if momentum_syarat(r, now):
+        return True
     m = MOMENTUM.get((r["k"], r["arah"]))
     if not m or r["mundur"] or r.get("intrabar") or not (0 <= r["geser"] <= 0.5) or not r.get("t4"):
         return False
@@ -123,6 +148,9 @@ def status_rutin(r):
         return "📡 Candle 4J masih berjalan: ikut scan 1 jam kalau kelasnya lolos uji intrabar."
     if r.get("mundur"):
         return "🕓 Sinyal candle 4J SEBELUMNYA: masuk sudah telat 4-8 jam, tidak dikirim ulang scan rutin (uji telat PF 1.30-1.41, lebih lemah)."
+    if r.get("sapu"):
+        return (f"🧹 Rawan sapu: swing 20 candle 4J hanya {r.get('kolam') or 0:.1f}R dari entry, SL di seberang kolam stop. "
+                "Uji 4 periode PF 0.59-0.80. Kelas ringan, lebih baik dilewati.")
     if r.get("ringan"):
         return ("🟨 Tidak disiarkan rutin 4 jam: kelas ringan (1 teknik koin peringkat lebih dari 110, melawan BTC, atau kelompok lemah). "
                 "Uji kelompok ini rugi, PF 0.80-0.98. Lebih baik dilewati.")

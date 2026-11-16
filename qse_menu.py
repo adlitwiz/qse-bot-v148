@@ -62,6 +62,9 @@ SUB = {
         [("🐙 Otak Gurita", "c:/gurita"), ("😴 Mode Tidur", "c:/tidur")],
         [("🌐 Spot dan CFD", "m:🌐 Spot dan CFD"), ("❤️ Nyawa / proteksi", "c:/nyawa")],
         [("🧭 Himbauan BTC rawan dump/pump", "c:/himbauan")],
+        [("🧭 Vonis arah pasar detik ini", "c:/pasar")],
+        [("⚡ Uji momentum scan 1 jam", "c:/ujimomentum"), ("🤖 Menu untuk laptop", "c:/menu")],
+        [("🔬 Otopsi rugi + prompt Fable", "c:/otopsi")],
         [("🛡️ SL sudah di entry", "t:/slok"), ("🗑️ Hapus catatan salah", "t:/hapus")],
         [("🔀 Pindah posisi ke orang lain", "t:/pindah")],
         [("❓ Info lengkap", "c:/bantuan")]]),
@@ -168,10 +171,50 @@ def kirim_menu(teks="🤖 <b>QSE v150 | MENU</b>\nMenu bawah dipasang lagi. Lipa
     return js.get("ok", False)
 
 
+# QC 105 menu untuk laptop. Telegram Desktop sering tidak menampilkan menu bawah (reply keyboard) di grup, jadi ada dua jalan lain yang
+# tampil di semua perangkat: (1) pesan MENU bertombol (inline) yang isinya sama dengan menu bawah, (2) tombol "/" atau "Menu" bawaan
+# Telegram di samping kolom ketik, berisi daftar perintah utama (setMyCommands). Menu bawah di HP tidak berubah.
+VERSI_INLINE = 1
+PERINTAH_TELEGRAM = [("menu", "Buka menu tombol (HP dan laptop)"), ("status", "Posisi dan order kamu"), ("sinyal4j", "Pindai sinyal 4 jam sekarang"),
+                     ("pasar", "Vonis arah semua altcoin detik ini"), ("cek", "Cek koin, contoh: /cek BTC"), ("berita", "Berita dan jadwal rilis"),
+                     ("laporan4j", "Laporan sinyal 4 jam"), ("gurita", "Otak Gurita"), ("lalat", "Lalat Abdul"), ("cfd", "Jalur CFD harian"),
+                     ("kebelet", "Kebelet Spot"), ("himbauan", "Himbauan BTC rawan dump atau pump"), ("otopsi", "Evaluasi rugi dan prompt Fable"),
+                     ("bantuan", "Daftar semua perintah")]
+
+
+def inline_utama():
+    """Menu utama sebagai tombol di dalam pesan. u:<label> diperlakukan sama dengan menekan tombol menu bawah."""
+    return {"inline_keyboard": [[{"text": t, "callback_data": "u:" + t} for t in r] for r in UTAMA]}
+
+
+def kirim_menu_inline():
+    js = _api("sendMessage", parse_mode="HTML", reply_markup=inline_utama(),
+              text="🤖 <b>QSE v150 | MENU</b> (untuk laptop dan HP)\nTekan tombol di bawah. Isinya sama dengan menu bawah di HP. "
+                   "Sematkan pesan ini supaya gampang dicari, atau ketik /menu kapan saja.")
+    if js.get("ok"):
+        _st({"versi_inline": VERSI_INLINE})
+    return js.get("ok", False)
+
+
+def pasang_perintah():
+    """Daftar perintah di tombol / atau Menu bawaan Telegram (semua perangkat). Aman dipanggil berulang."""
+    cm = [{"command": c, "description": d} for c, d in PERINTAH_TELEGRAM]
+    ok = False
+    for scope in ({"type": "all_group_chats"}, {"type": "default"}):
+        ok = bool(_api("setMyCommands", chat_id=None, commands=cm, scope=scope).get("ok")) or ok
+    return ok
+
+
 def pastikan_menu():
     """Dipanggil saat listener mulai: kirim keyboard sekali per versi tata letak."""
     if _st().get("versi") != VERSI:
         kirim_menu()
+    try:
+        pasang_perintah()
+        if _st().get("versi_inline") != VERSI_INLINE:
+            kirim_menu_inline()
+    except Exception as ex:
+        print("[WARN] menu laptop", ex)
 
 
 # ---------- per orang ----------
@@ -217,6 +260,7 @@ def _posisi_rows(uid, nama=""):
             rows.append([("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY"), ("✋ Tutup", f"y:/tutup {k}")])
             rows.append([("✏️ Koreksi SL", f"t:/modify {k} {a} SL"), ("✏️ Koreksi modal", f"t:/modify {k} USDT")])          # QC 80, 102
             rows.append([("✏️ Koreksi TP1", f"t:/modify {k} {a} TP1"), ("✏️ Koreksi TP2", f"t:/modify {k} {a} TP2")])          # QC 102
+            rows.append([("✏️ Koreksi entry", f"t:/modify {k} {a} ENTRY")])          # QC 104
             rows.append([(f"➕ Tambah / serok {a}", f"t:/tambah {k} {a}"), ("🗑️ Salah catat", f"y:/salah {k} {a}")])          # QC 101
     if not rows:
         rows.append([("📭 Belum ada posisi. Lihat sinyal", "c:/sinyal4j")])
@@ -459,11 +503,21 @@ def dari_tombol(cq):
         if mid and isi.split(" ")[0] in ("/tutup", "/tp", "/sl", "/batal", "/tpall", "/slall") and "Yakin" in str((cq.get("message") or {}).get("text", "")):
             _api("deleteMessage", message_id=mid)          # hapus pesan konfirmasi, status dikirim ulang oleh perintah
         return _cmd(isi)
+    if jenis == "u":          # QC 105 tombol menu utama di dalam pesan (laptop)
+        isi = LAMA.get(isi, isi)
+        if isi not in LABEL:
+            return None
+        if LABEL[isi]:
+            return _cmd(LABEL[isi])
+        buka_sub(isi, uid=uid, nm=nm)
+        return None
     if jenis == "m":
         buka_sub(isi, mid, uid, nm)
         return None
     if jenis == "t":
         cmd, petunjuk = isi, TANYA.get(isi, "Ketik isinya")
+        if isi.startswith("/modify ") and isi.endswith(" ENTRY"):          # QC 104 koreksi harga entry
+            petunjuk = "ketik harga entry yang benar sesuai Avg Entry di Bybit, contoh: 68.87"
         if isi.startswith("/modify ") and isi.split()[-1] in ("SL", "TP1", "TP2"):          # QC 102 koreksi level
             lv = isi.split()[-1]
             petunjuk = f"ketik harga {lv} baru sesuai yang terpasang di Bybit, contoh: 72.5" + (". Ketik ENTRY untuk SL ke harga entry" if lv == "SL" else "")

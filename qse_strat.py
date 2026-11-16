@@ -812,6 +812,28 @@ DUMP_SATU = 0.12
 PUMP_SATU = 0.10
 
 
+KOLAM_R = float(os.environ.get("QSE_KOLAM_R", "0.8"))
+
+
+def kolam_r(lo, hi, arah, px, risk, n=20):
+    """QC 104 rawan sapu. Jarak dari entry ke swing 20 candle 4J di sisi SL (kolam stop loss orang lain), dalam R.
+    Riset v203 (riset/upgrade/run_v203_koreksi.py, run_v203b_kolam.py): sinyal siaran dengan kolam kurang dari 0.8R dari entry
+    (harga masuk menempel swing, SL di seberangnya) rugi di latih, uji, 12 bulan, 6 bulan: PF 0.79 / 0.80 / 0.59 / 0.76.
+    Teknik tunggal saja: -8R / -13R / -20R / -10R. Konfluensi 2+ teknik tidak konsisten (6 bulan untung), jadi tidak kena."""
+    try:
+        if not risk or risk <= 0 or len(lo) < n:
+            return None
+        return float((px - min(lo[-n:])) / risk) if arah == "LONG" else float((max(hi[-n:]) - px) / risk)
+    except Exception:
+        return None
+
+
+def rawan_sapu(kolam, konf=1):
+    """QC 104b: MATI secara bawaan. User meminta sinyal yang sudah aktif dipertahankan 100%, jadi aturan ini tidak menurunkan kelas
+    sinyal apa pun kecuali QSE_KOLAM=1. Jarak kolam tetap dicatat di sinyal dan dipakai Otopsi Rugi sebagai temuan."""
+    return kolam is not None and kolam < KOLAM_R and konf < 2 and os.environ.get("QSE_KOLAM", "0") == "1"
+
+
 def pump_tolak(df, arah):
     """SHORT pada koin yang naik lebih dari 30% dalam 30 hari (180 candle 4J) dilewati. Uji 2021-2026 semua jalur:
     SHORT seperti ini PF 0.80 (2021-23) dan 0.79 (2024-26). Dibuang: total naik +28R dan +17R, PF naik di dua periode.
@@ -1471,6 +1493,7 @@ def jalankan(baru_ok=True):
             if cfg.get("tp_r"):
                 it.update(tp=px + cfg["tp_r"] * risk if L else px - cfg["tp_r"] * risk, maks_bar=cfg["maks_bar"])
             it.update(mutu=sk, mutu_plus=mp, btc_j=bj, netral_buka=netral_buka)
+            it["kolam"] = kolam_r(df["low"].values.astype(float), df["high"].values.astype(float), arah, float(df["close"].iloc[-1]), risk)
             try:
                 import qse_pola as QPL
                 it["pola_c"] = QPL.pola_sinyal(*(df[x_].values.astype(float) for x_ in ("open", "high", "low", "close")), arah)
@@ -1717,6 +1740,16 @@ def pindai_sekarang(batas=60, top=None, intrabar=False):
             row = dict(intrabar=ekstra.get("ib", 0), netral=nb, luar=luar, peringkat=urut.index(sym) + 1, t4=int(d_.index[-1]) if hasattr(d_, "index") else 0, sym=sym, k=k, nama=cfg["nama"], arah=arah, px=px, sl=px - d * risk, risk=risk, geser=geser, mundur=mundur, pola=pc,
                        spesialis=sp_ok, nilai=nilai - (1 if ringan else 0), why=why, tick=tick.get(sym, 0.0001), ringan=ringan,
                        entry_robot=cl, tp=(px + (ekstra["tp"] - cl)) if ekstra.get("tp") else (px + d * cfg["tp_r"] * risk) if cfg.get("tp_r") else None)
+            try:
+                row["kolam"] = kolam_r(d_["low"].values.astype(float), d_["high"].values.astype(float), arah, cl, risk)
+            except Exception:
+                row["kolam"] = None
+            try:          # QC 104b jarak ke swing 10 candle 4J di sisi SL, dalam ATR (rumus run_v173_ev sw_atr), untuk momentum scan 1 jam
+                h_, l_, c_ = d_["high"].values.astype(float), d_["low"].values.astype(float), d_["close"].values.astype(float)
+                a_ = float(_atr(h_, l_, c_)[-1])
+                row["sw_atr"] = ((c_[-1] - (l_[-10:].min() - 0.2 * a_)) if arah == "LONG" else ((h_[-10:].max() + 0.2 * a_) - c_[-1])) / a_
+            except Exception:
+                row["sw_atr"] = None
             (lewat if why else valid).append(row)
     try:          # QC 73: kelas disamakan dengan kartu jalur live (eks-tahanan otak, skor Tren rendah, kompas merah = kelas ringan)
         import qse_ditahan as DT_
@@ -1735,6 +1768,8 @@ def pindai_sekarang(batas=60, top=None, intrabar=False):
     for r in valid:
         g = grup[(r["sym"], r["arah"])]
         r["konf"] = len(g); r["konf_nama"] = [v for kk, v in g.items() if kk != r["k"]]
+        if rawan_sapu(r.get("kolam"), r["konf"]) and not r["ringan"]:          # QC 104
+            r["ringan"] = True; r["sapu"] = True; r["nilai"] -= 1
         if konf_utama(r["arah"], bj, r["konf"]) and not r["luar"] and not r["netral"]:
             r["ringan"] = False; r["nilai"] += 1 + r["konf"]
         elif r["konf"] < 2 and r["peringkat"] > PERINGKAT_RINGAN:
@@ -1778,7 +1813,7 @@ def buka_radar(r, now=None):
     it = dict(sym=sym, arah=arah, entry=px, sl=sl, sl0=sl, risk=risk, best=px, bar=0, t=now, last=(t4 - H4) if t4 else 0, close=px,
               tick=r.get("tick") or 0.0001, sl_atr=cfg.get("sl_atr", SL_ATR), trail_atr=cfg.get("trail_atr", TRAIL_ATR),
               trail_pct_2r=cfg.get("trail_pct_2r"), be_r=cfg.get("be_r"), intrabar=int(r["intrabar"]), radar=True,
-              peringkat=r.get("peringkat") or 0, uji_live="", mutu=0, mutu_plus=[], btc_j=btc_jarak(), netral_buka=bool(r.get("netral")))
+              peringkat=r.get("peringkat") or 0, uji_live="", mutu=0, mutu_plus=[], btc_j=btc_jarak(), netral_buka=bool(r.get("netral")), kolam=r.get("kolam"))
     if cfg.get("tp_r"):
         it.update(tp=px + cfg["tp_r"] * risk if L else px - cfg["tp_r"] * risk, maks_bar=cfg["maks_bar"])
     if raw is not None and len(raw) >= 262:

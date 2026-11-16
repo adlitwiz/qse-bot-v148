@@ -1,6 +1,7 @@
 """QSE v150 - TRADE KAMU: catatan entry pribadi dari perintah /entry, pemantauan per menit,
 peringatan kasus besar, konsultasi entry, dan statistik WR harian, mingguan, bulanan."""
 import fcntl
+import html
 import json
 import math
 import os
@@ -304,6 +305,18 @@ def ubah(fn):
         return hasil
 
 
+TAG_ORANG = {"cek_darurat", "kawal", "cek_patah", "peringatan_dini", "siaga_berita", "posisi_serentak", "_isi_himbauan", "_isi_arah", "_isi_otopsi"}
+
+
+def sebut(uid, nama=None):
+    """QC 104: tag orang di Telegram (text mention, bunyi notifikasi walau tanpa username). Saklar QSE_TAG=0 mati."""
+    nm = html.escape(str(nama or nama_pengguna(uid)))
+    u = str(uid or _peng().get("pemilik") or "")
+    if os.environ.get("QSE_TAG", "1") != "0" and u.lstrip("-").isdigit():
+        return f'<a href="tg://user?id={u}">{nm}</a>'
+    return f"<b>{nm}</b>"
+
+
 def per_orang(fn):
     """Jalankan fn untuk tiap orang (kalau belum ada pengirim aktif). Hasil list pesan digabung, diberi nama kalau
     lebih dari satu orang."""
@@ -322,7 +335,9 @@ def per_orang(fn):
                 res = []
             finally:
                 del _CTX.uid
-            if res and len(us) > 1:
+            if res and fn.__name__ in TAG_ORANG:          # QC 104: peringatan posisi men-tag pemiliknya
+                res = [f"👤 {sebut(u)}  ·  {m}" if isinstance(m, str) else m for m in res]
+            elif res and len(us) > 1:
                 res = [f"👤 <b>{nama_pengguna(u)}</b>  ·  {m}" if isinstance(m, str) else m for m in res]
             out += list(res)
         return out
@@ -2212,10 +2227,13 @@ def ubah_level(args):
         elif k in ("USDT", "UANG", "MARGIN", "LEV", "LEVERAGE"):
             baru["lev" if k.startswith("LEV") else "usdt"] = _angka(v.rstrip("X").replace("$", ""))
             i += 2
+        elif k in ("ENTRY", "MASUK", "HARGA"):          # QC 104 koreksi harga entry yang salah ketik
+            baru["entry"] = _angka(v)
+            i += 2
         else:
             i += 1
     if not baru or any(v is None for v in baru.values()):
-        return "Format: /modify AUSDT sl 0.99 tp1 1.05 tp2 1.08 atau /modify AUSDT sl entry"
+        return "Format: /modify AUSDT sl 0.99 tp1 1.05 tp2 1.08, /modify AUSDT sl entry, atau /modify AUSDT entry 1.02"
 
     def f(d):
         rows = []
@@ -2223,7 +2241,22 @@ def ubah_level(args):
             it["risk0"] = _risk0(it)
             it["sisa"], it["real"] = _sisa(it), _real(it)
             L = it["arah"] == "LONG"
+            if "entry" in baru:          # QC 104: harga entry salah ketik. SL, TP, dan nilai USDT tetap, R dihitung ulang dari entry baru.
+                e_baru, e_lama = baru["entry"], it["entry"]
+                sl_asli = it.get("sl0", it["sl"])
+                if (L and not (sl_asli < e_baru < it["tp2"])) or ((not L) and not (it["tp2"] < e_baru < sl_asli)):
+                    rows.append(f"{sym} {it['arah']}: entry {fp(e_baru, it['tick'])} harus di antara SL {fp(sl_asli, it['tick'])} "
+                                f"dan TP2 {fp(it['tp2'], it['tick'])}. Cek lagi angkanya.")
+                    continue
+                if abs(it["sisa"] - 1) < 0.005 and abs(it["real"]) < 1e-9:
+                    it["risk0"] = max(abs(e_baru - sl_asli), 1e-12)          # belum ada TP/serok: 1R = jarak entry baru ke SL
+                it["entry_lama"] = e_lama
+                it["entry"] = e_baru
+                rows.append(f"✏️ {sym} {it['arah']}: entry dikoreksi {fp(e_lama, it['tick'])} jadi <b>{fp(e_baru, it['tick'])}</b>. "
+                            "SL, TP, dan nilai USDT tetap. PNL dan R di Status dihitung dari entry baru.")
             for k, v in baru.items():
+                if k == "entry":
+                    continue
                 if k == "usdt":          # QC 80 koreksi modal: angka yang diketik = nilai posisi yang masih jalan sekarang
                     it["usdt_lama"] = it.get("usdt")
                     it[k] = v / it["sisa"] if it["status"] in ("TERISI", "TP1") and it["sisa"] > 0.001 else v
@@ -2259,7 +2292,7 @@ def ubah_level(args):
                     rows.append(f"✏️ Koreksi modal: entry yang masih jalan {float(it['usdt']) * it['sisa']:,.2f} USDT "
                                 f"(sisa {it['sisa'] * 100:.0f}% posisi), entry awal dihitung ulang {float(it['usdt']):,.2f} USDT. "
                                 "PNL USDT di Status ikut angka ini.")
-                if not any(k in baru for k in ("sl", "tp1", "tp2")):
+                if not any(k in baru for k in ("sl", "tp1", "tp2", "entry")):
                     continue
             rows.append(f"{sym} {it['arah']} diperbarui\nSL {fp(it['sl'], t)} | TP1 {fp(it['tp1'], t)} | TP2 {fp(it['tp2'], t)}\n"
                         f"Kalau kena SL: total {_hasil_di(it, sl_now, 'SL'):+.2f}R"
@@ -5386,7 +5419,7 @@ def sinyal_jalur(jam=False):
 
 
 
-SIAGA_AMBANG = float(os.environ.get("QSE_SIAGA_AMBANG", "0.5"))
+SIAGA_AMBANG = float(os.environ.get("QSE_SIAGA_AMBANG", "0.3"))          # QC 104: 0.5 jadi 0.3, hanya SHORT (v205)
 
 
 @per_orang
@@ -5398,7 +5431,12 @@ def siaga_berita():
                                    ambang 0.5 sampai 3R semua plus).
       tutup semua yang untung (aturan lama): latih -21.0R, uji +87.0R. Menutup untung kecil 0 sampai +1R merusak latih (-113R).
       CL posisi minus (ide QC 93): latih +3.4R, uji -24.6R, 12 bulan -12.9R. Sesudah rilis (H+1) lebih jelek. TIDAK dipasang.
-    NFP dan PCE: tutup yang untung rugi di uji (-114R), CL minus hampir nol (+2R). Tidak ada aksi."""
+    NFP dan PCE: tutup yang untung rugi di uji (-114R), CL minus hampir nol (+2R). Tidak ada aksi.
+    QC 104 penajaman (run_v205_hidung2.py, run_v205b.py, riset/berita/hasil_v205_hidung2.txt), beda lawan tahan semua:
+      aturan lama (LONG dan SHORT >= +0.5R)   : latih +23.4R, uji +75.6R, 12 bulan +66.9R, 6 bulan +51.5R.
+      SHORT saja >= +0.3R (dipasang)          : latih +81.3R, uji +108.2R, 12 bulan +71.1R, 6 bulan +53.1R. Lebih baik di 4 periode.
+      LONG >= +0.3R ditutup                   : latih -55.6R, uji -18.4R, 12 bulan +3.3R, 6 bulan +2.4R. LONG sekarang DITAHAN.
+      Waktu aksi 1, 4, 8, 12, 24 jam sebelum rilis tidak lebih baik dari 2 jam secara konsisten. TP 50% separuh hasilnya."""
     try:
         import qse_berita as BR
         kal = BR.kalender()
@@ -5424,15 +5462,17 @@ def siaga_baris(judul, jalan, harga=None):
     a = SIAGA_AMBANG
     if not jalan:
         return [f"👃 <b>HIDUNG ABDUL</b>: {judul} sekitar 1 jam lagi. Tidak ada posisi jalan. Sinyal baru ditahan sampai 1 jam sesudah rilis."]
-    rows = [f"👃 <b>HIDUNG ABDUL</b>: {judul} sekitar 1 jam lagi.\nAturan teruji: posisi untung minimal <b>+{a:g}R</b> ditutup sekarang. "
-            f"Untung kecil dan posisi minus DITAHAN dengan SL tetap (CL sebelum atau sesudah berita terbukti rugi). "
-            f"Uji Jul 2022-Okt 2026: plus di latih, uji, 12 bulan, 6 bulan (+23R, +76R, +67R, +52R lawan tahan semua)."]
+    rows = [f"👃 <b>HIDUNG ABDUL</b>: {judul} sekitar 1 jam lagi.\nAturan teruji: posisi <b>SHORT</b> yang untung minimal <b>+{a:g}R</b> "
+            f"ditutup sekarang. Posisi LONG, untung kecil, dan posisi minus DITAHAN dengan SL tetap (menutup LONG atau CL sebelum berita "
+            f"terbukti rugi). Uji Jul 2022-Okt 2026: plus di latih, uji, 12 bulan, 6 bulan (+81R, +108R, +71R, +53R lawan tahan semua)."]
     for it in jalan:
         px = harga(it["sym"])
         fl = floating(it, px) if px else None
         kd = it["sym"].replace("USDT", "")
-        if fl and fl["r"] >= a:
-            rows.append(f"✅ <b>{it['sym']} {it['arah']}</b> untung {fl['r']:+.2f}R. <b>TUTUP sekarang</b> dengan MARKET, lalu /tutup {kd} HARGA")
+        if fl and fl["r"] >= a and it["arah"] == "SHORT":
+            rows.append(f"✅ <b>{it['sym']} SHORT</b> untung {fl['r']:+.2f}R. <b>TUTUP sekarang</b> dengan MARKET, lalu /tutup {kd} HARGA")
+        elif fl and fl["r"] >= a:
+            rows.append(f"⏸️ <b>{it['sym']} LONG</b> untung {fl['r']:+.2f}R. Tahan, SL tetap (menutup LONG sebelum CPI/FOMC rugi di uji).")
         elif fl and fl["r"] > 0:
             rows.append(f"⏸️ <b>{it['sym']} {it['arah']}</b> untung kecil {fl['r']:+.2f}R (di bawah +{a:g}R). Tahan, SL tetap.")
         else:

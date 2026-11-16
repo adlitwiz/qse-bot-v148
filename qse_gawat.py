@@ -105,7 +105,12 @@ def teks(d, now=None):
             ""]
     for uid, (nm, bs) in d["siapa"].items():
         sudah = uid in d.get("oke", {})
-        rows.append(f"👤 <b>{html.escape(nm)}</b>" + (f"  ✅ OKE ({html.escape(d['oke'][uid])})" if sudah else "  ⏳ belum OKE"))
+        try:          # QC 104: yang belum OKE di-tag
+            import qse_saya as SY
+            siapa = f"<b>{html.escape(nm)}</b>" if sudah else SY.sebut("" if uid == "pemilik" else uid, nm)
+        except Exception:
+            siapa = f"<b>{html.escape(nm)}</b>"
+        rows.append(f"👤 {siapa}" + (f"  ✅ OKE ({html.escape(d['oke'][uid])})" if sudah else "  ⏳ belum OKE"))
         rows += bs
     rows += ["",
              "Uji 2022-2026 saat BTC bergerak 2% dalam 1 jam melawan posisi: yang untung cukup SL ke entry (TP penuh malah menurunkan "
