@@ -1846,6 +1846,11 @@ def pindai_teks(maks=6):
         valid, lewat, inf = pindai_sekarang()
     except Exception as ex:
         return f"🔎 <b>PINDAI PAKSA</b>: gagal mengambil data ({TG.e(str(ex)[:120])}). Coba lagi sebentar."
+    for r in valid:          # QC 107: label ✨ Golden Moment juga tampil di pindai paksa
+        try:
+            RD.golden(r, inf.get("bj"))
+        except Exception:
+            pass
     return TG.PISAH.join(RD.bubble(valid, lewat, inf, "PINDAI PAKSA", maks=maks))
 
 

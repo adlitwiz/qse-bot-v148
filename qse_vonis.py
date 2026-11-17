@@ -14,7 +14,12 @@ Jumlah suara -14 sampai +14. Vonis: +5 atau lebih = LONG ALTCOIN, -5 atau kurang
 Funding, rasio L/S, dan Fear and Greed ditampilkan sebagai catatan kerumunan, tidak ikut suara (ujinya tidak konsisten, riset v201).
 Vonis ini ringkasan keadaan, bukan sinyal entry. Sinyal tetap dari teknik yang lolos uji.
 Perubahan vonis (LONG <-> SHORT, bertahan 2 pemeriksaan) dikabarkan ke grup dan pemilik posisi yang melawan di-tag.
-Saklar QSE_VONIS=0 mematikan kabar otomatis. Perintah /pasar tetap jalan."""
+Saklar QSE_VONIS=0 mematikan kabar otomatis. Perintah /pasar tetap jalan.
+
+QC 107: keluaran /pasar dibuat konkrit, tiga jawaban di depan: (a) keputusan FOKUS LONG / FOKUS SHORT / TRANSISI dengan jumlah bahan searah,
+umur tren BTC, dan ukuran posisi, (b) nasib tiap posisi yang jalan terhadap vonis, lengkap dengan harga SL, harga +0.5R, dan tindakan yang
+SUDAH TERUJI (bukan saran baru: cutloss lebih awal dan kunci profit lebih awal ditolak uji QC 104), (c) 1-2 sinyal valid searah vonis yang
+harganya masih layak, dengan Entry, SL, TP. Daftar suara tiap bahan pindah ke bawah."""
 import html
 import json
 import os
@@ -54,6 +59,11 @@ def bahan():
         x["bj"] = ST.btc_jarak()
     except Exception as ex:
         print("[WARN] vonis btc jarak", ex)
+    try:
+        import qse_strat as ST
+        x["umur"] = ST.umur_tren(); x["fase"] = ST.fase_tua(x["umur"])
+    except Exception as ex:
+        print("[WARN] vonis umur", ex)
     try:
         import bybit_fetch as B
         x["tickers"] = B.get_tickers()
@@ -149,35 +159,92 @@ def hitung(x=None):
     if not lengkap:
         vonis = "NETRAL"
     return dict(vonis=vonis, skor=skor, maks=maks, faktor=F, catatan=cat, kuat=kuat, lemah=lemah, lengkap=lengkap,
-                kompas=k.get("status"), t=time.time())
+                kompas=k.get("status"), t=time.time(), bj=bj, umur=x.get("umur"), fase=x.get("fase"), himbauan=h,
+                harga={s_: v_.get("last") for s_, v_ in tk.items() if v_.get("last")} if tk else {})
 
 
 IKON = {"LONG": "🟢", "SHORT": "🔴", "NETRAL": "⚪"}
-ARTI = {
-    "LONG": ("Arus mendukung LONG altcoin. Ambil sinyal LONG Kelas Utama. SHORT hanya konfluensi 2+ teknik, ukuran ringan. "
-             "Posisi SHORT yang jalan: jangan ditambah, pastikan SL terpasang."),
-    "SHORT": ("Arus mendukung SHORT altcoin. Ambil sinyal SHORT Kelas Utama. LONG hanya konfluensi 2+ teknik, ukuran ringan. "
-              "Posisi LONG yang jalan: jangan ditambah, pastikan SL terpasang."),
-    "NETRAL": ("Arah campur, belum ada pihak yang menang. Sinyal dua arah tetap boleh, pilih yang searah sisi BTC 4J dan konfluensi 2+ teknik "
-               "(uji saat BTC netral: 2+ teknik searah PF 1.6-2.9, melawan sisi BTC PF 0.7-1.4). Jangan besarkan ukuran."),
+JUDUL = {"LONG": "🟢 FOKUS LONG", "SHORT": "🔴 FOKUS SHORT", "NETRAL": "⚪ TRANSISI / TUNGGU PANTULAN"}
+UKURAN = {
+    "LONG": "Ambil LONG Kelas Utama ukuran normal. SHORT baru ditahan, kecuali konfluensi 2+ teknik dengan ukuran ringan.",
+    "SHORT": "Ambil SHORT Kelas Utama ukuran normal. LONG baru ditahan, kecuali konfluensi 2+ teknik dengan ukuran ringan.",
+    "NETRAL": ("Belum ada pihak yang menang. Ambil hanya konfluensi 2+ teknik yang searah sisi BTC 4J, ukuran ringan. Jangan besarkan lot "
+               "(uji saat BTC netral: 2+ teknik searah PF 1.6-2.9, melawan sisi BTC PF 0.7-1.4)."),
 }
+ARTI = UKURAN          # nama lama, dipakai uji
 
 
-def _posisi(vonis, tag=False):
-    """Baris posisi yang melawan vonis. tag=True: semua orang, pemilik di-tag. tag=False: orang yang sedang aktif saja."""
-    if vonis not in ("LONG", "SHORT"):
-        return []
+def _fp(x, sym=None):
     import qse_saya as SY
+    return SY.fp(x, SY.tick_of(None, x))
+
+
+def _harga(v, sym):
+    px = (v.get("harga") or {}).get(sym)
+    if px:
+        return float(px)
+    try:
+        import qse_saya as SY
+        return SY.harga_live(sym)
+    except Exception:
+        return None
+
+
+def nasib(v, tag=False):
+    """Baris per posisi jalan: searah atau melawan vonis, dengan harga dan tindakan yang sudah teruji.
+    tag=True: semua orang, pemilik di-tag. tag=False: orang yang sedang aktif saja."""
+    import qse_saya as SY
+    vonis = v["vonis"]
+    h = v.get("himbauan") or {}
+    try:
+        import qse_himbauan as QH
+        kd = QH.kondisi(h.get("ls"), h.get("f3"))
+        amb_h = QH.AMBANG_R
+    except Exception:
+        kd, amb_h = {}, 0.5
 
     def isi():
         d = SY._load()
         out = []
         for it in d["open"].values():
-            if it.get("status") in ("TERISI", "TP1") and it["arah"] != vonis:
-                px = SY.harga_live(it["sym"])
-                fl = SY.floating(it, px) if px else None
-                out.append(f"{'🟢' if it['arah'] == 'LONG' else '🔴'} {it['sym']} {it['arah']}" + (f" {fl['r']:+.2f}R" if fl else ""))
-        return [("Posisi melawan vonis: " + ", ".join(out))] if out else []
+            if it.get("status") not in ("TERISI", "TP1"):
+                continue
+            sym, arah = it["sym"], it["arah"]
+            L = arah == "LONG"
+            px = _harga(v, sym)
+            fl = SY.floating(it, px) if px else None
+            r = fl["r"] if fl else None
+            e, sl = float(it["entry"]), float(it["sl"])
+            risk = float(it.get("risk0") or abs(e - sl) or 0)
+            h05 = e + (0.5 * risk if L else -0.5 * risk)
+            rt = f" {r:+.2f}R" if r is not None else ""
+            kepala = f"<b>{sym} {arah}</b>{rt}"
+            aman = it.get("status") == "TP1" or (sl - e) * (1 if L else -1) >= 0          # TP awal sudah kena atau SL sudah di entry
+            rawan = (kd.get("dump") and L) or (kd.get("pump") and not L)
+            if rawan and r is not None and r >= amb_h:
+                out.append(f"🚨 {kepala}  ·  Himbauan BTC {'rawan dump' if L else 'rawan pump'} aktif. <b>KUNCI PROFIT: tutup MARKET di {_fp(px)}</b> "
+                           f"(aturan teruji 4 periode).")
+            elif vonis == "NETRAL":
+                out.append(f"⚪ {kepala}  ·  pasar transisi. Tahan, SL {_fp(sl)}."
+                           + ("" if aman or not risk else f" Di {_fp(h05)} (+0.5R): tutup 20%, geser SL ke {_fp(e)}."))
+            elif arah == vonis:
+                out.append(f"✅ {kepala}  ·  <b>SEARAH VONIS</b>. Aman, tahan. SL {_fp(sl)}"
+                           + (", sisa ikut SL berjalan." if aman or not risk else
+                              f". TP awal +0.5R sudah tercapai: tutup 20% di {_fp(px)}, geser SL ke {_fp(e)}." if r is not None and r >= 0.5 else
+                              f". Di {_fp(h05)} (+0.5R): tutup 20%, geser SL ke {_fp(e)}."))
+            elif aman:
+                out.append(f"⚠️ {kepala}  ·  <b>MELAWAN VONIS</b>, tapi sudah aman: SL {_fp(sl)} di entry atau lebih baik. Jangan tambah. "
+                           f"Sisa ikut SL berjalan.")
+            elif r is not None and r >= 0.5 and risk:
+                out.append(f"⚠️ {kepala}  ·  <b>MELAWAN VONIS</b>. <b>Kunci sekarang: tutup 20% di {_fp(px)} dan geser SL ke {_fp(e)}</b> "
+                           f"(TP awal +0.5R sudah lewat).")
+            elif r is not None and r > 0 and risk:
+                out.append(f"⚠️ {kepala}  ·  <b>MELAWAN VONIS</b>, untung kecil. Jangan tambah. SL tetap {_fp(sl)}. "
+                           f"Begitu {_fp(h05)} (+0.5R): tutup 20%, geser SL ke {_fp(e)}.")
+            else:
+                out.append(f"⚠️ {kepala}  ·  <b>MELAWAN VONIS</b>, minus. Jangan serok. SL tetap {_fp(sl)}, biarkan SL bekerja "
+                           f"(cutloss lebih awal saat arah berubah diuji rugi di 4 periode).")
+        return out
     if not tag:
         return isi()
 
@@ -187,29 +254,137 @@ def _posisi(vonis, tag=False):
     return _isi_arah()
 
 
-def teks(v=None, tag=False, judul="VONIS PASAR DETIK INI"):
+def _posisi(vonis, tag=False):
+    """Nama lama (QC 104), dipakai kabar perubahan vonis: baris posisi yang melawan."""
+    return [b for b in nasib(dict(vonis=vonis), tag) if "MELAWAN" in b or "KUNCI" in b] if vonis in ("LONG", "SHORT") else []
+
+
+def siap_tembak(v, maks=2, now=None, sumber=None):
+    """1-2 sinyal valid searah vonis yang harganya masih layak diambil DETIK INI. Sumber: sinyal terbuka dari 11 jalur robot (SL belum kena),
+    bukan tahanan, umur maksimal 8 jam, harga tidak lari lebih dari +0.25R dan tidak terkoreksi lebih dari 0.40R (uji v214: koreksi lebih
+    dalam PF 0.7-0.9). Saat TRANSISI hanya konfluensi 2+ teknik yang searah sisi BTC 4J. Return list (teks kepala, blok level)."""
+    import qse_saya as SY
+    now = now or time.time()
+    vonis, bj = v["vonis"], v.get("bj")
+    arah_ok = vonis if vonis in ("LONG", "SHORT") else ("LONG" if (bj or 0) > 0 else "SHORT" if (bj or 0) < 0 else None)
+    if not arah_ok:
+        return []
+    if sumber is None:
+        import qse_gurita as GR
+        sumber = GR._sumber()
+    try:
+        import qse_gurita as GR
+        ditahan = GR._ditahan
+    except Exception:
+        ditahan = lambda k, it: False
+    try:
+        import qse_strat as ST
+        nama = lambda k: (ST.STRAT.get(k) or {}).get("nama") or {"ichimoku": "Ichimoku", "orderblock": "Order Block"}.get(k, k)
+    except Exception:
+        nama = lambda k: k
+    try:
+        import qse_radar as RD
+    except Exception:
+        RD = None
+    kand = {}
+    for k, it in sumber:
+        try:
+            if it.get("arah") != arah_ok or it.get("uji_live") or it.get("radar") or now - float(it.get("t") or 0) > 8 * 3600:
+                continue
+            sym = it["sym"]; L = arah_ok == "LONG"
+            e, risk = float(it["entry"]), float(it.get("risk") or 0)
+            sl = float(it.get("sl0") or it["sl"])
+            px = _harga(v, sym)
+            if not px or not risk > 0 or (px - sl) * (1 if L else -1) <= 0:
+                continue
+            g = (px - e) * (1 if L else -1) / risk
+            konf = len(it.get("combo") or []) + 1
+            if not (-0.40 <= g <= 0.25) or (vonis == "NETRAL" and konf < 2):
+                continue
+            try:
+                if ditahan(k, it):
+                    continue
+            except Exception:
+                pass
+            umur = (now - float(it["t"])) / 3600
+            gm = False
+            if RD is not None and L and konf >= 2:
+                t4 = (int(float(it["t"]) // 14400) * 14400 - 14400) * 1000
+                gm = RD.golden(dict(arah="LONG", ringan=False, konf=konf, mundur=False, intrabar=0, t4=t4, entry_robot=e, risk=risk, sym=sym, geser=g),
+                               bj, now)
+            c = dict(k=k, it=it, sym=sym, px=px, sl=sl, e=e, risk=risk, g=g, konf=konf, umur=umur, gm=gm, nama=[nama(k)])
+            lama = kand.get(sym)
+            if lama:          # koin sama dari jalur lain: gabung nama teknik, pakai yang konfluensinya lebih besar
+                c["nama"] = lama["nama"] + [n_ for n_ in c["nama"] if n_ not in lama["nama"]]
+                if lama["konf"] >= c["konf"]:
+                    lama["nama"] = c["nama"]; continue
+            kand[sym] = c
+        except Exception as ex:
+            print("[WARN] vonis siap tembak", it.get("sym"), ex)
+    urut = sorted(kand.values(), key=lambda c: (not c["gm"], -min(c["konf"], 3), c["umur"]))[:maks]
+    out = []
+    for c in urut:
+        it = c["it"]; L = arah_ok == "LONG"; d_ = 1 if L else -1
+        rn = (c["px"] - c["sl"]) * d_
+        tpr = (float(it["tp"]) - c["e"]) * d_ / c["risk"] if it.get("tp") else None
+        tp = c["px"] + d_ * tpr * rn if tpr else None
+        geser = ("harga masih di harga sinyal" if abs(c["g"]) < 0.05 else f"harga diskon {abs(c['g']):.2f}R dari harga sinyal" if c["g"] < 0
+                 else f"harga sudah jalan {c['g']:.2f}R dari harga sinyal")
+        kelas = "Kelas Utama, konfluensi " + str(c["konf"]) + " teknik" if c["konf"] >= 2 else "1 teknik"
+        kepala = (f"{'✨ ' if c['gm'] else ''}{'🟢' if L else '🔴'} <b>{c['sym']} {arah_ok}</b>  ·  {kelas} ({html.escape(', '.join(c['nama'][:3]))})"
+                  f"  ·  umur {c['umur']:.1f} jam  ·  {geser}"
+                  + ("  ·  ✨ <b>GOLDEN MOMENT</b> (uji 2022-2026 PF 1.78-2.30)" if c["gm"] else ""))
+        blok = SY.blok_salin(c["px"], c["sl"], tp, tp, "MARKET", it.get("tick"), sym=c["sym"], arah=arah_ok, sebagian=True,
+                             catatan_tp="" if tp else "tanpa, pakai SL berjalan")
+        out.append((kepala, blok))
+    return out
+
+
+def teks(v=None, tag=False, judul="ARAH PASAR DETIK INI"):
     v = v or hitung()
-    rows = [f"🧭 <b>{judul}: {IKON[v['vonis']]} {'NETRAL' if v['vonis'] == 'NETRAL' else v['vonis'] + ' ALTCOIN'}</b>  ·  suara {v['skor']:+d} dari ±{v['maks']}"
+    F = v["faktor"]
+    tanda = 1 if v["skor"] > 0 else -1 if v["skor"] < 0 else 0
+    naik = sum(1 for _, _, s, _ in F if s > 0); turun = sum(1 for _, _, s, _ in F if s < 0)
+    if v["vonis"] == "NETRAL":
+        konfl = f"{naik} bahan naik, {turun} turun, {len(F) - naik - turun} netral dari {len(F)}"
+    else:
+        konfl = f"{naik if tanda > 0 else turun} dari {len(F)} bahan searah"
+    rows = [f"🧭 <b>{judul}: {JUDUL[v['vonis']]}</b>\nKonfluensi makro: <b>{konfl}</b>  ·  suara {v['skor']:+d} dari ±{v['maks']}"
             + (f"  ·  kompas {html.escape(str(v['kompas']))}" if v.get("kompas") else "")]
     if not v.get("lengkap"):
-        rows.append("⚠️ Data belum lengkap (sebagian sumber gagal dibaca), vonis ditahan di NETRAL.")
-    rows.append(ARTI[v["vonis"]])
-    fr = []
-    for nm, nilai, s, w in v["faktor"]:
-        fr.append(f"{'🟢' if s > 0 else '🔴' if s < 0 else '⚪'} {nm}: {html.escape(nilai)}  ({s * w:+d})")
+        rows.append("⚠️ Data belum lengkap (sebagian sumber gagal dibaca), vonis ditahan di TRANSISI.")
+    u = v.get("umur")
+    ukur = "📏 <b>Ukuran posisi:</b> " + UKURAN[v["vonis"]]
+    if v.get("bj") is not None and v["vonis"] == "NETRAL":
+        ukur += f" Sisi BTC 4J sekarang: <b>{'LONG' if v['bj'] > 0 else 'SHORT'}</b> ({v['bj']:+.1f}% dari EMA 50)."
+    if u:
+        fase = v.get("fase") or ""
+        ket = ("⏳ jenuh jual, SHORT baru ditahan robot" if fase == "TURUN" else "⏳ jenuh beli, LONG baru ditahan robot sampai hari ke-7" if fase == "NAIK"
+               else "tren muda, sinyal searah paling bagus (uji PF 1.6-1.9)" if u[1] <= 2 else "tren berjalan")
+        ukur = f"⏳ <b>Umur tren:</b> BTC 4J sudah {u[1]:.1f} hari {'di atas' if u[0] > 0 else 'di bawah'} EMA 50  ·  {ket}\n" + ukur
+    rows.append(ukur)
+    try:
+        ns = nasib(v, tag)
+        rows.append("👤 <b>NASIB POSISI YANG JALAN</b>\n" + ("\n".join(ns) if ns else "Tidak ada posisi yang sedang jalan."))
+    except Exception as ex:
+        print("[WARN] vonis posisi", ex)
+    try:
+        st = siap_tembak(v)
+        if st:
+            rows.append("🎯 <b>SIAP TEMBAK DETIK INI</b> (sinyal valid robot, searah " + ("vonis" if v["vonis"] != "NETRAL" else "sisi BTC, ukuran ringan") + ")\n"
+                        + "\n".join(f"{i}. {k_}\n{b_}" for i, (k_, b_) in enumerate(st, 1)))
+        else:
+            rows.append("🎯 <b>SIAP TEMBAK DETIK INI</b>\nBelum ada. Sinyal searah yang masih terbuka harganya sudah lari lebih dari 0.25R, terkoreksi lebih "
+                        "dari 0.40R, atau belum ada pemicu baru. Tunggu candle 4J berikutnya atau tekan 📡 Sinyal 4J.")
+    except Exception as ex:
+        print("[WARN] vonis siap tembak", ex)
+    fr = [f"{'🟢' if s > 0 else '🔴' if s < 0 else '⚪'} {nm}: {html.escape(nilai)}  ({s * w:+d})" for nm, nilai, s, w in F]
     rows.append("<b>Suara tiap bahan</b>\n" + "\n".join(fr))
     if v["catatan"]:
         rows.append("<b>Kerumunan (tidak ikut suara)</b>\n" + "\n".join("• " + html.escape(c) for c in v["catatan"]))
     if v["kuat"]:
         rows.append("💪 Terkuat 24 jam: " + ", ".join(f"{s} {c:+.1f}%" for s, c in v["kuat"])
                     + "\n🥀 Terlemah 24 jam: " + ", ".join(f"{s} {c:+.1f}%" for s, c in v["lemah"]))
-    try:
-        ps = _posisi(v["vonis"], tag)
-        if ps:
-            rows.append("\n".join(ps) + "\nTidak perlu ditutup hanya karena vonis. Ikuti SL dan TP, kecuali ada pesan Gawat, Hidung Abdul, atau Himbauan.")
-    except Exception as ex:
-        print("[WARN] vonis posisi", ex)
-    rows.append("Vonis = ringkasan keadaan pasar, bukan sinyal entry. Yang teruji di data: sisi BTC 4J (bobot terbesar). Bahan lain konteks.")
     return "\n\n".join(rows)
 
 

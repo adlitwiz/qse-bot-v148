@@ -11,21 +11,22 @@ import requests
 from config import STATE_DIR
 
 PATH = os.path.join(STATE_DIR, "menu.json")
-VERSI = 10                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
+VERSI = 11                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
 
-UTAMA = [["📊 Status", "📝 Entry", "₿ Cek BTC"],          # QC 100b: Sinyal 4J pindah ke tengah baris 2, tidak di atas tengah yang sering kepencet
-         ["💼 Modal", "📡 Sinyal 4J", "🎯 Kelola Posisi"],
-         ["🔔 Alarm", "🧩 Jalur Sinyal", "🔎 Cek Koin"],
-         ["📰 Berita", "📈 Laporan", "🪰 Lalat Abdul"],
-         ["🐙 Otak Gurita", "🌐 Spot dan CFD", "😴 Mode Tidur"],
-         ["📚 Semua Fitur", "❓ Info"]]          # QC 99: menu jadi pintu utama, slash command cadangan
-# label -> perintah. None = buka sub menu inline
+UTAMA = [["📊 Status", "📝 Entry", "📡 Sinyal 4J"],          # QC 107: yang dipakai tiap hari tampil di depan, sekali tekan
+         ["🎯 Kelola Posisi", "🧭 Arah Pasar", "₿ Cek BTC"],
+         ["🐙 Otak Gurita", "🧩 Jalur Sinyal", "🔎 Cek Koin"],
+         ["🧭 Himbauan BTC", "🔬 Otopsi Rugi", "💼 Modal"],
+         ["🌐 Spot dan CFD", "📈 Laporan", "📰 Berita"],
+         ["🪰 Lalat Abdul", "😴 Mode Tidur", "📚 Menu Lain"]]
+# label -> perintah. None = buka sub menu inline. Alarm dan Info tidak lagi di menu bawah (ada di Menu Lain), labelnya tetap dikenali.
 LABEL = {"📊 Status": "/status", "📡 Sinyal 4J": "/sinyal4j", "₿ Cek BTC": "/cek BTC", "💼 Modal": None, "📝 Entry": None,
          "🎯 Kelola Posisi": None, "🔔 Alarm": None, "🧩 Jalur Sinyal": None, "🔎 Cek Koin": None,
          "📰 Berita": "/berita", "📈 Laporan": None, "🪰 Lalat Abdul": "/lalat", "🐙 Otak Gurita": "/gurita", "😴 Mode Tidur": "/tidur", "❓ Info": "/bantuan",
-         "🌐 Spot dan CFD": None, "📚 Semua Fitur": None}
+         "🌐 Spot dan CFD": None, "📚 Menu Lain": None,
+         "🧭 Arah Pasar": "/pasar", "🧭 Himbauan BTC": "/himbauan", "🔬 Otopsi Rugi": "/otopsi"}
 # label lama v150 awal, tetap dikenali kalau keyboard lama masih tampil
-LAMA = {"🧠 Otak Lalat": "🪰 Lalat Abdul", "🪰 Otak Lalat": "🪰 Lalat Abdul", "Cek BTC": "₿ Cek BTC"}
+LAMA = {"🧠 Otak Lalat": "🪰 Lalat Abdul", "🪰 Otak Lalat": "🪰 Lalat Abdul", "Cek BTC": "₿ Cek BTC", "📚 Semua Fitur": "📚 Menu Lain"}
 
 # sub menu inline: (teks tombol, data maks 64 byte). "c:/perintah" = jalankan, "t:/perintah" = minta ketik (petunjuk di TANYA),
 # "m:nama" = sub menu, "y:/perintah" = konfirmasi dulu
@@ -52,22 +53,12 @@ SUB = {
     "🌐 Spot dan CFD": ("🌐 <b>SPOT DAN CFD</b>\nJalur terpisah dari sinyal futures kripto, buku dan rapor sendiri.", [
         [("🪰⚡ Kebelet Spot (ACM, BAR, PSG)", "c:/kebelet")],
         [("📊 CFD Harian + catat 4J emas", "c:/cfd")]]),
-    "📚 Semua Fitur": ("📚 <b>SEMUA FITUR BOT</b>\nSemua fitur ada di tombol. Perintah garis miring hanya cadangan.", [
-        [("📊 Status", "c:/status"), ("📡 Sinyal 4J", "c:/sinyal4j")],
-        [("₿ Cek BTC", "c:/cek BTC"), ("🔎 Cek Koin", "m:🔎 Cek Koin")],
-        [("📝 Entry", "m:📝 Entry"), ("🎯 Kelola Posisi", "m:🎯 Kelola Posisi")],
-        [("💼 Modal", "m:💼 Modal"), ("🔔 Alarm", "m:🔔 Alarm")],
-        [("🧩 Jalur Sinyal", "m:🧩 Jalur Sinyal"), ("📈 Laporan", "m:📈 Laporan")],
-        [("📰 Berita", "c:/berita"), ("🪰 Lalat Abdul", "c:/lalat")],
-        [("🐙 Otak Gurita", "c:/gurita"), ("😴 Mode Tidur", "c:/tidur")],
-        [("🌐 Spot dan CFD", "m:🌐 Spot dan CFD"), ("❤️ Nyawa / proteksi", "c:/nyawa")],
-        [("🧭 Himbauan BTC rawan dump/pump", "c:/himbauan")],
-        [("🧭 Vonis arah pasar detik ini", "c:/pasar")],
-        [("⚡ Uji momentum scan 1 jam", "c:/ujimomentum"), ("🤖 Menu untuk laptop", "c:/menu")],
-        [("🔬 Otopsi rugi + prompt Fable", "c:/otopsi")],
-        [("🛡️ SL sudah di entry", "t:/slok"), ("🗑️ Hapus catatan salah", "t:/hapus")],
-        [("🔀 Pindah posisi ke orang lain", "t:/pindah")],
-        [("❓ Info lengkap", "c:/bantuan")]]),
+    # QC 107: tidak mengulang tombol menu bawah. Hanya utilitas yang tidak ada di menu bawah.
+    "📚 Menu Lain": ("📚 <b>MENU LAIN</b>\nUtilitas yang tidak ada di menu bawah.", [
+        [("🔔 Alarm", "m:🔔 Alarm"), ("🛡️ SL sudah di entry", "t:/slok")],
+        [("🗑️ Hapus catatan salah", "t:/hapus"), ("🔀 Pindah posisi ke orang lain", "t:/pindah")],
+        [("⚡ Uji momentum", "c:/ujimomentum"), ("❤️ Nyawa / proteksi", "c:/nyawa")],
+        [("🤖 Menu untuk laptop", "c:/menu"), ("❓ Info lengkap", "c:/bantuan")]]),
     "📈 Laporan": ("📈 <b>LAPORAN</b>", [
         [("📅 Mingguan", "c:/mingguan"), ("📚 Evaluasi trade", "c:/evaluasi")],
         [("🧪 Uji mundur", "c:/uji"), ("📊 Laporan 4J", "c:/laporan4j")],
@@ -174,7 +165,7 @@ def kirim_menu(teks="🤖 <b>QSE v150 | MENU</b>\nMenu bawah dipasang lagi. Lipa
 # QC 105 menu untuk laptop. Telegram Desktop sering tidak menampilkan menu bawah (reply keyboard) di grup, jadi ada dua jalan lain yang
 # tampil di semua perangkat: (1) pesan MENU bertombol (inline) yang isinya sama dengan menu bawah, (2) tombol "/" atau "Menu" bawaan
 # Telegram di samping kolom ketik, berisi daftar perintah utama (setMyCommands). Menu bawah di HP tidak berubah.
-VERSI_INLINE = 1
+VERSI_INLINE = 2
 PERINTAH_TELEGRAM = [("menu", "Buka menu tombol (HP dan laptop)"), ("status", "Posisi dan order kamu"), ("sinyal4j", "Pindai sinyal 4 jam sekarang"),
                      ("pasar", "Vonis arah semua altcoin detik ini"), ("cek", "Cek koin, contoh: /cek BTC"), ("berita", "Berita dan jadwal rilis"),
                      ("laporan4j", "Laporan sinyal 4 jam"), ("gurita", "Otak Gurita"), ("lalat", "Lalat Abdul"), ("cfd", "Jalur CFD harian"),

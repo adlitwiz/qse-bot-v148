@@ -121,6 +121,8 @@ TOMBOL = {
     "tidur": "😴 Mode Tidur", "bangun": "😴 Mode Tidur", "bantuan": "❓ Info", "help": "❓ Info", "start": "❓ Info",
     "menu": "tombol menu bawah", "lalat": "🪰 Lalat Abdul", "gurita": "🐙 Otak Gurita", "scan": "📡 Sinyal 4J", "tren": "🔎 Cek Koin",
     "rsi": "🔎 Cek Koin", "ticker": "🔎 Cek Koin",
+    "pasar": "🧭 Arah Pasar", "vonis": "🧭 Arah Pasar", "arahpasar": "🧭 Arah Pasar", "himbauan": "🧭 Himbauan BTC", "duluan": "🧭 Himbauan BTC",
+    "otopsi": "🔬 Otopsi Rugi", "evalrugi": "🔬 Otopsi Rugi",          # QC 107: tombol baru di menu bawah
 }
 _RX_KATA = re.compile(r"(?i)\b(kirim|ketik|pakai|gunakan|jalankan|panggil)\s+(?=/[a-z])")
 _RX_CMD = re.compile(r"(?<![<\w:/.%\d~])/([a-z][a-z0-9_]*)")

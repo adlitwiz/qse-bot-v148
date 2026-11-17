@@ -115,6 +115,56 @@ def momentum_syarat(r, now=None):
     return True
 
 
+# QC 107 ✨ GOLDEN MOMENT (riset/upgrade/run_v214*.py, hasil_v214_golden.txt, hasil_v214d_golden_utama.txt). 33.862 sinyal 2022-2026,
+# tiap sinyal dicek 8 jam sesudah candle 4J tutup: harga terkoreksi ke arah SL tanpa menyentuh SL, masuk di harga tutup 1 jam, SL TETAP di
+# SL sinyal (risiko mengecil), keluar aturan live, biaya ikut. Kisi 3.960 kombinasi zona x konfirmasi x jam x kelompok, standar PF >= 1.40 di
+# latih, uji, 12 bulan, 6 bulan. Yang lolos dan stabil di zona dan jam tetangga hanya satu kelompok:
+#   KELAS UTAMA LONG (konfluensi 2+ teknik) saat BTC 4J di atas EMA 50, jam ke-2 atau ke-3, harga 0.10-0.30R di bawah harga sinyal,
+#   belum pernah +0.5R: PF 1.83 / 1.78 / 1.90 / 2.30, WR 68 / 62 / 61 / 59%, n 266 / 178 / 108 / 71 (satu kartu per koin).
+#   Tetangga: zona 0.10-0.35R PF 1.76 / 1.78 / 1.70 / 2.20, zona 0.05-0.25R PF 1.70 / 1.77 / 1.75 / 2.56, jam 2 saja PF 1.85 / 1.93 /
+#   2.16 / 2.74, jam 3 saja PF 2.43 / 1.88 / 2.13 / 2.79. Sinyal yang sama bila masuk di harga sinyal: PF 1.08 / 0.77 / 0.91 / 1.25.
+# TIDAK lolos: jam ke-1 (12 bulan PF 0.74-0.93), jam ke-4 sampai 8 (uji PF 1.03, 12 bulan 0.86), koreksi lebih dalam dari 0.40R (12 bulan
+# PF 0.81, 6 bulan 0.69-0.87), SHORT (12 bulan PF 0.95), teknik tunggal dan kolam tahanan (PF 0.8-1.2), konfirmasi candle pantul / EMA 20
+# (tidak menambah). Jadi hanya definisi di atas yang dikirim. Lot biasa, bukan 1.5x (uji lot 1.5x: drawdown uji naik 6%).
+GOLDEN = dict(jam=(1.5, 3.5), zona=(-0.30, -0.10), label="PF 1.78-2.30, WR 59-68%")
+
+
+def _jalur_1j(sym, t0_ms):
+    """(harga tertinggi, terendah, tutup terakhir) candle 1 jam yang sudah tutup sejak t0_ms. None kalau data tidak ada."""
+    try:
+        import bybit_fetch as B
+        d = B._raw(sym, "60", 12)
+        d = d[(d.index >= t0_ms) & (d.index + 3600000 <= int(time.time() * 1000))]
+        if not len(d):
+            return None
+        return float(d["high"].max()), float(d["low"].min()), float(d["close"].iloc[-1])
+    except Exception:
+        return None
+
+
+def golden(r, bj, now=None, jalur=None):
+    """True kalau sinyal ini sedang di GOLDEN MOMENT yang lolos uji. Menandai r["golden"] = besar diskon dalam R dan r["sl_asli"].
+    jalur = (tertinggi, terendah, tutup terakhir) candle 1 jam sejak candle 4J tutup, untuk tes."""
+    if os.environ.get("QSE_GOLDEN", "1") == "0" or r["arah"] != "LONG" or r["ringan"] or r.get("konf", 1) < 2 or r["mundur"] \
+            or r.get("intrabar") or not r.get("t4") or bj is None or bj <= 0:
+        return False
+    jam = ((now or time.time()) - (r["t4"] / 1000 + 14400)) / 3600
+    if not (GOLDEN["jam"][0] < jam <= GOLDEN["jam"][1]):
+        return False
+    cl, risk = r["entry_robot"], r["risk"]
+    j = jalur if jalur is not None else _jalur_1j(r["sym"], r["t4"] + 14400000)
+    if not j or not risk > 0:
+        return False
+    hi, lo, c1 = j
+    g = (c1 - cl) / risk
+    if not (GOLDEN["zona"][0] <= g <= GOLDEN["zona"][1]) or lo <= cl - risk or (hi - cl) / risk >= 0.5:
+        return False
+    if not (GOLDEN["zona"][0] - 0.1 <= r["geser"] <= -0.05):          # harga sekarang masih di zona (boleh geser sedikit dari tutup 1 jam)
+        return False
+    r["golden"] = round(-r["geser"], 2); r["sl_asli"] = cl - risk
+    return True
+
+
 def momentum(r, now=None):
     """True kalau sinyal tunggal ini lolos MOMENTUM: teknik dan arah terdaftar, candle 4J terakhir, harga sudah bergerak searah (0 sampai
     0.5R), umur sejak candle tutup tidak lewat batas jam. Yang TERUJI dan bukan kelas ringan diberi label PF (r["momentum"]). Yang
@@ -163,7 +213,7 @@ def status_rutin(r):
 def kartu(r, no=None, bj=None, paksa=False):
     """Satu sinyal = satu bubble. Keputusan tegas, level lengkap, saran entry USDT tiap orang (QC 92), tanpa daftar koin lain."""
     import qse_saya as SY
-    tunggu = r["geser"] > 0.25
+    tunggu = r["geser"] > 0.25 and not r.get("golden")
     kpt = f"⏳ PASANG LIMIT di {SY.fp(r['entry_robot'], r['tick'])}" if tunggu else "✅ AMBIL SEKARANG — MARKET"
     ket = [x for x in ("struktur ✅ valid searah", "candle terakhir" if not r["mundur"] else "candle sebelumnya",
                        ("🎯 spesialis " + r["arah"]) if r.get("spesialis") else "", ("🕯 " + r["pola"]) if r.get("pola") else "",
@@ -178,6 +228,26 @@ def kartu(r, no=None, bj=None, paksa=False):
     if r.get("konf", 1) >= 2:
         tek += f"  ·  ⭐ KONFLUENSI {r['konf']} TEKNIK (+ {TG.e(', '.join(r['konf_nama']))})"
     px, o = (r["entry_robot"], "LIMIT") if tunggu else (r["px"], "MARKET")
+    if r.get("golden"):          # QC 107: SL TETAP di SL sinyal (tidak ikut geser), jadi jarak rugi lebih pendek. TP dihitung dari risiko baru
+        sl = r["sl_asli"]; rn = px - sl
+        tpr = (r["tp"] - r["px"]) / r["risk"] if r.get("tp") else None
+        tek += f"  ·  ✨ GOLDEN MOMENT (entry diskon {r['golden']:.2f}R dari harga sinyal, SL tetap, uji 2022-2026 {GOLDEN['label']})"
+        blok = SY.blok_salin(px, sl, (px + tpr * rn) if tpr else None, (px + tpr * rn) if tpr else None, o, r["tick"], sym=r["sym"], arah=r["arah"],
+                             sebagian=True, catatan_tp="" if tpr else "tanpa, pakai SL berjalan")
+        try:
+            import qse_modal as MD
+            lot = MD.baris_lot(px, sl, kelas="UTAMA", arah=r["arah"], bj=bj)
+        except Exception as ex:
+            print("[WARN] radar lot", ex)
+            lot = ""
+        return (f"✨🟢 <b>{r['sym']} {r['arah']}</b>  ·  {kelas_teks(r)}  ·  GOLDEN MOMENT" + (f"  ·  #{no}" if no else "")
+                + f"\n🏷 Teknik: {tek}\n🧭 Keputusan: <b>{kpt}</b>"
+                + f"\nℹ️ Sinyal Kelas Utama 4J ini sedang koreksi sehat {r['golden']:.2f}R, SL belum tersentuh, BTC 4J di atas EMA 50. "
+                  f"Jarak ke SL jadi {rn / px * 100:.1f}% (tadinya {r['risk'] / r['entry_robot'] * 100:.1f}%).\n" + blok
+                + "\n📲 TP awal: tutup 20% lalu SL ke entry. Sisa posisi ikut SL berjalan."
+                + "\n⚖️ Lot biasa (bukan 1.5x). Sudah punya posisi koin ini: boleh tambah sekali di harga ini, SL sama. Jangan serok lagi di bawahnya "
+                  "(uji koreksi lebih dalam dari 0.40R: PF 0.7-0.9)."
+                + (f"\n💰 Saran entry:\n{lot}" if lot else ""))
     if r.get("tp"):
         blok = SY.blok_salin(px, r["sl"] + (px - r["px"]), r["tp"] + (px - r["px"]), r["tp"] + (px - r["px"]), o, r["tick"], sym=r["sym"], arah=r["arah"],
                              sebagian=True)
@@ -378,6 +448,11 @@ def jalankan(now=None, paksa=False):
     # terakhir. Masuk 1-3 jam sesudah tutup, harga masih dalam 0.5R: +0.041 / +0.262 / +0.302 / +0.027R (jam 1) sampai +0.032 / +0.317 /
     # +0.210 / +0.005R (jam 3), PF 1.46-1.58, untung 4 tahun. Teknik tunggal telat PF 1.14-1.25 (jam 1 2023 -0.033R), EMA Cross SHORT
     # tunggal 2026 -0.10R di semua jam, sinyal candle sebelumnya (5-7 jam) PF 1.30-1.41: tidak dikirim scan. QSE_RADAR_SEMUA=1 = semua.
+    gm = []
+    try:          # QC 107 ✨ Golden Moment: dicek sebelum saringan, karena sinyal Kelas Utama yang sudah disiarkan tidak dikirim ulang di bawah
+        gm = [r for r in valid if golden(r, inf.get("bj"), now)]
+    except Exception as ex:
+        print("[WARN] radar golden", ex)
     if os.environ.get("QSE_RADAR_SEMUA", "0") != "1":
         valid = [r for r in valid if (kelas_intrabar(r, inf.get("bj")) if r.get("intrabar") else
                                       ((not r["ringan"] and r.get("konf", 1) >= 2 and not r["mundur"]) or momentum(r, now)))]
@@ -399,9 +474,17 @@ def jalankan(now=None, paksa=False):
         except Exception:
             pass
         baru.append(r)
+    for r in gm:          # QC 107: kartu Golden Moment sekali per sinyal (8 jam), walau kartu sinyalnya sudah pernah disiarkan
+        kg = f"{r['sym']}|{r['arah']}|GM"
+        if now - (d["kirim"].get(kg) or [0])[0] < 8 * 3600:
+            continue
+        d["kirim"][kg] = [now, "UTAMA"]
+        if not any(x is r for x in baru):
+            baru.insert(0, r)
     baru = baru[:6]
     for r in baru:
-        d["kirim"][f"{r['sym']}|{r['arah']}"] = [now, "RINGAN" if r["ringan"] else "UTAMA"]
+        if not r.get("golden") or not d["kirim"].get(f"{r['sym']}|{r['arah']}"):
+            d["kirim"][f"{r['sym']}|{r['arah']}"] = [now, "RINGAN" if r["ringan"] else "UTAMA"]
         if r.get("intrabar"):          # QC 83: kartu intrabar langsung punya posisi jalur, supaya /entry dan /status ikut aturan jalur
             try:
                 ST.buka_radar(r, now)
