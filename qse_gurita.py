@@ -340,13 +340,38 @@ MODAL_UJI = ("Uji modal 150 USDT (Jul 2022 sampai Okt 2026), sinyal 2+ teknik se
              "Januari-Oktober 2026 jadi 245, 6 bulan terakhir jadi 178. Uji mundur, tanpa funding dan slippage.")
 
 
-def modal_risiko(m, konf):
+# QC 110 VONIS x LOT (riset/upgrade/run_v226_vonis.py, hasil_v226_vonis.txt). Vonis dibangun ulang tiap jam Jul 2022-Okt 2026.
+# Sinyal LONG saat vonis LONG: PF 1.57 / 1.74 / 1.50 / 1.98 (latih, uji, 12 bln, 6 bln). Buku Gurita seperti live, risiko LONG searah vonis x1.5:
+# 775 -> 1092, 1779 -> 2065, 202 -> 212, 175 -> 177 (DD 39->40%, 33->39%, 33->39%, 23->26%). Jumlah trade sama.
+# DITOLAK: buang sinyal lawan vonis (uji -17R), lawan x0.5 (Gurita uji 1779 -> 1457), SHORT searah x0.75 (semua periode turun).
+MODAL_VONIS_KALI = float(os.environ.get("QSE_GURITA_VONIS", "1.5"))
+
+
+def vonis_terakhir(maks_umur=3600):
+    """Vonis (LONG/SHORT/NETRAL) dari pemeriksaan 15 menit terakhir, atau None kalau belum ada atau basi."""
+    try:
+        import qse_vonis as QV
+        d = QV._baca()
+        if time.time() - float(d.get("t", 0)) <= maks_umur:
+            return d.get("calon")
+    except Exception:
+        pass
+    return None
+
+
+def modal_risiko(m, konf, arah=None, vonis=None, rsi=None):
     """Persen saldo yang dipertaruhkan untuk satu posisi baru. Return (persen, catatan)."""
     r = MODAL_RISIKO; cat = []
+    if arah == "LONG" and MODAL_VONIS_KALI != 1 and (vonis or vonis_terakhir()) == "LONG":
+        r *= MODAL_VONIS_KALI; cat.append(f"LONG searah vonis x{MODAL_VONIS_KALI:g}")
+    if arah == "LONG" and rsi is not None and rsi >= 75 and os.environ.get("QSE_MOMENTUM", "1") != "0":          # QC 112
+        r *= 1.5; cat.append(f"momentum RSI 4J {rsi:.0f} x1.5")
     if MODAL_RUGI_USD > 0 and m.get("saldo", 0) > 0:
         r = MODAL_RUGI_USD / m["saldo"] * 100; cat.append(f"rugi tetap {MODAL_RUGI_USD:g} USDT")
     elif konf >= 3 and MODAL_KALI3 != 1:
         r *= MODAL_KALI3; cat.append(f"{konf} teknik x{MODAL_KALI3:g}")
+    if any(c.startswith("momentum") for c in cat):
+        r = min(r, MODAL_RISIKO * 2.25)          # QC 112: total pengali paling besar 2.25x seperti uji
     turun = (1 - m["saldo"] / m["puncak"]) * 100 if m.get("puncak", 0) > 0 else 0.0
     if MODAL_REM_DD > 0 and turun > MODAL_REM_DD:
         r *= MODAL_REM_KALI; cat.append(f"rem: saldo turun {turun:.0f}% dari puncak, risiko x{MODAL_REM_KALI:g}")
@@ -458,26 +483,27 @@ def modal_proteksi_cek(d, now=None, kal=None, him=None, harga=None):
     m = _modal(d); now = now or time.time(); out = []
     pr = m.setdefault("prot", {})
     try:
+        import qse_berita as BR
         if kal is None:
-            import qse_berita as BR
             kal = BR.kalender()
         for e in kal:
-            if 45 * 60000 <= e["ts"] - now * 1000 <= 75 * 60000 and any(k in e["judul"].upper() for k in ("CPI", "FOMC", "FEDERAL FUNDS", "INTEREST RATE", "FED ")):
+            hj = BR.hidung_jadwal(e["judul"])
+            if 45 * 60000 <= e["ts"] - now * 1000 <= 75 * 60000 and hj:
                 kunci = f"b{e['ts']}"
                 if kunci not in pr:
                     pr[kunci] = now
-                    out += modal_proteksi(d, "SHORT", 0.3, "Hidung Abdul, " + str(e["judul"])[:30], harga)
+                    out += modal_proteksi(d, hj[0], 0.3, "Hidung Abdul, " + str(e["judul"])[:30], harga)
     except Exception as ex:
         print("[WARN] gurita proteksi berita", ex)
     try:
         if him is None:
             import qse_himbauan as QH
             him = QH._baca().get("kirim") or {}
-        for jenis, arah in (("dump", "LONG"), ("pump", "SHORT")):
+        for jenis, arah, amb_ in (("dump", "LONG", 0.5), ("pump", "SHORT", 0.5), ("leverage", "SHORT", 0.3)):          # QC 108 leverage
             tk = float(him.get(jenis) or 0)
             if tk and now - tk <= 1800 and pr.get("h" + jenis) != tk:
                 pr["h" + jenis] = tk
-                out += modal_proteksi(d, arah, 0.5, "Himbauan BTC rawan " + jenis, harga)
+                out += modal_proteksi(d, arah, amb_, ("Hidung Abdul derivatif" if jenis == "leverage" else "Himbauan BTC rawan " + jenis), harga)
     except Exception as ex:
         print("[WARN] gurita proteksi himbauan", ex)
     for k in [k for k, v in pr.items() if isinstance(v, (int, float)) and k.startswith("b") and now - v > 7 * 86400]:
@@ -514,6 +540,7 @@ def modal_buru(d):
                 continue
             if it.get("arah") in libur:
                 dg["libur"] += 1
+                m.get("diag_total", {})["libur"] = m.get("diag_total", {}).get("libur", 0) + 1
                 continue
             bj = it.get("btc_j")
             if bj is None:
@@ -523,10 +550,26 @@ def modal_buru(d):
             L = it["arah"] == "LONG"
             if bj is None or not ST.konf_utama(it["arah"], bj, konf) or (bj < 0 and L) or (bj > 0 and not L):
                 dg["lawan_btc"] += 1
+                m.get("diag_total", {})["lawan_btc"] = m.get("diag_total", {}).get("lawan_btc", 0) + 1
                 continue
             calon.append((-konf, it.get("peringkat") or 999, k, it, key, bj, konf))
         except Exception as ex:
             print("[WARN] gurita modal calon", ex)
+    try:          # QC 113: hitungan kumulatif per alasan, sekali per sinyal jalur (kunci), supaya tahu kenapa gurita kosong
+        tot = m.setdefault("diag_total", dict(mulai=now, dilihat=0, uji_live=0, tunggal=0, libur=0, lawan_btc=0, geser=0, lolos=0))
+        lihat = m.setdefault("diag_lihat", [])
+        for k, it in _sumber():
+            t0 = it.get("t", 0); key = f"{k}|{it.get('sym')}|{int(t0)}"
+            if key in lihat or now - t0 > MODAL_SEGAR:
+                continue
+            lihat.append(key); tot["dilihat"] += 1
+            if it.get("uji_live") or it.get("radar"):
+                tot["uji_live"] += 1
+            elif len(it.get("combo") or []) + 1 < 2:
+                tot["tunggal"] += 1
+        m["diag_lihat"] = lihat[-500:]
+    except Exception as ex:
+        print("[WARN] gurita diag total", ex)
     calon.sort(key=lambda z: z[:2])
     for _, pr, k, it, key, bj, konf in calon:
         if len(m["buka"]) >= MODAL_SLOT:
@@ -538,10 +581,17 @@ def modal_buru(d):
         px = SY.harga_live(it["sym"]) or e0
         if r0 <= 0 or abs(px - e0) / r0 > MODAL_GESER or (px - sl) * dd <= 0:
             dg["geser"] += 1
+            m.get("diag_total", {})["geser"] = m.get("diag_total", {}).get("geser", 0) + 1
             continue
         dg["lolos"] += 1
+        m.get("diag_total", {})["lolos"] = m.get("diag_total", {}).get("lolos", 0) + 1
         risk = abs(px - sl); sl_pct = risk / px * 100
-        rp, rcat = modal_risiko(m, konf)
+        try:
+            import qse_vonis as QV
+            rs_ = QV.rsi4j(it["sym"]) if it["arah"] == "LONG" else None
+        except Exception:
+            rs_ = None
+        rp, rcat = modal_risiko(m, konf, it["arah"], rsi=rs_)
         usd = round(m["saldo"] * rp / 100, 2); nilai = usd / (sl_pct / 100); lev = MD.lev_saran(sl_pct)
         p = dict(key=key, jalur=k, sym=it["sym"], arah=it["arah"], entry=px, sl=sl, t=now, tk=int(it.get("t", 0)), usd=usd, konf=konf)
         m["buka"].append(p); pakai.add(it["sym"])
@@ -553,7 +603,7 @@ def modal_buru(d):
             tp = it.get("tp") or None
             blok = SY.blok_salin(px, sl, tp, tp, "MARKET", t, sym=p["sym"], arah=p["arah"], sebagian=True,
                                  catatan_tp="" if tp else "sisa 80% ikut SL berjalan")
-            atur = "📲 TPawal: tutup 20% lalu SL ke entry. Sisa 80% ikut aturan jalur. Belum aman di jam ke-30: tutup."
+            atur = "📲 TPawal: tutup 20% lalu SL ke -0.25R, untung +1R SL ke entry. Sisa 80% ikut aturan jalur. Belum aman di jam ke-30: tutup."
         out.append(f"🐙 <b>SINYAL GURITA MODAL: {p['sym']} {p['arah']} MARKET</b>  ·  🟦 KELAS UTAMA\n"
                    f"⭐ {konf} teknik searah ({k}" + (f", {kawan}" if kawan else "") + f")  ·  BTC 4J {bj:+.1f}% dari EMA 50, searah\n"
                    + blok + "\n" + atur
@@ -591,6 +641,12 @@ def modal_teks(d):
                     f"{dg.get('lawan_btc', 0)} melawan BTC 4J, {dg.get('geser', 0)} harga sudah bergeser lebih dari 0.5R, "
                     f"<b>{dg.get('lolos', 0)} jadi sinyal</b>." + (" Slot gurita penuh." if dg.get("penuh") else "")
                     + (" Sinyal gurita butuh 2+ teknik searah BTC di koin yang sama, jadi wajar kosong saat jalur sepi." if not dg.get("lolos") else ""))
+        tt = m.get("diag_total")
+        if tt and tt.get("dilihat"):
+            hr = max((time.time() - tt["mulai"]) / 86400, 0.01)
+            rows.append(f"📊 Sejak {hr:.1f} hari lalu: {tt['dilihat']} sinyal jalur robot baru. Ditolak: {tt.get('uji_live', 0)} jalur uji kertas, "
+                        f"{tt.get('tunggal', 0)} teknik tunggal, {tt.get('libur', 0)} arah libur, {tt.get('lawan_btc', 0)} melawan BTC 4J, "
+                        f"{tt.get('geser', 0)} harga lari > 0.5R. <b>Jadi sinyal gurita: {tt.get('lolos', 0)}</b>. Uji 2022-2026: sekitar 2 per hari.")
         if umur > 45:
             rows.append("⚠️ Gurita belum memeriksa lebih dari 45 menit. Cek apakah listener jalan (sudo systemctl status qse-listener).")
     else:

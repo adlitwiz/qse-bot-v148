@@ -140,6 +140,52 @@ def kalender():
     return sorted(ff + tambah, key=lambda e: e["ts"])
 
 
+# ---------------- QC 108 jadwal HIDUNG ABDUL: rilis makro yang terbukti, dan arah posisi yang ditutup kalau untung >= +0.3R ----------------
+# riset/upgrade/run_v205_hidung2.py dan run_v218_hidung3.py, beda lawan tahan, 1 jam sebelum rilis, biaya ikut:
+#   CPI dan FOMC, SHORT >= +0.3R : latih +69R, uji +86R, 12 bulan +59R, 6 bulan +44R (terpasang QC 104).
+#   GDP AS (advance), SHORT      : latih +30R, uji +25R, 12 bulan +27R, 6 bulan +12R. Ambang 0.2-0.5R dan 1-2 jam semua plus.
+#   NFP, LONG >= +0.3R           : latih +9R, uji +11R, 12 bulan +6R, 6 bulan +5R. Ambang 0.2-0.5R dan 1-2 jam semua plus (kecil tapi konsisten).
+# DITOLAK: NFP SHORT (uji -143R), PCE SHORT (12 bulan -6R), ECB (latih -33R), BoJ (latih -136R), GDP LONG (latih -13R), CPI/FOMC LONG.
+# QC 109: PPI (tanggal arsip BLS) LONG lolos 4 periode di 8 varian, SHORT gagal (latih -149R). Pidato Powell: situs Fed tanpa jam pidato, tidak bisa diuji.
+HIDUNG_JADWAL = (
+    (("CPI",), (), "SHORT", "CPI"),
+    (("FOMC", "FEDERAL FUNDS", "INTEREST RATE", "FED "), (), "SHORT", "FOMC"),
+    (("GDP",), ("PRELIM", "FINAL", "PRICE"), "SHORT", "GDP"),
+    (("NON-FARM", "NONFARM", "NFP"), (), "LONG", "NFP"),
+    (("PPI",), (), "LONG", "PPI"),          # QC 109 run_v222_hidung_ppi.py: LONG >= +0.3R 1 jam: +51R, +6R, +19R, +5R
+)
+
+
+def hidung_jadwal(judul):
+    """(arah yang ditutup, nama) kalau judul kalender termasuk jadwal Hidung Abdul, atau None."""
+    u = " " + str(judul or "").upper() + " "
+    for kata, kecuali, arah, nama in HIDUNG_JADWAL:
+        if any(k in u for k in kata) and not any(x in u for x in kecuali):
+            return arah, nama
+    return None
+
+
+def radar_hidung(now_ms=None):
+    """Baris radar Hidung Abdul: badai makro terdekat (hitung mundur) dan status penciuman leverage."""
+    now_ms = now_ms or int(time.time() * 1000)
+    try:
+        ev = [e for e in kalender() if e["ts"] > now_ms and hidung_jadwal(e["judul"])]
+    except Exception:
+        ev = []
+    if ev:
+        e = ev[0]; arah, nama = hidung_jadwal(e["judul"]); jam = (e["ts"] - now_ms) / 3600000
+        sisa = f"{jam:.1f} jam lagi" if jam < 48 else f"{jam / 24:.1f} hari lagi"
+        b1 = f"badai makro terdekat {nama} {jam_wib(e['ts'])} ({sisa}), aksi 1 jam sebelum: tutup {arah} untung >= +0.3R"
+    else:
+        b1 = "badai makro terdekat: belum ada di kalender 40 hari"
+    try:
+        import qse_himbauan as QH
+        b2 = QH.status_leverage()
+    except Exception:
+        b2 = "penciuman leverage: belum aktif"
+    return f"👃 <b>Radar Hidung Abdul</b>: {b1}. {b2[0].upper() + b2[1:]}."
+
+
 # ---------------- 1b. kalender mingguan (semua jenis berita, dengan dampak teruji) ----------------
 NAMA_BERITA = (            # (negara, kata di judul ForexFactory, nama Indonesia)
     ("USD", ("FEDERAL FUNDS", "FOMC STATEMENT"), "FOMC: suku bunga AS"), ("USD", ("FOMC PRESS",), "FOMC: konferensi pers"),

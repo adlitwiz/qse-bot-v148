@@ -630,6 +630,61 @@ def dampak_mulut(kat, arah, kuat):
     return None, ""
 
 
+# QC 108 SARINGAN KETAT MULUT ABDUL (riset/berita/run_v217_mulut.py, hasil_v217_mulut.txt). Reaksi BTC 1 jam sesudah berita berjam
+# 2022-2026 per jenis. Mulut hanya bicara kalau salah satu syarat terpenuhi:
+#   A: jenis berita dengan sejarah >= 5 kejadian, arah sama >= 65%, rata gerak BTC 1 jam >= 0.50%, arah sama di 2022-2024 dan 2025-2026.
+#      Yang lolos sekarang hanya CPI sesuai perkiraan (13 kejadian, 77% naik, +1.36%). CPI panas 68% tapi 2025-2026 berbalik, gagal.
+#   B: berita <= 10 menit DAN pasar sudah bereaksi: BTC atau koin yang disebut bergerak >= 0.4% searah berita sejak rilis (candle 5 menit)
+#      dengan volume >= 2x rata-rata 1 jam sebelum rilis.
+# Berita SEDANG, arah tidak konsisten, atau belum ada sejarah tanpa reaksi pasar: tidak dikirim. Saklar QSE_MULUT_KETAT=0 kembali ke cara lama.
+MULUT_1J = {"BANK_CRISIS": {"n": 1, "b1": 2.02, "kon": 100, "a": False}, "CPI_COOL": {"n": 24, "b1": 0.72, "kon": 62, "a": False}, "CPI_HOT": {"n": 19, "b1": -0.74, "kon": 68, "a": False}, "CPI_INLINE": {"n": 13, "b1": 1.36, "kon": 77, "a": True}, "ETF_POSITIVE": {"n": 2, "b1": -0.03, "kon": 50, "a": False}, "FOMC_CUT": {"n": 6, "b1": -0.28, "kon": 67, "a": False}, "FOMC_HIKE": {"n": 12, "b1": 0.22, "kon": 50, "a": False}, "FOMC_HOLD": {"n": 20, "b1": 0.06, "kon": 40, "a": False}, "HACK": {"n": 6, "b1": -0.03, "kon": 33, "a": False}, "HALVING": {"n": 1, "b1": -0.59, "kon": 100, "a": False}, "MACRO_SHOCK": {"n": 2, "b1": 0.08, "kon": 100, "a": False}, "TARIFF_TRADEWAR": {"n": 1, "b1": -1.43, "kon": 100, "a": False}}
+MULUT_GERAK, MULUT_VOL = 0.4, 2.0
+
+
+def _k5(sym, n=30):
+    """Candle 5 menit (ts ms, open, high, low, close, volume) urut lama ke baru."""
+    try:
+        import config as CF
+        r = requests.get(CF.BYBIT_URL + "/v5/market/kline", params=dict(category="linear", symbol=sym, interval="5", limit=n), timeout=8)
+        return sorted((int(x[0]), float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])) for x in r.json()["result"]["list"])
+    except Exception:
+        return []
+
+
+def reaksi_pasar(rows, pub):
+    """(gerak persen sejak rilis, rasio volume sesudah lawan 12 candle sebelum) dari candle 5 menit, atau None."""
+    if not rows:
+        return None
+    t0 = int(pub * 1000)
+    pre = [x for x in rows if x[0] + 300000 <= t0][-12:]
+    post = [x for x in rows if x[0] + 300000 > t0]
+    if len(pre) < 6 or not post:
+        return None
+    p0 = pre[-1][4]
+    g = (post[-1][4] / p0 - 1) * 100 if p0 else 0.0
+    vp = sum(x[5] for x in pre) / len(pre)
+    vr = (sum(x[5] for x in post) / len(post)) / vp if vp > 0 else 0.0
+    return g, vr
+
+
+def syarat_mulut(kat, arah, koin, pub, data=None):
+    """('A' atau 'B', arah, baris reaksi) kalau berita boleh dikirim, atau None. data = dict sym -> candle 5 menit (tes)."""
+    rx = []
+    for base in list(dict.fromkeys([(koin or ["BTC"])[0], "BTC"])):
+        sym = base + "USDT"
+        r = reaksi_pasar((data or {}).get(sym) if data is not None else _k5(sym), pub)
+        if r:
+            rx.append((base, r[0], r[1]))
+    baris = ", ".join(f"{b} {g:+.2f}% volume {v:.1f}x rata-rata" for b, g, v in rx) if rx else "data candle belum terbaca"
+    m = MULUT_1J.get(kat or "")
+    if m and m.get("a"):
+        return "A", (arah or (1 if m["b1"] > 0 else -1)), baris
+    for b, g, v in rx:
+        if abs(g) >= MULUT_GERAK and v >= MULUT_VOL and (not arah or (g > 0) == (arah > 0)):
+            return "B", (arah or (1 if g > 0 else -1)), baris
+    return None
+
+
 def _posisi_mulut(koin, arah_t):
     """Baris posisi tiap orang yang tersentuh berita, pemilik posisi berlawanan di-tag."""
     try:
@@ -641,11 +696,23 @@ def _posisi_mulut(koin, arah_t):
                    if v.get("status") in ("TERISI", "TP1") and (luas or v.get("sym") == koin[0] + "USDT")]
             beda = sorted({f"{v['sym'].replace('USDT', '')} {v['arah']}" for v in pos if arah_t and v["arah"] != arah_t})
             sama = sorted({f"{v['sym'].replace('USDT', '')} {v['arah']}" for v in pos if arah_t and v["arah"] == arah_t})
-            if beda:
-                rows.append(f"👤 {SY.sebut(u)}: posisi berlawanan berita: <b>{', '.join(beda)}</b>. Cek Status, pastikan SL terpasang."
-                            + (f" Searah: {', '.join(sama)}." if sama else ""))
-            elif sama:
-                rows.append(f"👤 <b>{html.escape(str(SY.nama_pengguna(u)))}</b>: posisi searah berita: {', '.join(sama)}.")
+            for v in pos:          # QC 108: tindakan konkrit per posisi, dari aturan yang teruji saja
+                try:
+                    px = SY.harga_live(v["sym"]); fl = SY.floating(v, px) if px else None
+                except Exception:
+                    fl = None
+                kd = v["sym"].replace("USDT", ""); t = v.get("tick") or 1e-8
+                rnow = f"{fl['r']:+.2f}R" if fl else "R belum terbaca"
+                aman = SY.sudah_aman(v)
+                rs = (v["entry"] - v["sl"]) / max(SY._risk0(v), 1e-12) * (1 if v["arah"] == "LONG" else -1)
+                maks = SY._real(v) - SY._sisa(v) * rs
+                if arah_t and v["arah"] != arah_t:
+                    rows.append(f"👉 {SY.sebut(u)} <b>{kd} {v['arah']}</b> ({rnow}) BERLAWANAN berita. SL {SY.fp(v['sl'], t)}, kalau kena "
+                                f"hasil {maks:+.2f}R. " + ("Posisi sudah aman (TP 20% kena), biarkan SL bekerja." if aman else
+                                "Tahan dengan SL tetap. Uji 2021-2026: keluar karena berita menurunkan profit, kecuali pesan Hidung Abdul."))
+                elif arah_t:
+                    rows.append(f"👉 <b>{html.escape(str(SY.nama_pengguna(u)))}</b> <b>{kd} {v['arah']}</b> ({rnow}) SEARAH berita, diuntungkan. "
+                                f"Tahan sampai TP, SL {SY.fp(v['sl'], t)}.")
         return rows
     except Exception as ex:
         print("[WARN] mulut posisi", ex)
@@ -684,6 +751,12 @@ def mulut(simbol, maks=2, now=None, data=None):
             tingkat, alasan = dampak_mulut(kat, arah, kuat)
             if not tingkat:
                 continue
+            sy = None
+            if os.environ.get("QSE_MULUT_KETAT", "1") != "0":          # QC 108: hanya yang valid (syarat A) atau pasar sudah bereaksi (B)
+                sy = syarat_mulut(kat, arah, _koin(teks, simbol) or ["BTC"], pub, data=getattr(mulut, "_tes_k5", None))
+                if not sy:
+                    continue
+                arah = sy[1]
             if any(w in (b.get("link") or "").lower() + " " + b["judul"].lower() for w in
                    ("/video", "podcast", "opinion", "price prediction", "price analysis", "sponsored", "press-release")):
                 continue          # bukan berita kejadian
@@ -707,8 +780,16 @@ def mulut(simbol, maks=2, now=None, data=None):
                     + (f" · condong {'🟢 naik' if arah > 0 else '🔴 turun'}" if arah else " · arah belum jelas")
                     + (f" · {LABEL.get(kat, kat)}" if kat else ""),
                     f"📚 {alasan[0].upper() + alasan[1:]}."]
+            if sy:
+                m1 = MULUT_1J.get(kat or "")
+                if m1:
+                    rows.append(f"📊 Historis {m1['n']} kejadian serupa: {m1['kon']}% BTC bergerak {'NAIK' if m1['b1'] > 0 else 'TURUN'} "
+                                f"rata-rata {abs(m1['b1']):.2f}% dalam 1 jam.")
+                else:
+                    rows.append("📊 Jenis ini belum punya sejarah 1 jam yang konsisten. Dikirim karena pasar sudah bereaksi.")
+                rows.append(f"⚡ Reaksi pasar sejak rilis ({max(0, (now - pub) / 60):.0f} menit lalu): {sy[2]}.")
             rows += _posisi_mulut(koin, arah_t)
-            rows.append("Info kilat, bukan sinyal. Jangan entry dari berita. Posisi jalan ikuti SL dan TP, kecuali ada pesan Hidung Abdul atau Gawat.")
+            rows.append("Info kilat, bukan sinyal. Jangan entry dari berita.")
             out.append("\n".join(rows))
     c["mulut"] = list(sudah)[-1500:]
     c["mulut_topik"] = {k: v for k, v in topik.items() if now - v < 86400}

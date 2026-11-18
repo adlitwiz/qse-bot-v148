@@ -234,7 +234,7 @@ def _kelola(it, df):
 
 def v150_langkah(it, hi, lo, cl):
     """v150: jejak aturan keluar yang diikuti orang, berjalan di samping aturan jalur, per candle 4J: TPawal 20% di +0.5R lalu SL
-    ke entry, jam ke-12 dinamis (rugi >= 0.5R tutup, melawan SL ke -0.5R), batas 30 jam (candle ke-8) untuk yang belum aman.
+    ke -0.25R dan ke entry di +1.0R (QC 108), jam ke-12 dinamis (rugi >= 0.5R tutup, melawan SL ke -0.5R), batas 30 jam (candle ke-8) untuk yang belum aman.
     Dipanggil sebelum aturan jalur di tiap candle. Hasil di it['v9']['R'] (tanpa biaya)."""
     e = it["entry"]
     risk = abs(e - it.get("sl0", it["sl"])) or it.get("risk") or 1e-12
@@ -252,6 +252,8 @@ def v150_langkah(it, hi, lo, cl):
         v["real"] += TPS_PORSI * TPS_R
         v["sisa"] = 1.0 - TPS_PORSI
         v["aman"] = True
+        v["sl"] = e - d * BUF_R * risk          # QC 108: ruang napas -0.25R, ke entry di +1.0R
+    if v["aman"] and (v["sl"] - e) * d < 0 and ((hi >= e + d * BUF_LEPAS * risk) if d == 1 else (lo <= e + d * BUF_LEPAS * risk)):
         v["sl"] = e
     v["n"] += 1
     if not v["aman"]:
@@ -950,6 +952,27 @@ def kunci_jalur(j):
 # rugi beruntun terpanjang 42 lawan 150 trade. Biayanya: total R per lot 57% dari cara lama, drawdown juga turun ke 67%.
 # Semua 9 jalur naik WR ke 69-76%. Pembanding: 20% di 0.4R WR 77% total 47%, 20% di 0.75R WR 65% total 76%, 20% di 1R WR 58%.
 TPS_R, TPS_PORSI = 0.5, 0.20
+# QC 108 ANTI-SAPU ENTRY (riset/upgrade/run_v215_kelola.py, hasil_v215_kelola.txt). Sesudah TP 20% kena, SL TIDAK langsung ke entry:
+# SL ke -0.25R dulu (ruang napas), baru ke entry saat untung +1.0R. Kalau kena di -0.25R total trade -0.10R (20% x 0.5R - 80% x 0.25R).
+# Siaran 24.926 sinyal, jumlah sinyal sama (hanya keluar yang berubah), selisih total R lawan SL langsung ke entry:
+#   latih Jul22-Des24 +135R (PF 1.30 ke 1.31), uji 2025-Okt26 +125R (1.52 tetap), 12 bulan +89R (1.16 ke 1.20), 6 bulan +44R (1.26 ke 1.28).
+#   Buku Gurita 150 USDT: latih 478 ke 496, uji 308 ke 354, 12 bulan 175 ke 180, 6 bulan 201 ke 202. Siaran: 373/480/163/224 ke 516/668/211/234.
+#   Win rate nominal turun 52% ke 34%: trade impas +0.05R (SL di entry) berubah jadi -0.10R. Uang bertambah, angka menang turun.
+# Data: 27% posisi yang sudah +0.5R menjilat entry. 10% dari semua yang sudah +0.5R menjilat entry lalu lari ke TP tanpa kena SL awal.
+# Varian -0.15R/-0.20R dan geser di +0.75/+0.8R juga plus di 4 periode. -0.25R di +1.0R dipilih dari saldo Gurita latih tertinggi.
+# Kondisional BTC searah (1J atau 4J) dan aturan jam ke-12 baru tidak lebih baik. Saklar QSE_BUFFER=0 kembali ke SL langsung entry.
+BUF_R = 0.25 if os.environ.get("QSE_BUFFER", "1") != "0" else 0.0
+BUF_LEPAS = 1.0
+
+
+def sl_napas(entry, risk, arah):
+    """SL sesudah TP 20%: -0.25R dari entry (atau entry kalau saklar mati)."""
+    return entry - BUF_R * risk if arah == "LONG" else entry + BUF_R * risk
+
+
+def lv_lepas(entry, risk, arah):
+    """Harga untung +1.0R: SL dari -0.25R digeser ke entry."""
+    return entry + BUF_LEPAS * risk if arah == "LONG" else entry - BUF_LEPAS * risk
 
 
 def tp_sebagian(entry, sl0, arah):
@@ -992,8 +1015,14 @@ def rencana_tp(entry, sl, arah, tick, tp=None, jarak=None, fmt=None, uji=True, w
         return []
     pc = lambda x: abs(x - entry) / entry * 100
     tps = tp_sebagian(entry, sl, arah)
-    rows = [f"💰 <b>TP {int(TPS_PORSI * 100)}% posisi: {fmt(tps, tick)} (+{pc(tps):.1f}%)</b>. Setelah kena, "
-            f"<b>pindahkan SL ke entry {fmt(entry, tick)}</b>"]
+    if BUF_R > 0:
+        sn, lp = sl_napas(entry, risk, arah), lv_lepas(entry, risk, arah)
+        rows = [f"💰 <b>TP {int(TPS_PORSI * 100)}% posisi: {fmt(tps, tick)} (+{pc(tps):.1f}%)</b>. Setelah kena, "
+                f"<b>pindahkan SL ke {fmt(sn, tick)}</b> (-{BUF_R:g}R, ruang napas anti-sapu entry). "
+                f"Untung sampai {fmt(lp, tick)} (+{BUF_LEPAS:g}R): <b>SL ke entry {fmt(entry, tick)}</b>"]
+    else:
+        rows = [f"💰 <b>TP {int(TPS_PORSI * 100)}% posisi: {fmt(tps, tick)} (+{pc(tps):.1f}%)</b>. Setelah kena, "
+                f"<b>pindahkan SL ke entry {fmt(entry, tick)}</b>"]
     if tp:
         rows.append(f"🏁 <b>TP {100 - int(TPS_PORSI * 100)}% sisa: {fmt(tp, tick)} (untung {pc(tp):.1f}%)</b>")
     else:
@@ -1897,6 +1926,14 @@ def kartu(k, no, it, a):
             lot_b = "0.2x"          # kelas ringan
     except Exception:
         pass
+    try:          # QC 112: LONG jenuh beli tanpa vonis LONG, lot 0.5x
+        import qse_vonis as QV
+        km, kt = QV.lot_momentum(it["sym"], it["arah"])
+        if km < 1:
+            lot_b = f"{SY.lot_angka(lot_b) * km:g}x"
+            kp_teks = (kp_teks + "\n" if kp_teks else "") + kt
+    except Exception as ex:
+        print("[WARN] lot momentum", ex)
     jg, ju = [], False
     try:
         import qse_jagoan as JG          # QC 60/61: label koin jagoan, KELAS UTAMA otomatis untuk jagoan sejati

@@ -334,6 +334,27 @@ def baris_salin(teks, maks=8):
     return rows
 
 
+_RX_AKSI = re.compile(r"(TP SEBAGIAN KENA|PENGINGAT SL|SL KE ENTRY|HARGA MENYENTUH ENTRY)\s+·\s+([A-Z0-9]{2,20})USDT")
+
+
+def baris_aksi(teks, maks=6):
+    """QC 108: tombol 1 klik di bawah pesan posisi. TP 20%, pengingat SL, dan SL ke entry: konfirmasi SL sudah dipindah di Bybit.
+    Harga menyentuh entry: pilih sudah tertutup impas atau masih jalan, supaya catatan robot sama dengan Bybit."""
+    rows, sudah = [], set()
+    for jenis, kd in _RX_AKSI.findall(re.sub(r"<[^>]+>", "", teks or "")):
+        if (jenis, kd) in sudah:
+            continue
+        sudah.add((jenis, kd))
+        if jenis == "HARGA MENYENTUH ENTRY":
+            rows.append([(f"🛑 {kd}: Sudah Kena SL Entry (Tutup Impas)", f"c:/slkena {kd}")])
+            rows.append([(f"▶️ {kd}: Masih Jalan (SL Belum di Entry)", f"c:/sljalan {kd}")])
+        else:
+            rows.append([(f"✅ {kd}: Sudah Pindah SL di Bybit", f"c:/slok {kd}")])
+        if len(rows) >= maks:
+            break
+    return rows
+
+
 def tombol_untuk(cmd, args, isi, uid=None, nama=""):
     """Inline keyboard untuk balasan perintah. None = pakai keyboard menu bawah."""
     k = (args[0] if args else "").replace("USDT", "")

@@ -1,5 +1,5 @@
 """QC 104 🔬 OTOPSI RUGI. Tiap posisi yang selesai rugi (SL atau cutloss) dianalisa robot dari data, lalu diberi kesimpulan dan
-satu blok PROMPT siap salin untuk dikirim ke Fable sebagai bahan perbaikan sistem.
+satu blok PROMPT siap salin untuk dikirim ke Opus sebagai bahan perbaikan sistem.
 
 Yang dihitung dari candle 1 jam Bybit selama posisi jalan: untung tertinggi yang sempat dicapai (MFE, dalam R), rugi terdalam (MAE),
 jam ke berapa puncaknya, lama posisi, gerak BTC selama posisi dan apakah melawan arah, gerak koin dibanding BTC.
@@ -24,7 +24,7 @@ def _wib(ms):
     return time.strftime("%d/%m %H:%M", time.gmtime(ms / 1000 + 7 * 3600))
 
 
-def jalur_harga(it, ambil=None):
+def jalur_harga(it, ambil=None, ambil4=None):
     """Statistik jalur harga selama posisi. ambil(sym, n) -> DataFrame candle 1 jam (index ms). Return dict atau {}."""
     try:
         if ambil is None:
@@ -53,6 +53,19 @@ def jalur_harga(it, ambil=None):
             if len(b):
                 out["btc_pct"] = (float(b["close"].iloc[-1]) / float(b["open"].iloc[0]) - 1) * 100
                 out["btc_maks_lawan"] = float(((b["low"].min() if L else b["high"].max()) / float(b["open"].iloc[0]) - 1) * 100)
+        except Exception:
+            pass
+        try:          # QC 109: kondisi jenuh sebelum masuk (RSI 14 candle 4J, gerak 72 jam searah sinyal)
+            n4 = int(min(900, (time.time() * 1000 - t0) / (4 * JAM) + 60))
+            c4 = ambil4(it["sym"], n4) if ambil4 else __import__("bybit_fetch")._raw(it["sym"], "240", n4)
+            c4 = c4[c4.index + 4 * JAM <= t0]["close"].values.astype(float)
+            if len(c4) >= 30:
+                import numpy as _np
+                dl = _np.diff(c4); up = _np.where(dl > 0, dl, 0.0); dn = _np.where(dl < 0, -dl, 0.0); au = up[:14].mean(); ad = dn[:14].mean()
+                for a_, b_ in zip(up[14:], dn[14:]):
+                    au = (au * 13 + a_) / 14; ad = (ad * 13 + b_) / 14
+                out["rsi4"] = float(100 - 100 / (1 + au / max(ad, 1e-12)))
+                out["gerak72"] = float((c4[-1] / c4[-19] - 1) * 100 * (1 if L else -1))
         except Exception:
             pass
         return out
@@ -105,6 +118,11 @@ def temuan(it, jh, rw):
             kp = jh.get("koin_pct") or 0
             if (kp < 0) == L and abs(kp) >= 2:
                 out.append(("KOIN_SENDIRI", f"BTC hampir diam ({bp:+.2f}%) tapi koin bergerak {kp:+.2f}%. Rugi dari koin itu sendiri."))
+    rs, g72 = jh.get("rsi4"), jh.get("gerak72")
+    if rs is not None and ((not L and rs <= 35) or (L and rs >= 70)):
+        out.append(("JENUH", f"Masuk {it['arah']} saat RSI 4J {rs:.0f} (sudah {'jenuh jual' if not L else 'jenuh beli'}), gerak 72 jam searah "
+                    f"{g72:+.1f}%. Uji v221: SHORT saat RSI 4J <= 35 PF 1.55 di 2022-2024 tapi 0.87 (12 bulan) dan 0.66 (6 bulan)."
+                    if not L else f"Masuk LONG saat RSI 4J {rs:.0f}. Uji v221: LONG di RSI >= 70 justru lebih bagus (PF 1.8-3.7), jadi ini bukan sebab."))
     k = it.get("kolam")
     if k is not None and k < 0.8:
         out.append(("RAWAN_SAPU", f"Swing 20 candle 4J hanya {k:.1f}R dari entry. Kelompok ini PF 0.59-0.80 di uji v203."))
@@ -133,7 +151,7 @@ def temuan(it, jh, rw):
 
 
 def laporan(it, closed, ambil=None, nama=""):
-    """Teks otopsi satu trade rugi, termasuk blok prompt untuk Fable."""
+    """Teks otopsi satu trade rugi, termasuk blok prompt untuk Opus."""
     import qse_saya as SY
     jh = jalur_harga(it, ambil)
     rw = riwayat(it, closed)
@@ -170,7 +188,7 @@ def laporan(it, closed, ambil=None, nama=""):
     p.append("Tugas: cari apakah pola rugi ini bisa dicegah dengan aturan baru (saringan masuk, kelas, atau aturan keluar). "
              "Uji di populasi siaran: pilih di latih, buktikan di uji, 12 bulan, dan 6 bulan sesudah biaya. "
              "Pasang hanya kalau lolos semua periode dan tidak menurunkan frekuensi atau total profit. Kalau tidak lolos, laporkan apa adanya.")
-    rows.append("📋 <b>Prompt untuk Fable</b> (tekan lama blok di bawah untuk salin):\n<pre>" + html.escape("\n".join(p)) + "</pre>")
+    rows.append("📋 <b>Prompt untuk Opus</b> (tekan lama blok di bawah untuk salin):\n<pre>" + html.escape("\n".join(p)) + "</pre>")
     return "\n\n".join(rows)
 
 
@@ -205,8 +223,17 @@ def cek(now=None, ambil=None):
     return _isi_otopsi()
 
 
-def rekap(hari=14):
-    """/otopsi: rekap semua rugi beberapa hari terakhir dan satu prompt gabungan untuk Fable."""
+ARTI_POLA = {"LANGSUNG_SALAH": "untung tertinggi < +0.1R", "SL_CEPAT": "selesai <= 4 jam", "BTC_MELAWAN": "BTC bergerak >= 1.5% melawan",
+             "KOIN_SENDIRI": "BTC diam (< 0.7%), koin bergerak >= 2% melawan", "JENUH": "SHORT di RSI 4J <= 35 atau LONG di >= 70",
+             "BALIK_SESUDAH_TP1": "sempat >= +0.5R lalu berbalik", "BALIK_SEBELUM_TP1": "sempat +0.3 sampai +0.5R lalu berbalik",
+             "RUGI_BERUNTUN": "rugi ke-3 atau lebih berturut-turut", "TEKNIK_LEMAH_LIVE": "teknik 10 trade terakhir total < -1R",
+             "KOIN_LEMAH_LIVE": "koin 3+ trade terakhir total < -1.5R", "LAWAN_SISI_BTC": "masuk melawan sisi BTC 4J (>= 1% dari EMA 50)",
+             "RAWAN_SAPU": "swing 20 candle 4J < 0.8R dari entry", "KELAS_RINGAN": "sinyal kelas ringan", "MANUAL": "entry manual",
+             "SEROK": "posisi ditambah saat jalan", "SL_DIUBAH": "SL diubah manual", "TANPA_POLA": "tidak cocok pola apa pun"}
+
+
+def rekap(hari=7, ambil=None, ambil4=None):
+    """/otopsi: rekap rugi 7 hari terakhir (QC 109), dengan jalur harga tiap trade, dan satu prompt gabungan siap kirim ke Opus."""
     import qse_saya as SY
     d = SY._load()
     a = int(time.time() * 1000) - hari * 86400000
@@ -216,18 +243,41 @@ def rekap(hari=14):
         return f"🔬 <b>OTOPSI RUGI</b>\nTidak ada trade rugi dalam {hari} hari terakhir."
     hit = {}
     baris = []
-    for c in rugi[-25:]:
-        tm = temuan(c, {}, riwayat(c, d.get("closed", [])))
+    for c in rugi[-15:]:
+        jh = jalur_harga(c, ambil, ambil4)          # QC 109: jalur harga dihitung, bukan kosong, supaya pola terbaca
+        tm = temuan(c, jh, riwayat(c, d.get("closed", [])))
         for k, _ in tm:
             hit[k] = hit.get(k, 0) + 1
-        baris.append(f"{c['sym']} {c['arah']} {c.get('jalur') or 'manual'} {c['result_r']:+.2f}R ({c.get('why') or '?'}): " + ", ".join(k for k, _ in tm))
+        ctx = []
+        if jh.get("mfe") is not None:
+            ctx.append(f"MFE {jh['mfe']:+.2f}R, MAE {jh['mae']:+.2f}R, {jh['lama']:.1f} jam")
+        if jh.get("btc_pct") is not None:
+            ctx.append(f"koin {jh['koin_pct']:+.1f}% BTC {jh['btc_pct']:+.1f}%")
+        if jh.get("rsi4") is not None:
+            ctx.append(f"RSI4J masuk {jh['rsi4']:.0f}, 72j searah {jh['gerak72']:+.1f}%")
+        if c.get("kelas"):
+            ctx.append(f"kelas {c['kelas']}")
+        baris.append(f"- {_wib(c.get('fill_ts') or c.get('created_ts') or 0)} {c['sym']} {c['arah']} {c.get('jalur') or 'manual'} "
+                     f"{c['result_r']:+.2f}R ({c.get('why') or '?'}) | " + "; ".join(ctx) + " | pola: " + ", ".join(k for k, _ in tm))
     tot = sum(c["result_r"] for c in semua)
+    def grup(f):
+        g = {}
+        for c in semua:
+            k = f(c); x = g.setdefault(k, [0, 0, 0.0]); x[0] += 1; x[1] += c["result_r"] > 0; x[2] += c["result_r"]
+        return "; ".join(f"{k} {n} trade WR {w / n * 100:.0f}% {r:+.2f}R" for k, (n, w, r) in sorted(g.items(), key=lambda z: z[1][2]))
+    per_arah = grup(lambda c: c["arah"]); per_tek = grup(lambda c: (c.get("jalur") or "manual").replace("saran ", ""))
+    urut = sorted(hit.items(), key=lambda z: -z[1])
     rows = [f"🔬 <b>OTOPSI RUGI {hari} HARI</b>",
-            f"{len(semua)} trade selesai, total {tot:+.2f}R. Rugi {len(rugi)} trade, total {sum(c['result_r'] for c in rugi):+.2f}R.",
-            "<b>Pola terbanyak:</b>\n" + "\n".join(f"• {k}: {n} kali" for k, n in sorted(hit.items(), key=lambda z: -z[1])[:6])]
-    p = [f"REKAP RUGI QSE v150, {hari} hari: {len(semua)} trade selesai total {tot:+.2f}R, rugi {len(rugi)} trade.",
-         "Pola: " + ", ".join(f"{k} {n}x" for k, n in sorted(hit.items(), key=lambda z: -z[1])), "Daftar rugi:"] + baris + [
+            f"{len(semua)} trade selesai, WR {sum(1 for c in semua if c['result_r'] > 0) / len(semua) * 100:.0f}%, total {tot:+.2f}R. "
+            f"Rugi {len(rugi)} trade, total {sum(c['result_r'] for c in rugi):+.2f}R.",
+            f"<b>Per arah:</b> {per_arah}\n<b>Per teknik:</b> {per_tek}",
+            "<b>Pola terbanyak:</b>\n" + "\n".join(f"• {k}: {n} dari {len(rugi)} rugi ({ARTI_POLA.get(k, '')})" for k, n in urut[:6])]
+    p = [f"REKAP RUGI QSE v150, {hari} hari terakhir: {len(semua)} trade selesai, total {tot:+.2f}R, rugi {len(rugi)} trade "
+         f"({sum(c['result_r'] for c in rugi):+.2f}R).",
+         f"Per arah: {per_arah}.", f"Per teknik: {per_tek}.",
+         "Pola (jumlah dari trade rugi, arti): " + "; ".join(f"{k} {n}x ({ARTI_POLA.get(k, '')})" for k, n in urut) + ".",
+         "Daftar rugi (waktu masuk WIB, koin, arah, teknik, hasil | MFE MAE lama, gerak koin dan BTC selama posisi, RSI 4J saat masuk | pola):"] + baris + [
          "Tugas: cari pola rugi yang paling sering, uji apakah bisa dicegah dengan aturan (latih, uji, 12 bulan, 6 bulan sesudah biaya). "
          "Pasang hanya yang lolos semua periode tanpa menurunkan frekuensi dan profit. Laporkan yang gagal apa adanya."]
-    rows.append("📋 <b>Prompt gabungan untuk Fable</b> (tekan lama untuk salin):\n<pre>" + html.escape("\n".join(p))[:3000] + "</pre>")
+    rows.append("📋 <b>Prompt gabungan untuk Opus</b> (tekan lama untuk salin):\n<pre>" + html.escape("\n".join(p))[:3000] + "</pre>")
     return "\n\n".join(rows)

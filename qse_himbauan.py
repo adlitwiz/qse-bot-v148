@@ -97,7 +97,7 @@ def cek4j(now=None, df=None, harga=None):
     out = []
     d.setdefault("kirim", {})
     for jenis, (on, dulu) in k.items():
-        if awal or not on or dulu or now - d["kirim"].get(jenis, 0) < JEDA:
+        if awal or not on or dulu or now - d["kirim"].get(jenis, 0) < JEDA_JENIS.get(jenis, JEDA):
             continue
         d["kirim"][jenis] = now
         try:
@@ -128,6 +128,77 @@ def _tulis(d):
     with open(PATH + ".tmp", "w") as f:
         json.dump(d, f)
     os.replace(PATH + ".tmp", PATH)
+
+
+# QC 108 👃 HIDUNG ABDUL DERIVATIF (riset/upgrade/run_v219_hidung_derivatif.py, hasil_v219_hidung_derivatif.txt). Data BTC Binance,
+# ambang dari kuantil latih Jul 2022-2024, posisi siaran jalan, aturan keluar live, biaya ikut, beda lawan tahan, jeda 12 jam:
+#   OI BTC 24 jam naik >= 4.49% (10% teratas) DAN funding BTC sekarang <= -0.0003% (10% terendah): SHORT padat dan menumpuk,
+#   rawan short squeeze. Tutup SHORT untung >= +0.3R: latih +111R, uji 2025-Okt26 +181R, 12 bulan +153R, 6 bulan +57R (79 kejadian).
+#   Tetangga ambang OI q85/q90 x funding q5/q10/q20 plus semua (q95 tipis). Tanpa hari Himbauan pump: +51R, +62R, +59R, +26R.
+# DITOLAK: OI melonjak + harga mandek (SHORT -17R uji, LONG -12R 6 bulan), funding tinggi LONG padat (2025-2026 tidak pernah terjadi),
+# funding rendah saja (6 bulan -49R), OI tinggi + funding tinggi (tidak ada kejadian di uji).
+LEV_OI24 = 4.49            # persen
+LEV_FUND = -0.000003       # -0.0003%
+DERIV = {}
+JEDA_JENIS = {"leverage": 12 * 3600}
+JENIS["leverage"] = dict(ikon="👃", judul="HIDUNG ABDUL DERIVATIF: SHORT PADAT", lawan="SHORT", amb=0.3,
+                         sebab="OI BTC naik {oi:+.2f}% dalam 24 jam (batas +4.49%) dan funding {fu:.4f}% (batas -0.0003%). "
+                               "Posisi SHORT menumpuk dengan leverage, rawan short squeeze dalam beberapa jam.",
+                         uji="Uji Jul 2022-Okt 2026: lebih baik dari tahan di latih, uji, 12 bulan, 6 bulan (+111R, +181R, +153R, +57R). "
+                             "Posisi minus dan LONG ditahan.")
+
+
+def ambil_derivatif():
+    """OI BTC 24 jam (persen) dan funding terakhir. Binance dulu (sumber uji), cadangan Bybit. Hasil di DERIV."""
+    import requests
+    oi24 = fu = None
+    try:
+        j = requests.get("https://fapi.binance.com/futures/data/openInterestHist", params=dict(symbol="BTCUSDT", period="1h", limit=25),
+                         timeout=8).json()
+        v = [float(x["sumOpenInterest"]) for x in j]
+        if len(v) == 25:
+            oi24 = (v[-1] / v[0] - 1) * 100
+    except Exception:
+        pass
+    if oi24 is None:
+        try:
+            import config as CF
+            j = requests.get(f"{CF.BYBIT_URL}/v5/market/open-interest", params=dict(category="linear", symbol="BTCUSDT", intervalTime="1h",
+                             limit=25), timeout=8).json()["result"]["list"]
+            v = [float(x["openInterest"]) for x in sorted(j, key=lambda z: int(z["timestamp"]))]
+            if len(v) == 25:
+                oi24 = (v[-1] / v[0] - 1) * 100
+        except Exception as ex:
+            print("[WARN] hidung derivatif OI", ex)
+    try:
+        f = requests.get("https://fapi.binance.com/fapi/v1/premiumIndex", params=dict(symbol="BTCUSDT"), timeout=8).json()
+        fu = float(f["lastFundingRate"])
+    except Exception:
+        try:
+            import config as CF
+            f = requests.get(f"{CF.BYBIT_URL}/v5/market/tickers", params=dict(category="linear", symbol="BTCUSDT"), timeout=8).json()
+            fu = float(f["result"]["list"][0]["fundingRate"])
+        except Exception as ex:
+            print("[WARN] hidung derivatif funding", ex)
+    DERIV.clear()
+    DERIV.update(oi24=oi24, fu=fu, t=time.time())
+    return oi24, fu
+
+
+def leverage_menyala(oi24=None, fu=None):
+    oi24 = DERIV.get("oi24") if oi24 is None else oi24
+    fu = DERIV.get("fu") if fu is None else fu
+    return oi24 is not None and fu is not None and oi24 >= LEV_OI24 and fu <= LEV_FUND
+
+
+def status_leverage():
+    """Satu baris radar penciuman leverage untuk /berita, /status, /pasar."""
+    x = (_baca().get("deriv") or {}) if not DERIV else DERIV
+    oi24, fu = x.get("oi24"), x.get("fu")
+    if oi24 is None or fu is None:
+        return "penciuman leverage: data OI dan funding BTC belum terbaca"
+    st = "⚠️ WASPADA PENUMPUKAN SHORT" if leverage_menyala(oi24, fu) else ("🟡 SHORT mulai padat" if fu <= LEV_FUND or oi24 >= LEV_OI24 else "✅ AMAN")
+    return f"penciuman leverage {st} (OI BTC 24j {oi24:+.2f}%, batas +{LEV_OI24:g}%, funding {fu * 100:.4f}%, batas {LEV_FUND * 100:.4f}%)"
 
 
 def ambil():
@@ -192,7 +263,7 @@ def ambang_gulir(riw, q=0.9, minimal=250):
 
 def kondisi(ls, f3, amb=None):
     amb = LS_AKTIF["amb"] if amb is None else amb
-    return {"dump": ls is not None and ls >= amb, "pump": f3 is not None and f3 <= FUND_PUMP}
+    return {"dump": ls is not None and ls >= amb, "pump": f3 is not None and f3 <= FUND_PUMP, "leverage": leverage_menyala()}
 
 
 def baris_posisi(lawan, harga=None, amb=None):
@@ -223,7 +294,8 @@ def baris_posisi(lawan, harga=None, amb=None):
 def pesan(jenis, ls, f3, harga=None, jr=0.0):
     j = JENIS[jenis]
     amb = j.get("amb", AMBANG_R)
-    sebab = j["sebab"].format(ls=ls or 0, f=(f3 or 0) * 100, b=LS_AKTIF["amb"] if jenis == "dump" else FUND_PUMP * 100, jr=jr or 0)
+    sebab = j["sebab"].format(ls=ls or 0, f=(f3 or 0) * 100, b=LS_AKTIF["amb"] if jenis == "dump" else FUND_PUMP * 100, jr=jr or 0,
+                              oi=DERIV.get("oi24") or 0, fu=(DERIV.get("fu") or 0) * 100)
     rows = [f"{j['ikon']} <b>HIMBAUAN: {j['judul']}</b>",
             sebab,
             f"Ini info duluan, bukan sinyal entry. Posisi <b>{j['lawan']}</b> yang untung minimal <b>+{amb:g}R</b> ditutup sekarang "
@@ -254,6 +326,12 @@ def cek(now=None, data=None, harga=None):
         print("[WARN] himbauan ambil", ex)
         _tulis(d)
         return []
+    if data is None:
+        try:
+            ambil_derivatif()
+        except Exception as ex:
+            print("[WARN] hidung derivatif", ex)
+    d["deriv"] = dict(DERIV)
     d["data"] = dict(ls=ls, f3=f3, t=now, amb=LS_AKTIF["amb"], sumber=LS_AKTIF["sumber"])
     awal = not d.get("nyala")
     k = kondisi(ls, f3)
@@ -261,12 +339,13 @@ def cek(now=None, data=None, harga=None):
     for jenis, on in k.items():
         dulu = d["nyala"].get(jenis, False)
         d["nyala"][jenis] = on
-        if awal or not on or dulu or now - d["kirim"].get(jenis, 0) < JEDA:
+        if awal or not on or dulu or now - d["kirim"].get(jenis, 0) < JEDA_JENIS.get(jenis, JEDA):
             continue
         d["kirim"][jenis] = now
         try:
             import telegram_notify as TG
-            TG.send(["🧭 <b>QSE v150 | HIMBAUAN BTC</b>\n\n" + pesan(jenis, ls, f3, harga)])
+            TG.send([("👃 <b>QSE v150 | HIDUNG ABDUL</b>\n\n" if jenis == "leverage" else "🧭 <b>QSE v150 | HIMBAUAN BTC</b>\n\n")
+                     + pesan(jenis, ls, f3, harga)])
         except Exception as ex:
             print("[WARN] himbauan kirim", ex)
         out.append(jenis)

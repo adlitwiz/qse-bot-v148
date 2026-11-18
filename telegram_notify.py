@@ -123,6 +123,7 @@ TOMBOL = {
     "rsi": "🔎 Cek Koin", "ticker": "🔎 Cek Koin",
     "pasar": "🧭 Arah Pasar", "vonis": "🧭 Arah Pasar", "arahpasar": "🧭 Arah Pasar", "himbauan": "🧭 Himbauan BTC", "duluan": "🧭 Himbauan BTC",
     "otopsi": "🔬 Otopsi Rugi", "evalrugi": "🔬 Otopsi Rugi",          # QC 107: tombol baru di menu bawah
+    "slkena": "🎯 Kelola Posisi", "sljalan": "🎯 Kelola Posisi",
 }
 _RX_KATA = re.compile(r"(?i)\b(kirim|ketik|pakai|gunakan|jalankan|panggil)\s+(?=/[a-z])")
 _RX_CMD = re.compile(r"(?<![<\w:/.%\d~])/([a-z][a-z0-9_]*)")
@@ -149,6 +150,10 @@ def _markup(teks, markup, terakhir):
     except Exception:
         salin = []
     rows = [[{"text": t, "copy_text": {"text": d[2:][:256]}} for t, d in r] for r in salin]
+    try:          # QC 108: tombol konfirmasi SL dan tanya entry di pesan posisi
+        rows += [[{"text": t, "callback_data": d[:64]} for t, d in r] for r in _QM.baris_aksi(teks)]
+    except Exception:
+        pass
     if markup and markup.get("inline_keyboard"):
         rows += markup["inline_keyboard"]
     elif markup:

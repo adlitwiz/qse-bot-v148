@@ -12,6 +12,16 @@ from config import STATE_DIR
 
 LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
+
+def _radar_hidung():
+    """QC 108: baris Radar Hidung Abdul (badai makro terdekat dan penciuman leverage) di /berita, /status, /pasar."""
+    try:
+        import qse_berita as BR
+        return "\n\n" + BR.radar_hidung()
+    except Exception as ex:
+        print("[WARN] radar hidung", ex)
+        return ""
+
 def mulai_scan():
     """Jalankan scan sekarang di proses terpisah supaya listener tetap bisa membalas perintah lain."""
     import subprocess
@@ -280,7 +290,7 @@ def balas(cmd, args, dari_main=False):
         return MG.teks()
     if cmd in ("/pasar", "/vonis", "/arahpasar") or (cmd in ("/arah", "/tren") and (not args or args[0] in ("SEMUA", "PASAR", "ALT", "ALTCOIN"))):
         import qse_vonis as QV          # QC 104: /arah tanpa koin = vonis arah seluruh altcoin detik ini
-        return QV.teks()
+        return QV.teks() + _radar_hidung()
     if cmd in ("/arah", "/tren"):
         import qse_arah as AR
         return AR.teks(args)
@@ -341,7 +351,7 @@ def balas(cmd, args, dari_main=False):
                     bag.append(x)
             except Exception as ex:
                 bag.append(f"Sebagian berita gagal diambil: {TG.e(str(ex)[:120])}")
-        return "\n\n".join(bag) or "Belum ada berita baru."
+        return ("\n\n".join(bag) or "Belum ada berita baru.") + _radar_hidung()
     if cmd in ("/beritauji", "/ujiberita"):
         import qse_news as NW
         return NW.tes()
@@ -353,7 +363,7 @@ def balas(cmd, args, dari_main=False):
         return KB.rapor()
     if cmd in ("/otopsi", "/evalrugi"):       # QC 104 rekap rugi dan prompt gabungan untuk Fable
         import qse_otopsi as QO
-        return QO.rekap(int(SY._angka(args[0]) or 14) if args else 14)
+        return QO.rekap(int(SY._angka(args[0]) or 7) if args else 7)          # QC 109: 7 hari
     if cmd in ("/himbauan", "/duluan"):       # QC 100 himbauan BTC rawan dump atau pump
         import qse_himbauan as QH
         return QH.rapor()
@@ -380,6 +390,10 @@ def balas(cmd, args, dari_main=False):
         return MD.perintah(args)
     if cmd in ("/slok", "/slsudah"):
         return SY.slok(args)
+    if cmd == "/slkena":          # QC 108 tombol: posisi Bybit sudah tertutup di entry
+        return SY.sl_kena_entry(args)
+    if cmd == "/sljalan":         # QC 108 tombol: posisi Bybit masih jalan
+        return SY.sl_masih_jalan(args)
     if cmd == "/evaluasi":
         return SY.evaluasi()
     if cmd == "/uji":
@@ -415,6 +429,7 @@ def balas(cmd, args, dari_main=False):
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
         return ("📊 <b>QSE v150 | STATUS</b>" + (f"  ·  👤 {SY.nama_pengguna(SY.uid_aktif())}" if SY.uid_aktif() else "")
                 + "\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
+                + _radar_hidung()
                 + ("" if SY._peng().get("pemilik") else "\n\nℹ️ Ketik /milikku supaya catatan trade lama jadi milik kamu. "
                    "Trade orang lain di grup tercatat terpisah."))
     if cmd in ("/bantuan", "/help", "/start"):

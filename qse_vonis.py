@@ -163,13 +163,65 @@ def hitung(x=None):
                 harga={s_: v_.get("last") for s_, v_ in tk.items() if v_.get("last")} if tk else {})
 
 
+def rsi4j(sym, df=None):
+    """RSI 14 Wilder dari candle 4J yang sudah tutup, atau None."""
+    try:
+        if df is None:
+            import bybit_fetch as B
+            df = B._raw(sym, "240", 80)
+        c = [float(x) for x in df["close"].values[:-1]]
+        if len(c) < 30:
+            return None
+        up = [max(b - a, 0) for a, b in zip(c, c[1:])]; dn = [max(a - b, 0) for a, b in zip(c, c[1:])]
+        au, ad = sum(up[:14]) / 14, sum(dn[:14]) / 14
+        for u_, d_ in zip(up[14:], dn[14:]):
+            au, ad = (au * 13 + u_) / 14, (ad * 13 + d_) / 14
+        return 100 - 100 / (1 + au / max(ad, 1e-12))
+    except Exception:
+        return None
+
+
+def vonis_terakhir(maks_umur=3600):
+    try:
+        d = _baca()
+        if time.time() - float(d.get("t", 0)) <= maks_umur:
+            return d.get("calon")
+    except Exception:
+        pass
+    return None
+
+
+# QC 112 LOT MOMENTUM (riset/upgrade/run_v228_momentum.py, hasil_v228_momentum.txt). Populasi siaran, keluar terpasang:
+#   LONG saat RSI 4J >= 65 dan vonis BUKAN LONG: PF 0.86 / 0.47 / 0.55 / 0.99 (latih, uji, 12 bln, 6 bln). Lot kartu 0.5x: buku siaran 12 slot
+#   1126/714/228/261 -> 1186/839/257/268. Tidak dipakai di Gurita (Gurita uji 2065 -> 2038).
+#   LONG saat RSI 4J >= 75: PF 2.04/2.24/2.23/3.32. Gurita risiko x1.5 (maks 2.25 total): 1092/2065/212/177 -> 1167/2159/226/190, DD sama.
+#   Tetangga: RSI >= 70 x1.5 uji 2059 (turun tipis), RSI >= 65 x1.5 uji 1905 (turun). Kartu siaran x1.5 tidak lolos (latih 1126 -> 1113).
+MOM_LEMAH, MOM_KUAT = 65.0, 75.0
+
+
+def lot_momentum(sym, arah, vonis=None, rs=None):
+    """(kali lot kartu, teks). LONG jenuh beli tanpa vonis LONG: 0.5x."""
+    if arah != "LONG" or os.environ.get("QSE_MOMENTUM", "1") == "0":
+        return 1.0, ""
+    v = vonis or vonis_terakhir()
+    if v == "LONG" or v is None:
+        return 1.0, ""
+    rs = rsi4j(sym) if rs is None else rs
+    if rs is not None and rs >= MOM_LEMAH:
+        return 0.5, (f"📉 <b>LOT 0.5x</b>: LONG di RSI 4J {rs:.0f} saat vonis {v}. Uji 2022-2026 kelompok ini PF 0.86 / 0.47 / 0.55 / 0.99. "
+                     "Tunggu vonis LONG untuk lot penuh.")
+    return 1.0, ""
+
+
 IKON = {"LONG": "🟢", "SHORT": "🔴", "NETRAL": "⚪"}
 JUDUL = {"LONG": "🟢 FOKUS LONG", "SHORT": "🔴 FOKUS SHORT", "NETRAL": "⚪ TRANSISI / TUNGGU PANTULAN"}
-UKURAN = {
-    "LONG": "Ambil LONG Kelas Utama ukuran normal. SHORT baru ditahan, kecuali konfluensi 2+ teknik dengan ukuran ringan.",
-    "SHORT": "Ambil SHORT Kelas Utama ukuran normal. LONG baru ditahan, kecuali konfluensi 2+ teknik dengan ukuran ringan.",
-    "NETRAL": ("Belum ada pihak yang menang. Ambil hanya konfluensi 2+ teknik yang searah sisi BTC 4J, ukuran ringan. Jangan besarkan lot "
-               "(uji saat BTC netral: 2+ teknik searah PF 1.6-2.9, melawan sisi BTC PF 0.7-1.4)."),
+UKURAN = {          # QC 110: hanya angka uji vonis historis (run_v226_vonis.py), bukan saran baru
+    "LONG": ("Sinyal LONG: <b>lot 1.5x</b> (LONG searah vonis PF 1.57 / 1.74 / 1.50 / 1.98 di latih, uji, 12 bulan, 6 bulan. Buku Gurita "
+             "otomatis x1.5). Sinyal SHORT: lot normal. Membuang SHORT lawan vonis TIDAK terbukti lebih untung, jadi tidak perlu dibuang."),
+    "SHORT": ("Sinyal SHORT: <b>lot normal, jangan dibesarkan</b> (SHORT searah vonis 12 bulan PF 1.13, 6 bulan 0.99). Sinyal LONG: lot normal "
+              "(LONG lawan vonis 12 bulan PF 1.14, 6 bulan 1.34, tidak lebih jelek)."),
+    "NETRAL": ("Semua sinyal <b>lot normal</b>. LONG saat netral tidak konsisten (uji 2025-2026 PF 0.88), SHORT saat netral PF 1.06 sampai 1.33. "
+               "Tunggu vonis LONG untuk membesarkan lot."),
 }
 ARTI = UKURAN          # nama lama, dipakai uji
 
@@ -340,6 +392,26 @@ def siap_tembak(v, maks=2, now=None, sumber=None):
     return out
 
 
+def baris_dominasi(v):
+    """QC 109: USDT.D dan BTC.D dalam angka (CoinGecko), perubahan 24 jam, arti, dan suaranya di vonis. Plus beda Kompas dan Vonis."""
+    import qse_kompas as KP
+    cg = KP._cg(); ch = KP._cg_24j()
+    sv = {nm: (nilai, s * w) for nm, nilai, s, w in v["faktor"]}
+    def b(nm, key, naik_arti, turun_arti):
+        x = f"{cg[key]:.2f}%" if cg and cg.get(key) else "angka belum terbaca"
+        c = f", {ch[key]:+.2f} poin dalam {ch['jam']:.0f} jam" if ch else ""
+        st = sv.get(nm)
+        arah = (st[0].split(" (")[0] if st else "belum terbaca")
+        arti = naik_arti if arah.startswith("naik") else turun_arti if arah.startswith("turun") else "tidak memberi arah"
+        return f"• <b>{nm} {x}</b>{c}: tren {arah.split(',')[0]}, {arti} (suara {st[1] if st else 0:+d})"
+    k = v.get("kompas")
+    return ("💵 <b>Dominasi</b>\n" + b("USDT.D", "usdt", "uang keluar ke stablecoin, tekanan TURUN", "uang masuk ke kripto, dorongan NAIK") + "\n"
+            + b("BTC.D", "btc", "BTC lebih kuat dari altcoin, altcoin rawan", "altcoin lebih kuat dari BTC") + "\n"
+            + (f"ℹ️ Kompas di kartu sinyal ({html.escape(str(k))}) hanya membaca BTC 15 menit sampai 1 jam dan cepat berubah. "
+               "Vonis ini gabungan semua bahan dan lebih lambat berubah. Kalau keduanya beda, arah jangka pendek dan arah besar sedang tidak sama."
+               if k else ""))
+
+
 def teks(v=None, tag=False, judul="ARAH PASAR DETIK INI"):
     v = v or hitung()
     F = v["faktor"]
@@ -353,6 +425,18 @@ def teks(v=None, tag=False, judul="ARAH PASAR DETIK INI"):
             + (f"  ·  kompas {html.escape(str(v['kompas']))}" if v.get("kompas") else "")]
     if not v.get("lengkap"):
         rows.append("⚠️ Data belum lengkap (sebagian sumber gagal dibaca), vonis ditahan di TRANSISI.")
+    try:          # QC 111: umur vonis. Uji v226/v227: vonis berganti rata-rata tiap 8 jam, vonis 3 hari lebih stabil tapi lebih jelek
+        d_ = _baca()
+        if d_.get("calon") == v["vonis"] and d_.get("calon_t"):
+            j_ = (time.time() - float(d_["calon_t"])) / 3600
+            rows.append(f"⏱ Vonis ini berlaku sejak {j_:.1f} jam lalu. Rata-rata vonis berganti tiap 8 jam (uji 2022-2026). Posisi yang sudah jalan "
+                        "TIDAK perlu ditutup karena vonis berubah: ikuti SL, TP, dan pesan Himbauan atau Hidung Abdul saja.")
+    except Exception:
+        pass
+    try:          # QC 109: angka asli dominasi, selalu tampil
+        rows.append(baris_dominasi(v))
+    except Exception as ex:
+        print("[WARN] vonis dominasi", ex)
     u = v.get("umur")
     ukur = "📏 <b>Ukuran posisi:</b> " + UKURAN[v["vonis"]]
     if v.get("bj") is not None and v["vonis"] == "NETRAL":
@@ -409,7 +493,7 @@ def cek(now=None, v=None):
     if baru == d.get("calon"):
         d["n"] = d.get("n", 0) + 1
     else:
-        d["calon"], d["n"] = baru, 1
+        d["calon"], d["n"], d["calon_t"] = baru, 1, now          # QC 111: catat sejak kapan vonis ini berlaku
     resmi = d.get("resmi")
     if resmi is None:
         d["resmi"] = baru          # jalan pertama: catat saja
