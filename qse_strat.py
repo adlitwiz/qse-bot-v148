@@ -185,6 +185,43 @@ def _k4(sym, bars=600):
         return None
 
 
+def k4_kuat(sym, bars, tag="strat", tunggu=True):
+    """QC 123 SCAN 4J LEBIH KUAT: candle 4J yang sudah tutup, dengan ulang otomatis. Aturan sinyal tidak berubah, hanya pengambilan data:
+    1. Gagal atau kosong: ulang sampai 3 kali (jeda 2 detik). 2. Candle terakhir belum ada di data exchange (telat sesudah candle tutup):
+    tunggu 10 detik lalu ambil lagi, sampai 3 kali. Supaya koin tidak terlewat hanya karena data telat. Saklar QSE_SCAN_KUAT=0."""
+    import os as _os
+    import time as _t
+    import bybit_fetch as _B
+    H4_ = 4 * 3600 * 1000
+    coba = 1 if _os.environ.get("QSE_SCAN_KUAT", "1") == "0" else 3
+    df = None
+    for i in range(coba):
+        try:
+            d0 = _B._raw(sym, "240", bars)
+            now = int(_t.time() * 1000)
+            df = d0[d0.index + H4_ <= now]
+            harap = now // H4_ * H4_ - H4_          # candle 4J terakhir yang seharusnya sudah tutup
+            if len(df) and int(df.index[-1]) >= harap:
+                SCAN_INFO["ok"] = SCAN_INFO.get("ok", 0) + 1
+                return df
+            if not tunggu:
+                return df
+            if i < coba - 1:
+                SCAN_INFO["telat"] = SCAN_INFO.get("telat", 0) + 1
+                _t.sleep(10)
+        except Exception as ex:
+            if i == coba - 1:
+                print(f"[WARN] {tag} {sym}: {ex}")
+                SCAN_INFO["gagal"] = SCAN_INFO.get("gagal", 0) + 1
+                return None
+            _t.sleep(2)
+    SCAN_INFO["ok"] = SCAN_INFO.get("ok", 0) + (1 if df is not None and len(df) else 0)
+    return df
+
+
+SCAN_INFO = {}
+
+
 def _kelola(it, df):
     """Sama dengan backtest: SL dicek dulu, lalu puncak dan SL berjalan trail_atr (bawaan 3 ATR), tutup paksa 60 candle."""
     L = it["arah"] == "LONG"
@@ -1433,13 +1470,22 @@ def jalankan(baru_ok=True):
         izin = {"LONG": True, "SHORT": True}
     pindai = [s for s in sorted(tk, key=lambda s: -tk[s]["turnover"]) if s in tick or not tick][:TOP_KOIN]
 
+    SCAN_INFO.clear(); SCAN_INFO["t"] = time.time()
+
     def cek(sym):
-        df = _k4(sym, 600)
+        df = k4_kuat(sym, 600)          # QC 123: ulang otomatis kalau gagal atau candle terakhir telat
         if df is None or len(df) < 261:
             return sym, {}, None, 0.0
         return sym, sinyal(df, bn, netral_longgar(bj)), df, float((df["close"] * df["volume"]).iloc[-180:].sum())
     with ThreadPoolExecutor(8) as ex:
         semua = list(ex.map(cek, pindai))
+    try:          # QC 123: catat cakupan scan untuk /status
+        SCAN_INFO["koin"] = len(pindai); SCAN_INFO["terbaca"] = sum(1 for x in semua if x[2] is not None)
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(os.path.join(STATE_DIR, "scan_info.json"), "w") as f:
+            json.dump(SCAN_INFO, f)
+    except Exception as ex_:
+        print("[WARN] scan_info", ex_)
     urut = [x[0] for x in sorted(semua, key=lambda x: -x[3])]
     now = time.time()
     # satu koin hanya satu jalur: koin yang sudah dipegang jalur mana pun atau baru dikirim di candle ini dilewati
@@ -2073,3 +2119,15 @@ def teks():
                 "Bollinger squeeze, mean reversion Bollinger dan RSI 2, "
                 "pullback 3 candle, inside bar, momentum 30 hari, funding ekstrem, breakout volume.")
     return "\n".join(rows)
+
+
+def baris_scan():
+    """QC 123: satu baris cakupan scan 4J terakhir untuk /status."""
+    try:
+        with open(os.path.join(STATE_DIR, "scan_info.json")) as f:
+            si = json.load(f)
+        return (f"Cakupan scan: {si.get('terbaca', 0)}/{si.get('koin', 0)} koin terbaca"
+                + (f", {si['telat']} kali tunggu data telat" if si.get("telat") else "")
+                + (f", {si['gagal']} gagal sesudah 3 kali coba" if si.get("gagal") else "") + "\n")
+    except Exception:
+        return ""

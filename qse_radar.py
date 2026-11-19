@@ -210,6 +210,33 @@ def status_rutin(r):
             "Kalau baru terlihat sekarang, masuknya telat, hasil uji telat 1-3 jam PF 1.14-1.25.")
 
 
+def _tp_awal():
+    """QC 126: teks TP awal sama dengan kartu 4J (QC 108 SL napas -0.25R, entry di +1R)."""
+    try:
+        import qse_strat as ST
+        if ST.BUF_R > 0:
+            return (f"\n📲 TP awal: tutup 20% lalu SL ke -{ST.BUF_R:g}R (ruang napas). Untung +{ST.BUF_LEPAS:g}R: SL ke entry. "
+                    "Sisa posisi ikut SL berjalan.")
+    except Exception as ex:
+        print("[WARN] teks TP awal radar", ex)
+    return "\n📲 TP awal: tutup 20% lalu SL ke entry. Sisa posisi ikut SL berjalan."
+
+
+def _skor_baris(r, px, sl):
+    """QC 126: skor sinyal 0-100 (QC 122) juga di kartu scan perintah, scan 1 jam, dan Golden Moment. Lot ikut skor."""
+    try:
+        import qse_skor as SKR
+        it = dict(sym=r["sym"], arah=r["arah"], entry=float(px), sl=float(sl), sl0=float(sl))
+        s_, kl_, bt_ = SKR.skor(r.get("k") or "", it, btc_j=r.get("bj"))
+        if s_ is None:
+            return ""
+        r["skor100"] = s_
+        return "\n" + bt_ + (f". Kalikan saran entry di bawah x{kl_:g}" if kl_ != 1 else "")
+    except Exception as ex:
+        print("[WARN] skor radar", r.get("sym"), ex)
+        return ""
+
+
 def kartu(r, no=None, bj=None, paksa=False):
     """Satu sinyal = satu bubble. Keputusan tegas, level lengkap, saran entry USDT tiap orang (QC 92), tanpa daftar koin lain."""
     import qse_saya as SY
@@ -244,9 +271,10 @@ def kartu(r, no=None, bj=None, paksa=False):
                 + f"\n🏷 Teknik: {tek}\n🧭 Keputusan: <b>{kpt}</b>"
                 + f"\nℹ️ Sinyal Kelas Utama 4J ini sedang koreksi sehat {r['golden']:.2f}R, SL belum tersentuh, BTC 4J di atas EMA 50. "
                   f"Jarak ke SL jadi {rn / px * 100:.1f}% (tadinya {r['risk'] / r['entry_robot'] * 100:.1f}%).\n" + blok
-                + "\n📲 TP awal: tutup 20% lalu SL ke entry. Sisa posisi ikut SL berjalan."
+                + _tp_awal()
                 + "\n⚖️ Lot biasa (bukan 1.5x). Sudah punya posisi koin ini: boleh tambah sekali di harga ini, SL sama. Jangan serok lagi di bawahnya "
                   "(uji koreksi lebih dalam dari 0.40R: PF 0.7-0.9)."
+                + _skor_baris(r, px, sl)
                 + (f"\n💰 Saran entry:\n{lot}" if lot else ""))
     if r.get("tp"):
         blok = SY.blok_salin(px, r["sl"] + (px - r["px"]), r["tp"] + (px - r["px"]), r["tp"] + (px - r["px"]), o, r["tick"], sym=r["sym"], arah=r["arah"],
@@ -263,7 +291,8 @@ def kartu(r, no=None, bj=None, paksa=False):
         lot = ""
     return (f"{'🟢' if r['arah'] == 'LONG' else '🔴'} <b>{r['sym']} {r['arah']}</b>  ·  {kelas_teks(r)}"
             + (f"  ·  #{no}" if no else "") + f"\n🏷 Teknik: {tek}\n🧭 Keputusan: <b>{kpt}</b>\nℹ️ " + "  ·  ".join(ket) + "\n" + blok
-            + "\n📲 TP awal: tutup 20% lalu SL ke entry. Sisa posisi ikut SL berjalan."
+            + _tp_awal()
+            + _skor_baris(r, px, r["sl"] + (px - r["px"]))
             + (f"\n💰 Saran entry:\n{lot}" if lot else "")
             + (f"\n{status_rutin(r)}" if paksa else ""))
 

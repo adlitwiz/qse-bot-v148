@@ -14,7 +14,15 @@ LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 
 
-VERSI_QC = "QC 122 (19 Nov 2026)"          # tampil di /status dan /bantuan, naikkan tiap QC
+VERSI_QC = "QC 126 (19 Nov 2026)"
+
+
+def _scan_baris():
+    try:
+        import qse_strat as _S
+        return _S.baris_scan()
+    except Exception:
+        return ""          # tampil di /status dan /bantuan, naikkan tiap QC
 
 def _radar_hidung():
     """QC 108: baris Radar Hidung Abdul (badai makro terdekat dan penciuman leverage) di /berita, /status, /pasar."""
@@ -433,7 +441,7 @@ def balas(cmd, args, dari_main=False):
             s4 = None
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
         return ("📊 <b>QSE v150 | STATUS</b>" + (f"  ·  👤 {SY.nama_pengguna(SY.uid_aktif())}" if SY.uid_aktif() else "")
-                + "\n" + f"🏷 Versi robot: {VERSI_QC}\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
+                + "\n" + f"🏷 Versi robot: {VERSI_QC}\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n" + _scan_baris() + "\n" + SY.status_saya()
                 + _radar_hidung()
                 + ("" if SY._peng().get("pemilik") else "\n\nℹ️ Ketik /milikku supaya catatan trade lama jadi milik kamu. "
                    "Trade orang lain di grup tercatat terpisah."))

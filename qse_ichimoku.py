@@ -145,11 +145,10 @@ def _sinyal(df):
 
 
 def _k4(sym, bars=300):
-    """Candle 4J yang sudah tutup, index ms."""
+    """Candle 4J yang sudah tutup, index ms. QC 123: lewat qse_strat.k4_kuat (ulang otomatis kalau gagal atau telat)."""
     try:
-        df = B._raw(sym, "240", bars)
-        now = int(time.time() * 1000)
-        return df[df.index + H4 <= now]
+        import qse_strat as _ST
+        return _ST.k4_kuat(sym, bars, tag="ichimoku", tunggu=False)          # ulang kalau gagal saja, tanpa menunggu
     except Exception as ex:
         print(f"[WARN] ichimoku {sym}: {ex}")
         return None

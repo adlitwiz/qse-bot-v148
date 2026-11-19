@@ -1,5 +1,29 @@
 """QSE v150 Bot - semua pengaturan. Nilai engine = default input() Pine v150 (jangan diubah bila ingin sama dengan DASBOR)."""
 import os
+import json as _json
+
+
+def _json_numpy(self, o):
+    """QC 125: angka numpy (bool_, int64, float64, array) ikut tersimpan di file state. Dulu sinyal baru di koin yang punya
+    rekam jejak >= 10 sinyal membawa nilai numpy bool di profil otak, simpan gagal, dan seluruh scan 4J jalur itu batal."""
+    try:
+        import numpy as _np
+        if isinstance(o, _np.bool_):
+            return bool(o)
+        if isinstance(o, _np.integer):
+            return int(o)
+        if isinstance(o, _np.floating):
+            return float(o)
+        if isinstance(o, _np.ndarray):
+            return o.tolist()
+    except ImportError:
+        pass
+    return _json_lama(self, o)
+
+
+_json_lama = _json.JSONEncoder.default
+if getattr(_json.JSONEncoder.default, "__name__", "") != "_json_numpy":
+    _json.JSONEncoder.default = _json_numpy
 
 
 def _env(k, d, cast=str):

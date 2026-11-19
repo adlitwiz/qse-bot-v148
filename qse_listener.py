@@ -892,6 +892,14 @@ def _gurita():
 
 
 def _tugas_menit():
+    try:          # QC 124: peta SL rutin tiap 40 menit selama ada posisi jalan
+        import qse_saya as _SYr
+        if _SYr.SL_RUTIN_MENIT > 0 and time.time() - float(_st().get("sl_rutin_t", 0)) >= _SYr.SL_RUTIN_MENIT * 60 - 30:
+            _st({"sl_rutin_t": time.time()})
+            for m_ in _SYr.peta_sl():
+                TG.send([m_])
+    except Exception as ex:
+        print("[WARN] peta SL rutin", ex)
     try:          # v173 QC 71: struktur 1 jam posisi jalan dicek tiap 5 menit, kabar sekali saat patah
         if int(time.time() // 60) % 5 == 0:
             import qse_saya as _SYp

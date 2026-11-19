@@ -279,7 +279,7 @@ def profil(sym, jalur, arah, live=None):
     why = "" if lulus else (f"baru {len(r)} sinyal tercatat (butuh {PROFIL_N})" if len(r) < PROFIL_N else f"PF rekam jejak {pf:.2f} di bawah {PROFIL_PF}")
     return dict(n=len(r), pf=round(pf, 2), wr=round(float((r > 0).mean() * 100) if len(r) else 0.0, 1), n24=len(r24),
                 pf24=round(_pf(r24), 2) if len(r24) else 0.0, wr24=round(float((r24 > 0).mean() * 100) if len(r24) else 0.0, 1),
-                lulus=lulus, alasan=why, tot=round(float(r.sum()), 2), blokir=bool(blokir))
+                lulus=bool(lulus), alasan=why, tot=round(float(r.sum()), 2), blokir=bool(blokir))
 
 
 # QC 56 (riset/upgrade/hasil_v163_koin.txt): teknik yang rekam jejaknya RUGI di koin itu (minimal 5 sinyal, total R < 0) diblokir

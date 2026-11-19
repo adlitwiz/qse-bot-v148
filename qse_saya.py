@@ -5194,6 +5194,50 @@ def backtest_teks(r):
     return "\n".join(rows)
 
 
+SL_RUTIN_MENIT = int(os.environ.get("QSE_SL_RUTIN", "40") or 40)          # QC 124: 0 = mati
+
+
+@per_orang
+def peta_sl():
+    """QC 124: peta SL rutin tiap 40 menit untuk semua posisi jalan. Isi: harga sekarang, untung dalam R, SL yang berlaku sekarang,
+    dan langkah SL berikutnya (TP 20% lalu -0.25R, lalu entry di +1R). Info saja, aturan SL tidak berubah. Return [teks] atau []."""
+    import qse_strat as ST
+    jalan = [it for it in _load()["open"].values() if it["status"] in ("TERISI", "TP1")]
+    rows = []
+    for it in sorted(jalan, key=lambda v: v["sym"]):
+        try:
+            t = it.get("tick") or tick_of(None, it["entry"])
+            L = it["arah"] == "LONG"; e = it["entry"]; r0 = _risk0(it)
+            jp = jalur_posisi(it["sym"], it["arah"])
+            sl = sl_terbaru(it, jp)
+            px = harga_live(it["sym"])
+            r = _r_at(it, px) if px else None
+            ik = "🟢" if L else "🔴"
+            kep = f"{ik} <b>{it['sym']} {it['arah']}</b>" + (f"  ·  harga {fp(px, t)} ({r:+.2f}R)" if px else "")
+            if abs(sl - e) <= t * 0.5 or ((sl > e) if L else (sl < e)):
+                tahap = "✅ SL sudah di entry atau lebih maju. Posisi aman, ikuti SL berjalan."
+            elif it.get("tps_ts") and it.get("napas") and not it.get("lepas_ts"):
+                lp = ST.lv_lepas(e, r0, it["arah"])
+                tahap = (f"🫁 Tahap 2 ruang napas. Saat harga {fp(lp, t)} (+{ST.BUF_LEPAS:g}R): geser SL ke entry {fp(e, t)}"
+                         + (f", sisa {abs(lp / px - 1) * 100:.1f}%" if px else ""))
+            elif it.get("ikut") and _be(it) and not it.get("tps_ts"):
+                lv_ = e + (1 if L else -1) * _be(it) * r0
+                tahap = f"⏳ Tahap 1. Saat harga {fp(lv_, t)} (+{_be(it):g}R): geser SL ke entry {fp(e, t)}" + (f", sisa {abs(lv_ / px - 1) * 100:.1f}%" if px else "")
+            elif it.get("ikut") and not it.get("tps_ts"):
+                tps = ST.tp_sebagian(e, _sl_awal(it), it["arah"])
+                tahap = (f"⏳ Tahap 1. Saat harga {fp(tps, t)} (+{ST.TPS_R:g}R): tutup 20%, lalu SL ke "
+                         + (f"{fp(ST.sl_napas(e, r0, it['arah']), t)} (-{ST.BUF_R:g}R). Entry baru di +{ST.BUF_LEPAS:g}R" if ST.BUF_R > 0 else f"entry {fp(e, t)}")
+                         + (f". Sisa {abs(tps / px - 1) * 100:.1f}%" if px else ""))
+            else:
+                tahap = "Posisi manual. SL ikuti rencana kamu sendiri."
+            rows.append(kep + f"\n🛑 <b>SL sekarang {fp(sl, t)}</b>\n" + tahap)
+        except Exception as ex:
+            print("[WARN] peta SL", it.get("sym"), ex)
+    if not rows:
+        return []
+    return ["🧭 <b>QSE v150 | PETA SL RUTIN</b>\nTiap " + str(SL_RUTIN_MENIT) + " menit. Samakan SL di Bybit dengan angka ini.\n\n" + "\n\n".join(rows)]
+
+
 def kartu_sl(tidur=False):
     """Kartu SL terbaru semua posisi kamu, dipakai untuk pin SL tiap 4J, /tidur, dan pesan jam 22:00 WIB.
     Uji 2021-2026 jalur trailing (Ichimoku, EMA, RSI, MSB, 16.7 ribu trade, data 1 jam):

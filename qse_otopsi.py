@@ -150,6 +150,16 @@ def temuan(it, jh, rw):
     return out
 
 
+def _tp_teks(it, fp):
+    """QC 125: TP yang tidak masuk akal (jalur tanpa TP tetap, misal EMA Cross) tidak ditampilkan sebagai angka palsu."""
+    e = float(it.get("entry") or 0); L = it.get("arah") == "LONG"; out = []
+    for nm in ("tp1", "tp2"):
+        v = it.get(nm)
+        if v and e and ((v > e) if L else (v < e)) and abs(v / e - 1) < 0.5:
+            out.append(f"{nm.upper()} {fp(v)}")
+    return ", ".join(out) if out else "tanpa TP tetap (SL berjalan)"
+
+
 def laporan(it, closed, ambil=None, nama=""):
     """Teks otopsi satu trade rugi, termasuk blok prompt untuk Opus."""
     import qse_saya as SY
@@ -173,7 +183,7 @@ def laporan(it, closed, ambil=None, nama=""):
     p = [f"EVALUASI RUGI QSE v150 ({jenis})",
          f"Trade: {it['sym']} {it['arah']}, teknik {jl}, kelas {it.get('kelas') or '-'}, konfluensi {1 + len(it.get('combo') or [])} teknik, "
          f"peringkat koin {it.get('peringkat') or '-'}.",
-         f"Entry {fp(it['entry'])}, SL {fp(it.get('sl0') or it['sl'])}, TP1 {fp(it.get('tp1') or 0)}, TP2 {fp(it.get('tp2') or 0)}. "
+         f"Entry {fp(it['entry'])}, SL {fp(it.get('sl0') or it['sl'])}, {_tp_teks(it, fp)}. "
          f"Masuk {_wib(t0) if t0 else '?'} WIB, selesai {_wib(it.get('closed_ts') or 0)} WIB, alasan {why}, hasil {it.get('result_r', 0):+.2f}R."]
     if jh:
         p.append(f"Jalur harga: MFE {jh['mfe']:+.2f}R di jam ke-{jh['jam_mfe']}, MAE {jh['mae']:+.2f}R, lama {jh['lama']:.1f} jam, "
