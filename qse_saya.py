@@ -2951,6 +2951,23 @@ def _ingat_sl(it, now):
             f"Sudah diubah? Kirim /slok {kd} supaya pengingat berhenti.")
 
 
+def sl_napas_cmd(args):
+    """/slnapas KOIN [ARAH]: SL ke -0.25R (ruang napas sesudah TP 20%, QC 108/115). SL ke entry nanti saat untung +1R."""
+    import qse_strat as ST
+    if not args:
+        return "Format: /slnapas SOL LONG. SL dipindah ke -0.25R dari entry (ruang napas anti-sapu)."
+    sym = args[0].upper() if args[0].upper().endswith("USDT") else args[0].upper() + "USDT"
+    arah = args[1].upper() if len(args) > 1 and args[1].upper() in ("LONG", "SHORT") else None
+    cocok = [v for v in _load()["open"].values() if v["sym"] == sym and v["status"] in ("TERISI", "TP1") and (arah is None or v["arah"] == arah)]
+    if not cocok:
+        return f"Tidak ada posisi {sym} kamu yang jalan."
+    v = cocok[0]
+    sn = ST.sl_napas(v["entry"], _risk0(v), v["arah"])
+    hasil = ubah_level([sym.replace("USDT", ""), v["arah"], "SL", f"{sn:.10g}"])
+    return (f"🫁 SL napas {sym} {v['arah']}: {fp(sn, v.get('tick'))} (-0.25R). Ubah juga di Bybit. SL ke entry saat untung +1R "
+            f"({fp(ST.lv_lepas(v['entry'], _risk0(v), v['arah']), v.get('tick'))}).\n\n" + str(hasil))
+
+
 def slok(args):
     """/slok KOIN: SL di Bybit sudah dipindah ke entry setelah TP 20% kena. Pengingat berhenti."""
     if not args:
@@ -3543,7 +3560,7 @@ def _alasan_sl(it, sl_now):
         if it.get("be_ts"):
             return f"untung +{_be(it) or 0.4:g}R, SL ke entry"
         if it.get("tps_ts"):
-            return "TP 20% sudah kena, SL ke entry"
+            return "TP 20% sudah kena, SL ke entry (untung sudah +1R)"
         if it["status"] == "TP1":
             return "TP1 sudah kena, SL ke entry"
         return "SL di entry"
@@ -4492,7 +4509,11 @@ def kawal():
                 pesan.append(f"🎯 <b>{it['sym']} {it['arah']} mendekati {'titik SL ke entry' if be else 'TP awal'}</b>\n"
                              f"• Sekarang {r:+.2f}R di {fp(px, t)}. Target {fp(lv, t)} (+{tgt:g}R), sisa {abs(lv / px - 1) * 100:.1f}%\n"
                              + (f"• Saat tersentuh: geser SL ke entry {fp(it['entry'], t)}. Sisa posisi ikut SL berjalan" if be else
-                                f"• Saat tersentuh: tutup 20% posisi (tombol TP 25% boleh), lalu geser SL ke entry {fp(it['entry'], t)}")
+                                (f"• Saat tersentuh: tutup 20% posisi (tombol TP 25% boleh), lalu geser SL ke "
+                                 f"{fp(__import__('qse_strat').sl_napas(it['entry'], _risk0(it), it['arah']), t)} (-0.25R, ruang napas). "
+                                 f"SL ke entry {fp(it['entry'], t)} baru saat untung +1R ({fp(__import__('qse_strat').lv_lepas(it['entry'], _risk0(it), it['arah']), t)})"
+                                 if __import__('qse_strat').BUF_R > 0 else
+                                 f"• Saat tersentuh: tutup 20% posisi (tombol TP 25% boleh), lalu geser SL ke entry {fp(it['entry'], t)}"))
                              + "\n• Pasang order TP sebagian di Bybit sekarang supaya tidak terlewat")
             elif r < 0.3 * tgt and "dekat_tp" in al:
                 al.remove("dekat_tp")
@@ -5421,16 +5442,34 @@ def sinyal_jalur(jam=False):
                     skor_t = (skor_t + "\n" if skor_t else "") + _kt
             except Exception as ex:
                 print("[WARN] klaster sinyal harian", ex)
-            if k == "ema_short" and not ju_:
-                skor_t = (skor_t + "\n" if skor_t else "") + "🟨 KELAS RINGAN: EMA Cross SHORT rugi di 2026 (uji -128R)"
+            try:          # QC 122: skor sinyal 0-100 di daftar sinyal valid
+                import qse_skor as SKR
+                _s, _kl, _bt = SKR.skor(k, it)
+                if _bt:
+                    skor_t = (skor_t + "\n" if skor_t else "") + _bt
+            except Exception as ex:
+                print("[WARN] skor sinyal harian", ex)
+            if k == "ema_short" and not ju_:          # QC 116: kelas ringan menang atas label prioritas, satu keputusan saja
+                skor_t = skor_t.replace("🏆 <b>PRIORITAS UTAMA</b>  ·  ", "")
+                skor_t = (skor_t + "\n" if skor_t else "") + ("🟨 KELAS RINGAN, lot 0.2x: EMA Cross SHORT 12 bulan PF 0.84, 6 bulan 0.78 "
+                                                              "(uji v231). Skor 90 berasal dari pola combo, bukan dari teknik ini.")
             elif ju_:
                 skor_t = (skor_t + "\n" if skor_t else "") + "🟦 KELAS UTAMA: koin jagoan sejati"
+            try:          # QC 116: hari condong naik menahan SHORT baru, juga di daftar sinyal valid
+                import qse_pagi as PG_
+                if it["arah"] == "SHORT" and PG_.short_tahan():
+                    skor_t = ("⛔ <b>DITAHAN HARI INI</b>: hari condong naik. Uji v231: SHORT di hari ini PF 0.61 / 1.16 / 0.97 / 0.81, "
+                              "meski vonis SHORT (0.68 / 1.22 / 1.03 / 0.82). Jangan entry sampai 06:00 WIB besok.\n" + skor_t)
+            except Exception as ex:
+                print("[WARN] tahan short harian", ex)
             # QC 72: empat keterangan wajib di tiap koin: teknik, kelas, struktur, keputusan
             kls_ = "🟨 KELAS RINGAN" if (k == "ema_short" and not ju_) or it.get("ringan") else "🟦 KELAS UTAMA"
             if d is not None and d > 0.25:
                 kpt_ = f"⏳ TUNGGU HARGA JEMPUT di {fp(it['entry'], t)} (harga sudah lari {d:.1f}R, masuk sekarang jarak SL melebar)"
             else:
                 kpt_ = "✅ AMBIL SEKARANG (Market)"
+            if "DITAHAN HARI INI" in skor_t:          # QC 116
+                kpt_ = "⛔ TAHAN, jangan entry hari ini (hari condong naik)"
             jn_ = f", kejenuhan lawan {tl_['jenuh']:.0f}%" if tl_ and tl_["jenuh"] >= 50 else ""
             id_ = (f"🏷 Teknik: <b>{nama}</b>  ·  {kls_}  ·  Struktur: ✅ valid searah"
                    + (" (sinyal candle ini)" if baru else f" (candle terakhir tanpa pola lawan, tanpa CHoCH lawan{jn_})") + f"\n🧭 Keputusan: <b>{kpt_}</b>")

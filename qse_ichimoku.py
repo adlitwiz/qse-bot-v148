@@ -383,6 +383,14 @@ def _jalankan(baru_ok=True):
         if rm:
             lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
         lot_b, cat_hari = PO.lot_hari(lot_b, it.get("dom_turun"))
+        sk_bt = ""
+        try:          # QC 122: skor sinyal 0-100 dan lot
+            import qse_skor as SKR
+            sk_s, sk_k, sk_bt = SKR.skor("ichimoku", dict(it, sym=sym, arah=arah, entry=px, sl=sl, sl0=sl))
+            if sk_k != 1:
+                lot_b = f"{SY.lot_angka(lot_b) * sk_k:g}x"
+        except Exception as ex:
+            print("[WARN] skor ichimoku", ex)
         try:
             import qse_modal as MD
             lot = MD.baris_lot(px, sl, SY.lot_angka(lot_b), konf=1 + len(it.get("combo") or []), arah=arah,
@@ -397,6 +405,7 @@ def _jalankan(baru_ok=True):
             *([_pc] if (_pc := __import__("qse_pola").baris_pola("ichimoku", arah, it.get("pola_c"))) else []),
             *ST_combo(it),
             *([cat_hari] if cat_hari else []),
+            *([sk_bt] if sk_bt else []),
             SY.GARIS,
             SY.blok_salin(px, sl, order="MARKET", tick=t, catatan_tp="tanpa, pakai SL berjalan", sym=sym, arah=arah, sebagian=True),
             *ST_tpc(dict(entry=px, sl=sl, arah=arah, tick=t, t=now, risk=risk, trail_atr=TRAIL_ATR, sl_atr=SL_ATR)),
@@ -409,7 +418,7 @@ def _jalankan(baru_ok=True):
             "• Bukti: uji 5 tahun 111 koin, 3084 trade, PF 1.29, untung tiap tahun, positif 18 dari 22 kuartal",
             "🛠 <b>Cara</b>",
             f"1. Masuk MARKET sekarang. Pasang SL di {TG.fp(sl, t)} ({pc:.1f}% dari entry). Pasang TP sebagian 20% di +0.5R saja "
-            f"(lihat baris 💰), setelah kena SL ke entry. Sisanya tanpa TP",
+            f"(lihat baris 💰), setelah kena SL ke -0.25R, untung +1R SL ke entry. Sisanya tanpa TP",
             "2. Tiap candle 4J tutup, robot kirim pesan GESER SL. Ubah SL di Bybit ke angka di pesan itu",
             "3. SL hanya maju searah profit, tidak pernah mundur. Saat harga balik menyentuh SL, posisi tutup sendiri dengan profit yang sudah terkunci",
             "4. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "
@@ -418,7 +427,7 @@ def _jalankan(baru_ok=True):
             f"5. Catat dengan /entry supaya pesan GESER SL dikirim. Tanpa /entry, robot tidak mengirim pesan lanjutan untuk koin ini",
             "❓ <b>Kenapa sisanya tanpa TP</b>",
             "Untungnya datang dari sedikit trade yang lari jauh, bisa +3R sampai +10R. TP penuh akan memotong trade besar itu. "
-            "TP sebagian 20% di +0.5R lalu SL ke entry menaikkan win rate jalur ini dari 34% ke 70% di uji 2021-2026",
+            "TP sebagian 20% di +0.5R lalu SL napas -0.25R (ke entry di +1R) menambah total R di uji 2022-2026 (QC 108)",
             "📐 Cara mudah: tetap pasang SL awal di atas, lalu tambahkan Trailing Stop di Bybit. Tidak perlu geser SL manual\n"
             + SY.isi_trailing(jarak, sl, t)
             + (f"\n{lot}" if lot else ""),

@@ -13,6 +13,9 @@ from config import STATE_DIR
 LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 
+
+VERSI_QC = "QC 122 (19 Nov 2026)"          # tampil di /status dan /bantuan, naikkan tiap QC
+
 def _radar_hidung():
     """QC 108: baris Radar Hidung Abdul (badai makro terdekat dan penciuman leverage) di /berita, /status, /pasar."""
     try:
@@ -71,7 +74,7 @@ def mulai_laporan4j():
 
 
 # v172 QC 70: perintah yang isinya milik pengirim (posisi, modal, catatan). Balasannya bernama dan tombolnya terkunci ke pengirim.
-PRIBADI = {"/entry", "/status", "/milikku", "/punyaku", "/tutup", "/tp", "/sl", "/batal", "/tpall", "/tpsemua", "/slall", "/slsemua", "/ubah",
+PRIBADI = {"/entry", "/status", "/slnapas", "/slok", "/slkena", "/sljalan", "/milikku", "/punyaku", "/tutup", "/tp", "/sl", "/batal", "/tpall", "/tpsemua", "/slall", "/slsemua", "/ubah",
            "/modify", "/modif", "/edit", "/modal", "/pindah", "/kelola", "/be", "/hapus", "/catat", "/serok", "/tambah", "/add", "/salah", "/otopsi", "/evalrugi", "/pasar", "/vonis", "/arahpasar"}
 BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "Robot jalan otomatis: scan tiap 4 jam dan per jam, pantau posisi tiap menit, berita, peta BTC pagi 07:05 WIB, "
@@ -200,6 +203,8 @@ def balas(cmd, args, dari_main=False):
         return SY.hapus(args)
     if cmd in ("/ubah", "/modify", "/modif", "/edit"):
         return SY.ubah_level(args)
+    if cmd == "/slnapas":          # QC 115
+        return SY.sl_napas_cmd(args)
     if cmd in ("/alert", "/alarm"):
         return AL.perintah(args)
     if cmd in ("/tunggu", "/close"):
@@ -428,7 +433,7 @@ def balas(cmd, args, dari_main=False):
             s4 = None
         akhir = time.strftime("%d/%m %H:%M", time.gmtime(s4 / 1000 + 7 * 3600)) if s4 else "-"
         return ("📊 <b>QSE v150 | STATUS</b>" + (f"  ·  👤 {SY.nama_pengguna(SY.uid_aktif())}" if SY.uid_aktif() else "")
-                + "\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
+                + "\n" + f"🏷 Versi robot: {VERSI_QC}\n" + f"Scan 4 jam terakhir: candle tutup {akhir} WIB\n\n" + SY.status_saya()
                 + _radar_hidung()
                 + ("" if SY._peng().get("pemilik") else "\n\nℹ️ Ketik /milikku supaya catatan trade lama jadi milik kamu. "
                    "Trade orang lain di grup tercatat terpisah."))
@@ -438,7 +443,7 @@ def balas(cmd, args, dari_main=False):
             om = OM.ringkas() + "\n\n"
         except Exception:
             om = ""
-        return om + (BANTUAN_SEMUA if args and args[0] in ("SEMUA", "ALL", "LENGKAP") else BANTUAN)
+        return om + f"🏷 Versi robot: {VERSI_QC}\n\n" + (BANTUAN_SEMUA if args and args[0] in ("SEMUA", "ALL", "LENGKAP") else BANTUAN)
     return ""
 
 

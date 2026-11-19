@@ -249,6 +249,7 @@ def _posisi_rows(uid, nama=""):
             rows.append([("💰 TP 25%", f"c:/tp {k} 25%"), ("💰 TP 50%", f"c:/tp {k} 50%")])
             rows.append([("💰 TP 75%", f"c:/tp {k} 75%"), ("🏆 TP penuh", f"y:/tp {k} 100%")])
             rows.append([("🛡️ SL ke entry", f"c:/modify {k} SL ENTRY"), ("✋ Tutup", f"y:/tutup {k}")])
+            rows.append([("🫁 SL napas -0.25R (sesudah TP 20%)", f"c:/slnapas {k}")])          # QC 115
             rows.append([("✏️ Koreksi SL", f"t:/modify {k} {a} SL"), ("✏️ Koreksi modal", f"t:/modify {k} USDT")])          # QC 80, 102
             rows.append([("✏️ Koreksi TP1", f"t:/modify {k} {a} TP1"), ("✏️ Koreksi TP2", f"t:/modify {k} {a} TP2")])          # QC 102
             rows.append([("✏️ Koreksi entry", f"t:/modify {k} {a} ENTRY")])          # QC 104

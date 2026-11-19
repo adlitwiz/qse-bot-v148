@@ -184,6 +184,34 @@ def _sumber():
     return out
 
 
+def _jejak_72j(now=None, jam=72):
+    """QC 119: (sym, arah) -> set jalur yang memberi sinyal dalam 72 jam (open dan closed, semua buku). Ichimoku dan Order Block tidak
+    punya daftar combo sendiri, jadi konfluensinya dihitung dari sini supaya sama dengan uji (kf: jalur berbeda searah di koin sama)."""
+    now = now or time.time(); o = {}
+    def tambah(k, it):
+        try:
+            if now - float(it.get("t", 0)) <= jam * 3600:
+                o.setdefault((it.get("sym"), it.get("arah")), set()).add(k)
+        except Exception:
+            pass
+    try:
+        import qse_strat as ST
+        for k in ST.STRAT:
+            d = ST.lihat(k)
+            for it in list(d.get("open", {}).values()) + list(d.get("closed", []))[-300:]:
+                tambah(k, it)
+    except Exception:
+        pass
+    for mod, k in (("qse_ichimoku", "ichimoku"), ("qse_ob", "orderblock")):
+        try:
+            d = __import__(mod).lihat()
+            for it in list(d.get("open", {}).values()) + list(d.get("closed", []))[-300:]:
+                tambah(k, it)
+        except Exception:
+            pass
+    return o
+
+
 def _ditahan(k, it):
     """True kalau sinyal ini tidak dikirim robot v150 (ditahan otak atau nilai di bawah mode)."""
     if it.get("otak_saring"):
@@ -359,7 +387,7 @@ def vonis_terakhir(maks_umur=3600):
     return None
 
 
-def modal_risiko(m, konf, arah=None, vonis=None, rsi=None):
+def modal_risiko(m, konf, arah=None, vonis=None, rsi=None, kali_skor=1.0):
     """Persen saldo yang dipertaruhkan untuk satu posisi baru. Return (persen, catatan)."""
     r = MODAL_RISIKO; cat = []
     if arah == "LONG" and MODAL_VONIS_KALI != 1 and (vonis or vonis_terakhir()) == "LONG":
@@ -370,8 +398,10 @@ def modal_risiko(m, konf, arah=None, vonis=None, rsi=None):
         r = MODAL_RUGI_USD / m["saldo"] * 100; cat.append(f"rugi tetap {MODAL_RUGI_USD:g} USDT")
     elif konf >= 3 and MODAL_KALI3 != 1:
         r *= MODAL_KALI3; cat.append(f"{konf} teknik x{MODAL_KALI3:g}")
-    if any(c.startswith("momentum") for c in cat):
-        r = min(r, MODAL_RISIKO * 2.25)          # QC 112: total pengali paling besar 2.25x seperti uji
+    if kali_skor and kali_skor != 1:          # QC 122 skor sinyal
+        r *= kali_skor; cat.append(f"skor sinyal x{kali_skor:g}")
+    if any(c.startswith("momentum") or c.startswith("skor") for c in cat):
+        r = min(r, MODAL_RISIKO * 2.25)          # QC 112/122: total pengali paling besar 2.25x seperti uji
     turun = (1 - m["saldo"] / m["puncak"]) * 100 if m.get("puncak", 0) > 0 else 0.0
     if MODAL_REM_DD > 0 and turun > MODAL_REM_DD:
         r *= MODAL_REM_KALI; cat.append(f"rem: saldo turun {turun:.0f}% dari puncak, risiko x{MODAL_REM_KALI:g}")
@@ -527,6 +557,7 @@ def modal_buru(d):
     bj0 = [None, False]
     libur = modal_libur(m, now)
     calon = []
+    jj72 = None
     for k, it in _sumber():
         try:
             dg["jalur"] += 1
@@ -535,6 +566,10 @@ def modal_buru(d):
                 continue
             dg["segar"] += 1
             konf = len(it.get("combo") or []) + 1
+            if konf < 2:          # QC 119: Ichimoku dan Order Block tanpa daftar combo, hitung dari buku lain 72 jam
+                if jj72 is None:
+                    jj72 = _jejak_72j(now)
+                konf = max(konf, len(jj72.get((it.get("sym"), it.get("arah")), set()) | {k}))
             if konf < 2:
                 dg["tunggal"] += 1
                 continue
@@ -565,7 +600,7 @@ def modal_buru(d):
             lihat.append(key); tot["dilihat"] += 1
             if it.get("uji_live") or it.get("radar"):
                 tot["uji_live"] += 1
-            elif len(it.get("combo") or []) + 1 < 2:
+            elif max(len(it.get("combo") or []) + 1, len((jj72 or _jejak_72j(now)).get((it.get("sym"), it.get("arah")), set()) | {k})) < 2:
                 tot["tunggal"] += 1
         m["diag_lihat"] = lihat[-500:]
     except Exception as ex:
@@ -591,7 +626,12 @@ def modal_buru(d):
             rs_ = QV.rsi4j(it["sym"]) if it["arah"] == "LONG" else None
         except Exception:
             rs_ = None
-        rp, rcat = modal_risiko(m, konf, it["arah"], rsi=rs_)
+        try:
+            import qse_skor as SKR
+            sk_s, sk_k, _ = SKR.skor(k, it)
+        except Exception:
+            sk_s, sk_k = None, 1.0
+        rp, rcat = modal_risiko(m, konf, it["arah"], rsi=rs_, kali_skor=sk_k)
         usd = round(m["saldo"] * rp / 100, 2); nilai = usd / (sl_pct / 100); lev = MD.lev_saran(sl_pct)
         p = dict(key=key, jalur=k, sym=it["sym"], arah=it["arah"], entry=px, sl=sl, t=now, tk=int(it.get("t", 0)), usd=usd, konf=konf)
         m["buka"].append(p); pakai.add(it["sym"])
@@ -642,6 +682,8 @@ def modal_teks(d):
                     f"<b>{dg.get('lolos', 0)} jadi sinyal</b>." + (" Slot gurita penuh." if dg.get("penuh") else "")
                     + (" Sinyal gurita butuh 2+ teknik searah BTC di koin yang sama, jadi wajar kosong saat jalur sepi." if not dg.get("lolos") else ""))
         tt = m.get("diag_total")
+        if tt and not tt.get("dilihat"):
+            rows.append(f"📊 Sejak {(time.time() - tt['mulai']) / 86400:.1f} hari lalu: belum ada sinyal jalur robot baru yang terlihat Gurita.")
         if tt and tt.get("dilihat"):
             hr = max((time.time() - tt["mulai"]) / 86400, 0.01)
             rows.append(f"📊 Sejak {hr:.1f} hari lalu: {tt['dilihat']} sinyal jalur robot baru. Ditolak: {tt.get('uji_live', 0)} jalur uji kertas, "

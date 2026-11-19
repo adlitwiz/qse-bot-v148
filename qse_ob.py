@@ -372,6 +372,14 @@ def kartu(no, it, sg):
         lot_b = f"{SY.lot_angka(lot_b) / 2:g}x"
     import qse_porto as PO_h
     lot_b, cat_hari = PO_h.lot_hari(lot_b)
+    sk_bt = ""
+    try:          # QC 122: skor sinyal 0-100 dan lot
+        import qse_skor as SKR
+        sk_s, sk_k, sk_bt = SKR.skor("orderblock", dict(it, arah="LONG"))
+        if sk_k != 1:
+            lot_b = f"{SY.lot_angka(lot_b) * sk_k:g}x"
+    except Exception as ex:
+        print("[WARN] skor orderblock", ex)
     try:
         import qse_modal as MD
         lot = MD.baris_lot(it["entry"], it["sl"], SY.lot_angka(lot_b), konf=1 + len(it.get("combo") or []), arah="LONG")
@@ -385,6 +393,7 @@ def kartu(no, it, sg):
         *([_sp] if (_sp := __import__("qse_strat").baris_spesialis("orderblock", "LONG")) else []),
         *_combo_teks(it),
         *([cat_hari] if cat_hari else []),
+        *([sk_bt] if sk_bt else []),
         SY.GARIS,
         SY.blok_salin(it["entry"], it["sl"], tp1=it["tp"], tp2=it["tp"], order="MARKET", tick=t, sym=it["sym"], arah="LONG",
                       sebagian=True),
@@ -397,7 +406,7 @@ def kartu(no, it, sg):
         f"• Bukti: {BT_PENDEK}",
         "🛠 <b>Cara</b>",
         f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)} ({pc:.1f}%), tepat di bawah order block",
-        f"2. TP {TG.fp(it['tp'], t)} (4R) untuk sisa posisi. TP sebagian 20% di +0.5R (baris 💰), setelah kena SL ke entry",
+        f"2. TP {TG.fp(it['tp'], t)} (4R) untuk sisa posisi. TP sebagian 20% di +0.5R (baris 💰), setelah kena SL ke -0.25R, untung +1R SL ke entry",
         "3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "
         "Sudah aman tapi 10 hari belum kena SL atau TP: "
         "tutup manual",

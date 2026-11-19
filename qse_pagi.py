@@ -278,7 +278,10 @@ def baris_btc_sinyal():
             peta = BM.teks(singkat=True)          # v150: peta komando BTC satu baris (kondisi, bukan ramalan harga)
         except Exception:
             peta = f"₿ <b>BTC {px:,.0f}</b>  ·  " + "  ·  ".join(rows)
-        aturan = ("\n⛔ Hari ini BTC CONDONG NAIK (aturan teruji sejak 06:00 WIB, BTC naik 55-58% hari seperti ini): SHORT baru ditahan"
+        aturan = ("\n⛔ <b>KEPUTUSAN HARI INI: SHORT BARU DITAHAN</b> (hari condong naik sejak 06:00 WIB, BTC naik 55-58% hari seperti ini). "
+                  "Aturan ini MENANG atas vonis FOKUS SHORT: uji v231 menahan SHORT di hari ini memberi R terbanyak di latih, 12 bulan, 6 bulan "
+                  "(1427R / 376R / 294R lawan 1268R / 385R / 264R kalau SHORT vonis tetap diambil). LONG hanya kalau vonis LONG (PF 1.80 / 1.53 / 2.04 / 2.24). "
+                  "Vonis SHORT + hari condong naik = tunggu, jangan buka posisi baru."
                   if d and d.get("naik") else "")
         teks = peta + aturan + gerak
         _BTC_BARIS[:] = [time.time(), teks]

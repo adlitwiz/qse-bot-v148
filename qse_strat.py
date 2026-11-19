@@ -1934,6 +1934,16 @@ def kartu(k, no, it, a):
             kp_teks = (kp_teks + "\n" if kp_teks else "") + kt
     except Exception as ex:
         print("[WARN] lot momentum", ex)
+    try:          # QC 122: skor sinyal 0-100, lot x0.5 di bawah 20, x1.5 di 80 ke atas
+        import qse_skor as SKR
+        s_, kl_, bt_ = SKR.skor(k, it)
+        if s_ is not None:
+            it["skor100"] = s_
+            if kl_ != 1:
+                lot_b = f"{SY.lot_angka(lot_b) * kl_:g}x"
+            kp_teks = (kp_teks + "\n" if kp_teks else "") + bt_
+    except Exception as ex:
+        print("[WARN] skor sinyal kartu", ex)
     jg, ju = [], False
     try:
         import qse_jagoan as JG          # QC 60/61: label koin jagoan, KELAS UTAMA otomatis untuk jagoan sejati
