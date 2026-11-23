@@ -192,6 +192,11 @@ def _tugas_berkala():
                 if lain:
                     TG.send([f"📈 <b>QSE v150 | {nama}</b>\n\n" + "\n\n".join(lain)])
                 kumpul += [(ST.prioritas_teks(k, m), f"pin_{k}", nama, m) for m in pesan if "BISA DIIKUTI" in m]
+            if ST.TAMBAHAN:          # QC 139: LONG tambahan saat vonis LONG baru, pesan sendiri, tidak memakan 12 slot
+                TG.send(["🚀 <b>QSE v150 | SINYAL TAMBAHAN SEARAH VONIS LONG</b>\nVonis LONG masih baru (12 jam pertama). Sinyal LONG "
+                         "teknik tunggal di bawah biasanya hanya uji live, tapi saat vonis LONG baru hasil ujinya bagus: PF 1.70 / 1.74 / "
+                         "1.61 / 2.07 (latih, uji, 12 bulan, 6 bulan). Pakai modal terpisah atau lot setengah, tidak memakan 12 slot.\n\n"
+                         + "\n\n".join(ST.TAMBAHAN[:6])])
         except Exception as ex:
             print("[WARN] strategi", ex)
         try:
@@ -200,10 +205,14 @@ def _tugas_berkala():
             pilih_b = ""
             try:          # QC 131: Kelas Utama dan skor tinggi dikirim paling dulu, tidak ada sinyal yang dibuang
                 import qse_skor as SKR_
-                kumpul.sort(key=lambda z: (*SKR_.dari_teks(z[3]), z[0]), reverse=True)
                 import re as _re
+                import qse_vonis as QV_
+                av_ = QV_.arah_kini()          # QC 139: sinyal searah vonis diurutkan paling atas dan jadi pilihan terbaik
                 nm_ = lambda m: (lambda g: g.group(0) if g else "?")(_re.search(r"[A-Z0-9]+USDT (LONG|SHORT)", m))
-                pilih_b = SKR_.pilihan([(nm_(z[3]), *SKR_.dari_teks(z[3])) for z in kumpul])
+                sa_ = lambda m: bool(av_) and nm_(m).endswith(av_)
+                kumpul.sort(key=lambda z: (sa_(z[3]), *SKR_.dari_teks(z[3]), z[0]), reverse=True)
+                cal_ = [z for z in kumpul if sa_(z[3])] or kumpul
+                pilih_b = SKR_.pilihan([(nm_(z[3]), *SKR_.dari_teks(z[3])) for z in cal_])
             except Exception as ex:
                 print("[WARN] urut skor 4J", ex)
             kirim = []
@@ -260,7 +269,7 @@ def _tugas_berkala():
                         lv = BM.level_dari_kartu(rk)
                         cap = BM.caption_sinyal(f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk)
                         png = GB.chart_sinyal(*__import__("re").search(r"<b>([A-Z0-9]+USDT) (LONG|SHORT)</b>", rk).groups(),
-                                              lv["entry"], lv["sl"], lv["tps"], lv["tp"], lv["sup"], lv["res"]) if cap else None
+                                              lv["entry"], lv["sl"], lv["tps"], lv["tp"], lv["sup"], lv["res"], teknik=nama) if cap else None
                         if png:
                             mid = TG.kirim_foto(png, cap)
                     except Exception as ex:

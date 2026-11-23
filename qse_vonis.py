@@ -220,6 +220,18 @@ def lot_momentum(sym, arah, vonis=None, rs=None):
 VONIS_BARU_JAM = 12.0
 
 
+def arah_kini(now=None):
+    """QC 139: arah vonis yang sedang berlaku (LONG, SHORT, atau ''). Dipakai untuk mengurutkan sinyal searah vonis paling atas."""
+    try:
+        d = _baca(); now = now or time.time()
+        v = d.get("calon")
+        if v in ("LONG", "SHORT") and now - float(d.get("t", 0)) <= 3600:
+            return v
+    except Exception:
+        pass
+    return ""
+
+
 def lot_vonis_baru(arah, now=None):
     """(kali lot kartu, teks). Sinyal searah vonis yang baru berlaku <= 12 jam: x1.5."""
     if os.environ.get("QSE_VONIS_BARU", "1") == "0":

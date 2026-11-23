@@ -323,7 +323,11 @@ def kartu_ringkas(m, pr=None, nama=""):
     rows = [f"{'🟢' if L else '🔴'} <b>{sym} {arah}</b>  ·  {jalur_nm}"]
     if nilai >= 8:
         rows.append("🏆 <b>SINYAL PRIORITAS UTAMA</b>")
-    rows.append(f"💯 Skor <b>{skor}/100</b>  ·  {nm}  ·  uji 2023-2026 PF {pf}, WR {wr}")
+    g_sk = re.search(r"SKOR SINYAL (\d+)/100", m or "")          # QC 138: satu skor saja (skor sinyal 0-100), nilai label jadi info
+    if g_sk:
+        rows.append(f"💯 <b>SKOR SINYAL {g_sk.group(1)}/100</b>  ·  nilai label {nilai} ({nm})")
+    else:
+        rows.append(f"💯 Skor <b>{skor}/100</b>  ·  {nm}  ·  uji 2023-2026 PF {pf}, WR {wr}")
     rows.append("━━━━━━━━━━━━")
     rows.append(pre.group(0))
     rows += ambil("🎯 Entry valid")

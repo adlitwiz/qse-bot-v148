@@ -702,6 +702,27 @@ PERINGKAT_TUNGGAL = int(os.environ.get("QSE_PERINGKAT_TUNGGAL", "110"))
 PERINGKAT_RINGAN = 110          # teknik tunggal di atas peringkat ini: kelas ringan
 
 
+# QC 139 TAMBAHAN SEARAH VONIS (riset/upgrade/run_v257_tambah_searah.py, run_v258_saldo_tambah.py). Sinyal LONG teknik tunggal yang
+# biasanya UJI LIVE (peringkat > 110, McGinley lawan BTC, RSI 50 LONG) saat vonis LONG baru <= 12 jam: PF 1.70/1.74/1.61/2.07
+# (+54/+44/+22/+27R, sekitar 0.3-0.5 sinyal per hari). SHORT kelompok yang sama rugi (PF 0.19-1.00), jadi tidak ikut.
+# Digabung ke 12 slot siaran saldo uji turun (978 ke 857) karena merebut slot, jadi dikirim sebagai JALUR TERPISAH. Saklar QSE_TAMBAHAN_VONIS=0.
+TAMBAHAN = []
+
+
+def tambahan_vonis(it):
+    """True kalau sinyal uji live ini masuk kelompok tambahan searah vonis LONG baru."""
+    if os.environ.get("QSE_TAMBAHAN_VONIS", "1") == "0" or it.get("arah") != "LONG":
+        return False
+    ul = it.get("uji_live") or ""
+    if not (ul.startswith("teknik tunggal di koin peringkat") or ul.startswith("McGinley tunggal melawan") or ul.startswith("RSI 50 LONG tunggal")):
+        return False
+    try:
+        import qse_vonis as QV
+        return QV.lot_vonis_baru("LONG")[0] > 1
+    except Exception:
+        return False
+
+
 def uji_live(k, arah, bj, peringkat, konf, umur=None, r4=None, sepi=None):
     """Alasan sinyal masuk UJI LIVE (dicatat sebagai trade kertas, tidak disiarkan), atau ''. Saklar QSE_UJI_LIVE=0."""
     if os.environ.get("QSE_UJI_LIVE", "1") == "0":
@@ -1435,6 +1456,7 @@ def jalankan(baru_ok=True):
     import qse_catat as CT
     import qse_saya as SY
     out = {k: [] for k in STRAT}
+    TAMBAHAN.clear()
     try:
         tick = B.get_symbols()
     except Exception:
@@ -1630,6 +1652,10 @@ def jalankan(baru_ok=True):
             if not OT.tersaring(it) and not it["uji_live"]:
                 PO.pesan(sym, arah)
                 out[k].append(kartu(k, len(baru), it, a))
+            elif not OT.tersaring(it) and tambahan_vonis(it):          # QC 139: LONG tambahan saat vonis LONG baru
+                it["tambahan_vonis"] = True
+                TAMBAHAN.append("🚀 <b>TAMBAHAN SEARAH VONIS LONG</b> (jalur terpisah, modal terpisah atau lot setengah)\n"
+                                + kartu(k, len(baru), it, a))
 
         def simpan_baru(dd, baru=baru):
             for it in baru:
@@ -2007,6 +2033,10 @@ def kartu(k, no, it, a):
         if kv_ != 1:
             lot_b = f"{SY.lot_angka(lot_b) * kv_:g}x"
             kp_teks = (kp_teks + "\n" if kp_teks else "") + tv_
+        vt_ = QV.vonis_terakhir()
+        if vt_ in ("LONG", "SHORT") and vt_ != it["arah"]:          # QC 138: jujur soal sinyal melawan vonis
+            kp_teks = (kp_teks + "\n" if kp_teks else "") + (f"⚠️ <b>Melawan vonis {vt_}</b>: kelompok ini hampir impas di uji (PF 0.82-1.13). "
+                                                            "Lot normal, tidak dibesarkan. Prioritaskan kartu searah vonis.")
     except Exception as ex:
         print("[WARN] lot vonis baru", ex)
     try:          # QC 122: skor sinyal 0-100, lot x0.5 di bawah 20, x1.5 di 80 ke atas
