@@ -185,7 +185,64 @@ def _lengkapi(it):
                 it["btc_j"] = round(it["btc_j"], 2)
     except Exception as ex:
         print("[WARN] otopsi lengkapi", ex)
+    if it.get("btc_j") is None:          # QC 136: konteks masuk tidak tercatat, pakai posisi BTC saat otopsi (ditandai)
+        try:
+            import qse_strat as ST_
+            b_ = ST_.btc_jarak()
+            if b_ is not None:
+                it = dict(it, btc_j_kini=round(float(b_), 2))
+        except Exception:
+            pass
+    try:          # QC 136: skor kartu sinyal asal dari log siaran (kartu yang dikirim robot)
+        if it.get("skor100") is None:
+            import telegram_notify as TG_
+            t0 = int(it.get("fill_ts") or it.get("created_ts") or 0) / 1000
+            x = TG_.siaran_cocok(it["sym"], it["arah"], it.get("entry"), jam=48, tol=0.05, now=t0 + 600 if t0 else None)
+            if x and x.get("skor") is not None:
+                it = dict(it, skor100=int(x["skor"]))
+    except Exception as ex:
+        print("[WARN] otopsi skor", ex)
     return it
+
+
+def _grup_skor(s):
+    """Hasil di luar data latih (uji 2025-Okt 2026, 12 bulan, 6 bulan) per kelompok skor, run_v254_wr_skor.py."""
+    if s is None:
+        return ""
+    if s >= 80:
+        return "kelompok skor 80+: menang 36-41% trade, PF 1.50-1.91 (SHORT 6 bulan terakhir PF 0.90)"
+    if s >= 50:
+        return "kelompok skor 50-79: menang 33-35% trade, PF 1.13-1.47"
+    if s >= 20:
+        return "kelompok skor 20-49: menang 33-36% trade, PF 1.19-1.50"
+    return "kelompok skor 0-19: menang 32-34% trade, PF 1.08-1.35"
+
+
+def evaluasi(it, jh, pola):
+    """QC 136 EVALUASI KE DEPAN: rugi ini wajar atau tanda masalah, dan apa yang dilakukan berikutnya. Hanya dari hasil uji."""
+    rows = []
+    s = it.get("skor100")
+    if s is not None:
+        rows.append(f"Sinyal asal skor {s}/100, {_grup_skor(s)}. Skor tinggi menaikkan peluang, bukan menjamin: 6 dari 10 trade skor 80+ "
+                    f"tetap tidak menang, untungnya datang dari yang menang besar.")
+    else:
+        rows.append("Skor sinyal asal tidak ditemukan di log kartu 48 jam (entry dari kartu lama atau manual).")
+    if jh and "koin_pct" in jh and "btc_pct" in jh:
+        kp, bp = jh["koin_pct"], jh["btc_pct"]
+        lawan = (kp > 0) == (it["arah"] == "SHORT")
+        if lawan and abs(kp) > 2 * max(abs(bp), 0.3):
+            rows.append(f"Kenapa rugi: koin bergerak {kp:+.2f}% melawan posisi, jauh lebih besar dari BTC {bp:+.2f}%. Koin ini lari sendiri (berita, pump koin).")
+        elif lawan:
+            rows.append(f"Kenapa rugi: koin {kp:+.2f}% dan BTC {bp:+.2f}% bergerak bersama melawan posisi. Pasar naik atau turun serentak.")
+    p = set(pola or [])
+    if p & {"BTC_MELAWAN", "KOIN_SENDIRI", "LANGSUNG_SALAH", "SL_CEPAT"}:
+        rows.append("Sudah diuji 2022-2026: tutup saat BTC melawan 1.5-3% (run_v250), balik arah sesudah SL (run_v245), dan deteksi BTC berbalik "
+                    "(run_v248) semuanya menurunkan profit. Jadi pola ini rugi wajar dari sistem, bukan aturan yang salah.")
+    if (it.get("why") or "").upper() != "SL" and (it.get("result_r") or 0) > -0.9:
+        rows.append(f"Posisi ditutup manual di {it.get('result_r', 0):+.2f}R sebelum SL. Aturan robot: ikuti SL. Di uji, tutup manual di -0.4R "
+                    f"ke bawah menurunkan profit 18-37% karena banyak posisi balik untung.")
+    rows.append("👉 Ke depan: tidak ada aturan baru yang lolos uji untuk pola ini. Tetap ikuti sinyal, lot sudah menyesuaikan skor dan kelas.")
+    return rows
 
 
 def laporan(it, closed, ambil=None, nama=""):
@@ -208,16 +265,22 @@ def laporan(it, closed, ambil=None, nama=""):
         rows.append(f"📈 Selama posisi: untung tertinggi {jh['mfe']:+.2f}R di jam ke-{jh['jam_mfe']}, rugi terdalam {jh['mae']:+.2f}R, "
                     f"lama {jh['lama']:.1f} jam" + (f", BTC {jh['btc_pct']:+.2f}%" if "btc_pct" in jh else "") + ".")
     rows.append("<b>Kesimpulan robot:</b>\n" + "\n".join(f"• {x}" for _, x in tm))
+    try:          # QC 136
+        rows.append("📌 <b>Evaluasi ke depan</b>\n" + "\n".join(f"• {x}" for x in evaluasi(it, jh, [k for k, _ in tm])))
+    except Exception as ex:
+        print("[WARN] otopsi evaluasi", ex)
     # ---- blok prompt ----
     p = [f"EVALUASI RUGI QSE v150 ({jenis})",
          f"Trade: {it['sym']} {it['arah']}, teknik {jl}, kelas {it.get('kelas') or '-'}, konfluensi {1 + len(it.get('combo') or [])} teknik, "
-         f"peringkat koin {it.get('peringkat') or '-'}.",
+         f"peringkat koin {it.get('peringkat') or '-'}, skor sinyal {it['skor100'] if it.get('skor100') is not None else '-'}/100.",
          f"Entry {fp(it['entry'])}, SL {fp(it.get('sl0') or it['sl'])}, {_tp_teks(it, fp)}. "
          f"Masuk {_wib(t0) if t0 else '?'} WIB, selesai {_wib(it.get('closed_ts') or 0)} WIB, alasan {why}, hasil {it.get('result_r', 0):+.2f}R."]
     if jh:
         p.append(f"Jalur harga: MFE {jh['mfe']:+.2f}R di jam ke-{jh['jam_mfe']}, MAE {jh['mae']:+.2f}R, lama {jh['lama']:.1f} jam, "
                  f"koin {jh.get('koin_pct', 0):+.2f}%" + (f", BTC {jh['btc_pct']:+.2f}% (terjauh melawan {jh.get('btc_maks_lawan', 0):+.2f}%)" if "btc_pct" in jh else "") + ".")
-    p.append(f"Konteks masuk: BTC 4J {it.get('btc_j') if it.get('btc_j') is not None else '-'}% dari EMA 50, kolam stop "
+    p.append(f"Konteks masuk: BTC 4J " + (f"{it['btc_j']}%" if it.get("btc_j") is not None else
+                                           f"(saat entry tidak tercatat, saat otopsi {it['btc_j_kini']:+.2f}%)" if it.get("btc_j_kini") is not None else "-%")
+             + f" dari EMA 50, kolam stop "
              f"{('%.1fR' % it['kolam']) if it.get('kolam') is not None else '-'}, serok {len(it.get('serok') or [])}x, "
              f"SL diubah manual {'ya' if it.get('sl_manual') else 'tidak'}.")
     if rw.get("jalur"):

@@ -1095,6 +1095,9 @@ def _tugas_menit():
         import qse_vonis as QV
         for m_ in QV.cek():          # QC 104 vonis pasar berubah LONG <-> SHORT
             TG.send(["🧭 <b>QSE v150 | VONIS PASAR</b>\n\n" + m_])
+            ar_ = "LONG" if "jadi LONG" in m_ else "SHORT" if "jadi SHORT" in m_ else None
+            if ar_:          # QC 137: vonis baru = jam terbaik sinyal searahnya, langsung scan paksa
+                _scan_abdul(ar_, f"VONIS BERUBAH ke {ar_}")
     except Exception as ex:
         print("[WARN] himbauan", ex)
     try:          # QC 86 alarm gawat: BTC 2% dalam 1 jam melawan posisi untung yang SL-nya belum di entry

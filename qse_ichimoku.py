@@ -390,6 +390,13 @@ def _jalankan(baru_ok=True):
                 lot_b = f"{SY.lot_angka(lot_b) * sk_k:g}x"
         except Exception as ex:
             print("[WARN] skor ichimoku", ex)
+        try:          # QC 137 searah vonis baru <= 12 jam x1.5
+            import qse_vonis as QV_
+            kv_, tv_ = QV_.lot_vonis_baru(arah)
+            if kv_ != 1:
+                lot_b = f"{SY.lot_angka(lot_b) * kv_:g}x"; sk_bt = (sk_bt + "\n" if sk_bt else "") + tv_
+        except Exception as ex:
+            print("[WARN] vonis baru ichimoku", ex)
         try:
             import qse_modal as MD
             lot = MD.baris_lot(px, sl, SY.lot_angka(lot_b), konf=1 + len(it.get("combo") or []), arah=arah,

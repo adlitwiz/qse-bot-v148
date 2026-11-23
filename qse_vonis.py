@@ -213,6 +213,31 @@ def lot_momentum(sym, arah, vonis=None, rs=None):
     return 1.0, ""
 
 
+# QC 137 LOT VONIS BARU (riset/upgrade/run_v255_vonis_baru.py, run_v256_lot_vonis_baru.py). Sinyal siaran searah vonis:
+#   vonis baru 0-4 jam PF 1.49/2.13/1.44/1.56, 5-12 jam 1.53/1.69/1.28/1.28, lebih dari 12 jam 1.06/1.14/0.97/1.09 (latih, uji, 12 bln, 6 bln).
+#   Lot kartu x1.5 untuk sinyal searah vonis LONG/SHORT yang berlaku <= 12 jam, di atas lot skor: saldo siaran 150 USDT 12 slot
+#   1869/966/218/237 ke 1972/978/231/260, DD sama atau turun. Gurita tidak ikut (uji 2571 ke 2523). Saklar QSE_VONIS_BARU=0.
+VONIS_BARU_JAM = 12.0
+
+
+def lot_vonis_baru(arah, now=None):
+    """(kali lot kartu, teks). Sinyal searah vonis yang baru berlaku <= 12 jam: x1.5."""
+    if os.environ.get("QSE_VONIS_BARU", "1") == "0":
+        return 1.0, ""
+    try:
+        d = _baca(); now = now or time.time()
+        v, t0 = d.get("calon"), float(d.get("calon_t") or 0)
+        if v != arah or v not in ("LONG", "SHORT") or not t0 or now - float(d.get("t", 0)) > 3600:
+            return 1.0, ""
+        jam = (now - t0) / 3600
+        if jam > VONIS_BARU_JAM:
+            return 1.0, ""
+        return 1.5, (f"🚀 <b>LOT x1.5: searah vonis {v} yang baru {jam:.0f} jam</b>. Uji 2022-2026: sinyal searah vonis baru 0-12 jam "
+                     f"PF 1.28-2.13, sesudah 12 jam turun ke 0.97-1.14.")
+    except Exception:
+        return 1.0, ""
+
+
 IKON = {"LONG": "🟢", "SHORT": "🔴", "NETRAL": "⚪"}
 JUDUL = {"LONG": "🟢 FOKUS LONG", "SHORT": "🔴 FOKUS SHORT", "NETRAL": "⚪ TRANSISI / TUNGGU PANTULAN"}
 UKURAN = {          # QC 110: hanya angka uji vonis historis (run_v226_vonis.py), bukan saran baru
@@ -448,6 +473,12 @@ def jawaban(v):
         aksi += ". BTC jenuh jual: SHORT baru ditahan robot"
     elif fase == "NAIK":
         aksi += ". BTC jenuh beli: LONG baru ditahan robot"
+    try:          # QC 137
+        kv_, _ = lot_vonis_baru(vn)
+        if kv_ > 1:
+            aksi += f". Vonis {vn} ini masih baru (12 jam pertama): kartu sinyal {vn} otomatis lot x1.5, ini jam terbaiknya"
+    except Exception:
+        pass
     rows.append(f"👉 <b>Yang dilakukan:</b> {aksi}. Ikuti kartu sinyal, lot di kartu sudah memakai arah ini.")
     rows.append(f"<i>{rinci}</i>")
     return "\n".join(rows)

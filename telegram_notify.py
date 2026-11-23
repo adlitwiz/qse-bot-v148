@@ -197,7 +197,9 @@ def catat_siaran(teks, now=None):
         bersih = lambda x: html.unescape(re.sub(r"<[^>]+>", "", x)).strip()
         judul = bersih((teks or "").strip().split("\n")[0])
         baru = []
-        for m in ada:
+        for q_, m in enumerate(ada):
+            ujung = ada[q_ + 1].start() if q_ + 1 < len(ada) else len(teks)
+            g_sk = re.search(r"SKOR SINYAL (\d+)/100", teks[max(0, m.start() - 1500):ujung])          # QC 136: skor kartu untuk otopsi
             atas = [b for b in (bersih(x) for x in teks[:m.start()].split("\n")) if b]
             dekat = next((x for x in reversed(atas[-6:]) if m.group(1).replace("USDT", "") in x), atas[-1] if atas else "")
             # v180 QC 77: nama teknik ada di baris "🏷 Teknik:" di bawah judul kartu, bukan di baris nama koin. Dulu kunci kosong dan
@@ -216,7 +218,7 @@ def catat_siaran(teks, now=None):
                     (kata for kata, k in TEKNIK_KATA if k == kunci), "") or judul.replace("QSE v150 |", "").strip()
             kelas = "UTAMA" if "KELAS UTAMA" in blok_atas else "RINGAN" if "KELAS RINGAN" in blok_atas else ""
             baru.append(dict(sym=m.group(1), arah=m.group(2), entry=float(m.group(3)), t=now or time.time(), kunci=kunci,
-                             nama=nama[:60], judul=judul[:80], kelas=kelas))
+                             nama=nama[:60], judul=judul[:80], kelas=kelas, skor=int(g_sk.group(1)) if g_sk else None))
         f = os.path.join(STATE_DIR, "siaran.json")
         try:
             with open(f) as fh:

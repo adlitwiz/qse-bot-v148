@@ -2001,6 +2001,14 @@ def kartu(k, no, it, a):
             kp_teks = (kp_teks + "\n" if kp_teks else "") + kt
     except Exception as ex:
         print("[WARN] lot momentum", ex)
+    try:          # QC 137: searah vonis baru <= 12 jam, lot x1.5
+        import qse_vonis as QV
+        kv_, tv_ = QV.lot_vonis_baru(it["arah"])
+        if kv_ != 1:
+            lot_b = f"{SY.lot_angka(lot_b) * kv_:g}x"
+            kp_teks = (kp_teks + "\n" if kp_teks else "") + tv_
+    except Exception as ex:
+        print("[WARN] lot vonis baru", ex)
     try:          # QC 122: skor sinyal 0-100, lot x0.5 di bawah 20, x1.5 di 80 ke atas
         import qse_skor as SKR
         s_, kl_, bt_ = SKR.skor(k, it)

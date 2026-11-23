@@ -231,7 +231,14 @@ def _skor_baris(r, px, sl):
         if s_ is None:
             return ""
         r["skor100"] = s_
-        return "\n" + bt_ + (f". Kalikan saran entry di bawah x{kl_:g}" if kl_ != 1 else "")
+        kv_, tv_ = 1.0, ""
+        try:          # QC 137 searah vonis baru
+            import qse_vonis as QV
+            kv_, tv_ = QV.lot_vonis_baru(r["arah"])
+        except Exception:
+            pass
+        k_ = kl_ * kv_
+        return "\n" + bt_ + (f"\n{tv_}" if tv_ else "") + (f". Kalikan saran entry di bawah x{k_:g}" if k_ != 1 else "")
     except Exception as ex:
         print("[WARN] skor radar", r.get("sym"), ex)
         return ""
