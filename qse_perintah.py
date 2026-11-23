@@ -14,7 +14,7 @@ LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 
 
-VERSI_QC = "QC 126 (19 Nov 2026)"
+VERSI_QC = "QC 130 (23 Nov 2026)"
 
 
 def _scan_baris():
@@ -82,7 +82,7 @@ def mulai_laporan4j():
 
 
 # v172 QC 70: perintah yang isinya milik pengirim (posisi, modal, catatan). Balasannya bernama dan tombolnya terkunci ke pengirim.
-PRIBADI = {"/entry", "/status", "/slnapas", "/slok", "/slkena", "/sljalan", "/milikku", "/punyaku", "/tutup", "/tp", "/sl", "/batal", "/tpall", "/tpsemua", "/slall", "/slsemua", "/ubah",
+PRIBADI = {"/entry", "/pikir", "/status", "/slnapas", "/slok", "/slkena", "/sljalan", "/milikku", "/punyaku", "/tutup", "/tp", "/sl", "/batal", "/tpall", "/tpsemua", "/slall", "/slsemua", "/ubah",
            "/modify", "/modif", "/edit", "/modal", "/pindah", "/kelola", "/be", "/hapus", "/catat", "/serok", "/tambah", "/add", "/salah", "/otopsi", "/evalrugi", "/pasar", "/vonis", "/arahpasar"}
 BANTUAN = ("❓ <b>QSE v150 | INFO</b>\n\n"
            "Robot jalan otomatis: scan tiap 4 jam dan per jam, pantau posisi tiap menit, berita, peta BTC pagi 07:05 WIB, "
@@ -407,6 +407,12 @@ def balas(cmd, args, dari_main=False):
         return SY.sl_kena_entry(args)
     if cmd == "/sljalan":         # QC 108 tombol: posisi Bybit masih jalan
         return SY.sl_masih_jalan(args)
+    if cmd == "/pikir":          # QC 129 otak umum (Claude API) di atas QSE
+        import qse_otak_umum as OU
+        return OU.pikir(args)
+    if cmd == "/ict":          # QC 129 jalur ICT terpisah
+        import qse_ict as ICT
+        return ICT.teks()
     if cmd == "/evaluasi":
         return SY.evaluasi()
     if cmd == "/uji":
@@ -456,7 +462,7 @@ def balas(cmd, args, dari_main=False):
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/ict": "JALUR ICT", "/pikir": "OTAK UMUM", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
 
 
 def _sisa_posisi():

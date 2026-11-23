@@ -265,6 +265,16 @@ def kirim_pisah(bubbles, markup=None):
     return out
 
 
+import re as _re
+_TAG_SAH = _re.compile(r"<(?!/?(?:b|i|u|s|code|pre|a|tg-spoiler|blockquote|strong|em|ins|del|strike|span)\b)")
+
+
+def aman_html(m):
+    """QC 128: '<' yang bukan tag HTML Telegram (contoh 'RSI 4J <= 35') diubah jadi &lt;. Dulu Telegram memotong teks
+    sesudah tanda itu (otopsi rugi kehilangan kalimat 'Uji v221: SHORT saat RSI 4J <= 35 ...')."""
+    return _TAG_SAH.sub("&lt;", m) if isinstance(m, str) else m
+
+
 def send(blocks, token=None, chat_id=None, markup=None):
     try:
         catat_siaran("\n\n".join(str(b) for b in blocks))
@@ -289,7 +299,7 @@ def send(blocks, token=None, chat_id=None, markup=None):
     ids = []
     semua = "\n".join(msgs)
     for q, m in enumerate(msgs):
-        data = {"chat_id": chat_id, "text": m, "parse_mode": "HTML", "disable_web_page_preview": True}
+        data = {"chat_id": chat_id, "text": aman_html(m), "parse_mode": "HTML", "disable_web_page_preview": True}
         # 10 Nov: potongan terakhir membawa tombol Salin Setup semua koin di pesan (dulu hanya koin di potongan itu)
         mk = _markup(semua if (q == len(msgs) - 1 and len(msgs) > 1) else m, markup if q == len(msgs) - 1 else None, q == len(msgs) - 1)
         if mk:

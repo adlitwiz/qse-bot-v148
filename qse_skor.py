@@ -132,6 +132,7 @@ def baris(s, kl):
            "50-74: uji PF 1.35, 12 bln 1.13, 6 bln 1.27" if s >= 50 else "25-49: uji PF 1.51, 12 bln 1.19, 6 bln 1.18" if s >= 25 else
            "0-24: uji PF 1.38, 12 bln 1.10, 6 bln 1.19")
     ikon = "🟢" if s >= 80 else "🟡" if s >= 20 else "🟠"
-    return (f"{ikon} <b>SKOR SINYAL {s}/100</b> (kelompok {grp})"
+    return (f"{ikon} <b>SKOR SINYAL {s}/100</b> (peringkat sinyal ini di antara 13.593 sinyal latih, dari 16 ciri: teknik, arah, "
+            f"konfluensi, vonis, hari naik, RSI 4J, gerak 72 jam, jarak EMA 50, BTC, lebar SL, ATR. Kelompok {grp})"
             + (f". <b>Lot x{kl:g}</b>" if kl != 1 else ". Lot normal")
             + (" (skor 80+ terbukti, lot dibesarkan)" if kl > 1 else " (skor di bawah 20, lot dikecilkan, tetap untung di uji)" if kl < 1 else ""))

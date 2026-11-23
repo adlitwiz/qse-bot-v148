@@ -408,15 +408,20 @@ def otak_teks(sinyal=None, lewat=None, bj=None):
 
 def radar_teks(lewat, inf):
     """Tidak ada sinyal: koin yang paling dekat ke pemicu, supaya grup tahu apa yang sedang dipantau."""
+    # QC 128: koin yang sinyalnya SUDAH lewat (harga lari dari entry atau melawan BTC) tidak lagi disebut "dipantau ketat",
+    # karena tidak akan pernah jadi sinyal. Contoh ESPORTS SHORT McGinley 0.9R dari pemicu: sinyalnya sudah muncul, harga lari, tidak dikejar.
     dekat = [r for r in lewat if "lari" in r["why"] or "melawan" in r["why"]]
     dekat.sort(key=lambda r: abs(r["geser"]))
-    nm = []
+    lw = []
     for r in dekat:
-        z = f"{r['sym'].replace('USDT', '')} {r['arah']} ({r['nama']}, harga {abs(r['geser']):.1f}R dari pemicu)"
-        if z not in nm:
-            nm.append(z)
+        z = (f"{r['sym'].replace('USDT', '')} {r['arah']} ({r['nama']}, "
+             + (f"harga sudah lari {abs(r['geser']):.1f}R dari entry" if "lari" in r["why"] else
+                f"harga sudah melawan {abs(r['geser']):.1f}R, di luar rentang valid") + ")")
+        if z not in lw:
+            lw.append(z)
+    nm = []
     kd = ""
-    if len(nm) < 2:
+    if True:
         try:
             import qse_kandidat as KD
             import qse_strat as ST
@@ -437,9 +442,12 @@ def radar_teks(lewat, inf):
         except Exception as ex:
             print("[WARN] radar kandidat", ex)
     if nm:
-        kd = "Saya memantau ketat " + " dan ".join(TG.e(z) for z in nm[:2]) + ". Kalau candle ini tutup konfirmasi, sinyalnya langsung saya kirim."
+        kd = ("Calon sinyal (belum terpicu): " + " dan ".join(TG.e(z) for z in nm[:2])
+              + ". Kalau candle 4J berikutnya tutup memenuhi syarat, sinyalnya langsung saya kirim. Kalau tidak, calon ini gugur.")
     else:
         kd = "Belum ada koin yang dekat ke pemicu. Saya tetap memindai semua mesin tiap jam."
+    if lw:
+        kd += "\nSudah lewat, tidak dikejar: " + ", ".join(TG.e(z) for z in lw[:2]) + "."
     import qse_strat as ST
     return f"⚡ <b>Radar 1 Jam {_wib()} WIB</b>\n{ST.status_btc(inf.get('bj'), ambil=False)}\n{kd}"
 

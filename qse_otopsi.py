@@ -160,9 +160,38 @@ def _tp_teks(it, fp):
     return ", ".join(out) if out else "tanpa TP tetap (SL berjalan)"
 
 
+def _lengkapi(it):
+    """QC 128: konteks masuk (BTC 4J dari EMA 50, kolam stop, combo, mutu) diambil dari buku sinyal jalur yang sama
+    (koin dan arah sama, sinyal paling dekat sebelum entry, maks 48 jam). Dulu tampil '-' karena catatan posisi tidak membawanya."""
+    if it.get("btc_j") is not None and it.get("kolam") is not None:
+        return it
+    try:
+        import qse_strat as ST
+        t0 = int(it.get("fill_ts") or it.get("created_ts") or 0) / 1000
+        k = ST.kunci_jalur(it.get("jalur") or "") if it.get("jalur") else ""
+        calon = []
+        for kk in ([k] if k in ST.STRAT else list(ST.STRAT)):
+            d = ST.lihat(kk)
+            for v in list(d.get("open", {}).values()) + d.get("closed", []):
+                if v.get("sym") == it["sym"] and v.get("arah") == it["arah"] and 0 <= t0 - float(v.get("t", 0)) <= 48 * 3600:
+                    calon.append(v)
+        if calon:
+            v = max(calon, key=lambda x: float(x.get("t", 0)))
+            it = dict(it)
+            for f in ("btc_j", "kolam", "combo", "mutu"):
+                if it.get(f) is None and v.get(f) is not None:
+                    it[f] = v[f]
+            if isinstance(it.get("btc_j"), float):
+                it["btc_j"] = round(it["btc_j"], 2)
+    except Exception as ex:
+        print("[WARN] otopsi lengkapi", ex)
+    return it
+
+
 def laporan(it, closed, ambil=None, nama=""):
     """Teks otopsi satu trade rugi, termasuk blok prompt untuk Opus."""
     import qse_saya as SY
+    it = _lengkapi(it)
     jh = jalur_harga(it, ambil)
     rw = riwayat(it, closed)
     tm = temuan(it, jh, rw)
@@ -199,6 +228,14 @@ def laporan(it, closed, ambil=None, nama=""):
              "Uji di populasi siaran: pilih di latih, buktikan di uji, 12 bulan, dan 6 bulan sesudah biaya. "
              "Pasang hanya kalau lolos semua periode dan tidak menurunkan frekuensi atau total profit. Kalau tidak lolos, laporkan apa adanya.")
     rows.append("📋 <b>Prompt untuk Opus</b> (tekan lama blok di bawah untuk salin):\n<pre>" + html.escape("\n".join(p)) + "</pre>")
+    try:          # QC 129: otak umum (Claude API) menjawab langsung kalau ANTHROPIC_API_KEY ada
+        import qse_otak_umum as OU
+        if OU.aktif():
+            j = OU.otopsi("\n".join(p))
+            if j:
+                rows.append(j)
+    except Exception as ex:
+        print("[WARN] otak umum otopsi", ex)
     return "\n\n".join(rows)
 
 

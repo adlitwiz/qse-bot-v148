@@ -22,6 +22,23 @@ SWAP = 0.00015
 SL_ATR, TP_R, MAKS = 2.0, 1.5, 48
 H4, JAM = 14400000, 3600000
 JEDA = 1800
+# QC 127: sinyal CFD 4J DIKIRIM ke grup (tidak lagi menunggu uji live). Bukti backtest lolos 4 periode: emas latih 2020-2024 PF 1.30
+# (115 trade), uji 2025-Okt 2026 PF 1.37 (44), 12 bulan PF 1.13, 6 bulan PF 1.47. Lot setengah (kelas ringan) karena sampel kecil.
+# Trade kertas tetap dicatat untuk rapor. Saklar QSE_CFD4J_KIRIM=0 kembali ke mode catat saja.
+KIRIM = os.environ.get("QSE_CFD4J_KIRIM", "1") != "0"
+NAMA = {k: n for k, _, n in INST}
+
+
+def kartu(kode, ar, e, risk):
+    """Kartu sinyal CFD 4J: arah, entry, SL 2 ATR, TP 1.5R, batas 48 jam, dalam harga dan persen (harga Yahoo GC=F/SI=F)."""
+    L = ar > 0; sl = e - ar * risk; tp = e + ar * TP_R * risk; pc = lambda x: abs(x / e - 1) * 100
+    return (f"{'🟢' if L else '🔴'} <b>CFD 4J · {NAMA.get(kode, kode)} ({kode}USD) {'BUY' if L else 'SELL'}</b>  ·  🟨 lot setengah\n"
+            f"🏷 Teknik: RSI 50 + Volume 4J (volume 20% teratas, RSI melewati 50, searah EMA 50/200)\n"
+            f"<code>Entry  {e:.2f} MARKET\nSL     {sl:.2f}  ({pc(sl):.2f}%)\nTP     {tp:.2f}  ({pc(tp):.2f}%, {TP_R:g}R)</code>\n"
+            f"⏱ Belum kena TP atau SL dalam 48 jam: tutup market.\n"
+            f"📐 Harga dari kontrak futures (Yahoo). Di Bybit {kode}USD bisa beda sedikit: pakai jarak persen SL dan TP dari harga entry kamu.\n"
+            f"🧪 Backtest emas: latih 2020-2024 PF 1.30 (115 trade), uji 2025-Okt 2026 PF 1.37, 12 bulan PF 1.13, 6 bulan PF 1.47. "
+            f"Sekitar 2 sinyal per bulan. Ketik /cfd untuk rapor.")
 
 
 def hidup():
@@ -148,6 +165,8 @@ def jalankan_data(d, kode, t, o, h, l, c, v, now_ms, awal=False):
                 p["t_k"] = float(t[p["k"]]) if p["k"] < len(t) else float(t[-1]) + JAM
                 d["buka"].append(p)
             n += 1
+            if KIRIM:
+                d.setdefault("kirim", []).append(kartu(kode, ar, float(C[i]), float(SL_ATR * a)))
             print(f"[CFD4J catat] {kode} {'LONG' if ar > 0 else 'SHORT'} {C[i]}", flush=True)
     return n
 
@@ -167,8 +186,16 @@ def ambil1j(ysym):
     return a[:, 0], a[:, 1], a[:, 2], a[:, 3], a[:, 4], a[:, 5]
 
 
+def ambil_kirim():
+    """QC 127: kartu sinyal baru yang belum dikirim (dikosongkan sesudah diambil)."""
+    d = _baca(); k = d.pop("kirim", [])
+    if k:
+        _tulis(d)
+    return k
+
+
 def cek(now=None, data=None):
-    """Dipanggil tiap menit, ambil data tiap 30 menit. Tidak mengirim pesan apa pun."""
+    """Dipanggil tiap menit, ambil data tiap 30 menit. Sinyal baru disimpan di 'kirim' (QC 127), dikirim listener."""
     if not hidup():
         return 0
     now = now or time.time()

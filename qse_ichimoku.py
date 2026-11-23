@@ -416,8 +416,9 @@ def _jalankan(baru_ok=True):
             f"• Koin ini termasuk {TOP_LIKUID} koin paling likuid 30 hari terakhir. Makin likuid, makin bagus hasil Ichimoku",
             "• Bukti: uji 5 tahun 111 koin, 3084 trade, PF 1.29, untung tiap tahun, positif 18 dari 22 kuartal",
             "🛠 <b>Cara</b>",
-            f"1. Masuk MARKET sekarang. Pasang SL di {TG.fp(sl, t)} ({pc:.1f}% dari entry). Pasang TP sebagian 20% di +0.5R saja "
-            f"(lihat baris 💰), setelah kena SL ke -0.25R, untung +1R SL ke entry. Sisanya tanpa TP",
+            f"1. Masuk MARKET sekarang. Pasang SL di {TG.fp(sl, t)} ({pc:.1f}% dari entry). Pasang TP sebagian 20% di +{__import__("qse_strat").tps_r(arah):g}R saja "
+            + ("(lihat baris 💰), setelah kena SL ke entry. Sisanya tanpa TP" if __import__("qse_strat").tps_langsung_entry(arah) else
+               "(lihat baris 💰), setelah kena SL ke -0.25R, untung +1R SL ke entry. Sisanya tanpa TP"),
             "2. Tiap candle 4J tutup, robot kirim pesan GESER SL. Ubah SL di Bybit ke angka di pesan itu",
             "3. SL hanya maju searah profit, tidak pernah mundur. Saat harga balik menyentuh SL, posisi tutup sendiri dengan profit yang sudah terkunci",
             "4. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "

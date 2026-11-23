@@ -140,6 +140,14 @@ def _tugas_berkala():
             kumpul += [(ST.prioritas_teks("ichimoku", m), "pin_ichi", "ICHIMOKU", m) for m in pesan or [] if "BISA DIIKUTI" in m]
         except Exception as ex:
             print("[WARN] ichimoku", ex)
+        try:          # QC 129 jalur ICT terpisah (sweep + MSS + FVG), dikirim sendiri, tidak ikut urutan dan slot jalur lain
+            import qse_ict as ICT
+            pesan = ICT.jalankan(baru_ok=True)
+            if pesan:
+                TG.send(["🟪 <b>QSE v150 | SINYAL ICT 4J (JALUR TERPISAH)</b>\nLiquidity sweep + MSS + FVG. Modal terpisah atau lot setengah.\n\n"
+                         + "\n\n".join(pesan)])
+        except Exception as ex:
+            print("[WARN] ict", ex)
         try:
             import qse_ob as OB
             pesan = OB.jalankan(baru_ok=True)          # jalur Order Block + Volume, aturan sama dengan backtest 6 tahun
@@ -892,6 +900,14 @@ def _gurita():
 
 
 def _tugas_menit():
+    try:          # QC 128: kabar BATALKAN LIMIT kalau sinyal asalnya sudah tidak berlaku (cek tiap 10 menit)
+        import qse_saya as _SYl
+        if time.time() - float(_st().get("limit_cek_t", 0)) >= 600:
+            _st({"limit_cek_t": time.time()})
+            for m_ in _SYl.cek_limit():
+                TG.send([m_])
+    except Exception as ex:
+        print("[WARN] cek limit", ex)
     try:          # QC 124: peta SL rutin tiap 40 menit selama ada posisi jalan
         import qse_saya as _SYr
         if _SYr.SL_RUTIN_MENIT > 0 and time.time() - float(_st().get("sl_rutin_t", 0)) >= _SYr.SL_RUTIN_MENIT * 60 - 30:
@@ -1027,6 +1043,8 @@ def _tugas_menit():
     try:          # QC 95 CFD 4J mode catat: RSI 50 + Volume emas dan perak, trade kertas, tidak dikirim ke grup
         import qse_cfd4j as QC4
         QC4.cek()
+        for m_ in QC4.ambil_kirim():          # QC 127: sinyal CFD 4J dikirim ke grup
+            TG.send(["📊 <b>QSE v150 | SINYAL CFD 4J</b>\n\n" + m_])
     except Exception as ex:
         print("[WARN] cfd4j", ex)
     try:          # QC 104 otopsi rugi: tiap SL atau cutloss dianalisa dan diberi prompt untuk Fable

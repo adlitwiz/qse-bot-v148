@@ -412,6 +412,46 @@ def baris_dominasi(v):
                if k else ""))
 
 
+def jawaban(v):
+    """QC 130 JAWABAN SINGKAT: tiga arah dengan jangka waktunya masing-masing, lalu satu kalimat yang robot lakukan sekarang.
+    Hanya merangkum aturan yang sudah terpasang (UKURAN, hari condong naik, jenuh), tidak menambah aturan baru.
+    Kenapa label bisa beda: tren besar (BTC 4J lawan EMA 50) berganti dalam hitungan hari, vonis gabungan 9 bahan rata-rata tiap
+    8 jam, arah 15 menit-1 jam bisa berganti tiap jam. Pantulan naik di tren turun membuat arah pendek NAIK sementara tren besar TURUN."""
+    bj = v.get("bj"); u = v.get("umur"); vn = v["vonis"]
+    besar = ("NAIK" if bj > 0 else "TURUN") if bj is not None else "?"
+    k = str(v.get("kompas") or "")
+    pendek = "NAIK" if "LONG" in k else "TURUN" if "SHORT" in k else "DATAR" if k else "?"
+    rows = ["🎯 <b>JAWABAN SINGKAT</b>",
+            f"1. Tren besar (BTC 4J, berganti dalam hitungan hari): <b>{besar}</b>"
+            + (f", {bj:+.1f}% dari EMA 50" if bj is not None else "") + (f", sudah {u[1]:.0f} hari" if u else ""),
+            f"2. Arah pendek (BTC 15 menit-1 jam, bisa berganti tiap jam): <b>{pendek}</b>",
+            f"3. Vonis gabungan 9 bahan (rata-rata berganti tiap 8 jam): <b>{ {'LONG': 'NAIK', 'SHORT': 'TURUN', 'NETRAL': 'NETRAL'}[vn] }</b> (suara {v['skor']:+d})"]
+    if besar != "?" and pendek in ("NAIK", "TURUN") and pendek != besar:
+        rows.append(f"ℹ️ Arah pendek melawan tren besar = <b>pantulan</b> di tren {besar.lower()}. Ini normal dan sering terjadi. "
+                    f"Tren besar baru dianggap berganti kalau BTC 4J tutup {'di atas' if besar == 'TURUN' else 'di bawah'} EMA 50.")
+    tahan = ""
+    try:
+        import qse_pagi as PG
+        tahan = PG.short_tahan()
+    except Exception:
+        pass
+    fase = v.get("fase") or ""
+    if vn == "LONG":
+        aksi = "ambil sinyal LONG dengan lot 1.5x, sinyal SHORT tetap boleh dengan lot normal"
+    elif vn == "SHORT":
+        aksi = "ambil sinyal SHORT dengan lot normal (jangan dibesarkan), sinyal LONG tetap boleh dengan lot normal"
+    else:
+        aksi = "ambil sinyal yang dikirim robot dengan lot normal. SHORT saat netral masih untung di uji (PF 1.06-1.33), LONG saat netral lemah (PF 0.88)"
+    if tahan:
+        aksi += ". SHORT baru DITAHAN hari ini (hari condong naik)"
+    if fase == "TURUN":
+        aksi += ". BTC jenuh jual: SHORT baru ditahan robot"
+    elif fase == "NAIK":
+        aksi += ". BTC jenuh beli: LONG baru ditahan robot"
+    rows.append(f"👉 <b>Yang dilakukan sekarang:</b> {aksi}. Ikuti kartu sinyal: robot sudah memasukkan semua arah ini ke keputusan dan lot.")
+    return "\n".join(rows)
+
+
 def teks(v=None, tag=False, judul="ARAH PASAR DETIK INI"):
     v = v or hitung()
     F = v["faktor"]
@@ -422,7 +462,11 @@ def teks(v=None, tag=False, judul="ARAH PASAR DETIK INI"):
     else:
         konfl = f"{naik if tanda > 0 else turun} dari {len(F)} bahan searah"
     rows = [f"🧭 <b>{judul}: {JUDUL[v['vonis']]}</b>\nKonfluensi makro: <b>{konfl}</b>  ·  suara {v['skor']:+d} dari ±{v['maks']}"
-            + (f"  ·  kompas {html.escape(str(v['kompas']))}" if v.get("kompas") else "")]
+            + (f"  ·  arah 15 menit-1 jam: {html.escape(str(v['kompas']))}" if v.get("kompas") else "")]
+    try:          # QC 130: satu jawaban konkret di paling atas
+        rows.insert(0, jawaban(v))
+    except Exception as ex:
+        print("[WARN] vonis jawaban", ex)
     if not v.get("lengkap"):
         rows.append("⚠️ Data belum lengkap (sebagian sumber gagal dibaca), vonis ditahan di TRANSISI.")
     try:          # QC 111: umur vonis. Uji v226/v227: vonis berganti rata-rata tiap 8 jam, vonis 3 hari lebih stabil tapi lebih jelek

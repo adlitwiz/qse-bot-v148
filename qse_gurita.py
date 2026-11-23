@@ -361,6 +361,11 @@ MODAL_SLOT = int(os.environ.get("QSE_GURITA_SLOT", "12"))
 MODAL_KALI3 = float(os.environ.get("QSE_GURITA_KALI3", "1.5"))            # pengali risiko untuk sinyal 3+ teknik
 MODAL_REM_DD = float(os.environ.get("QSE_GURITA_REM_DD", "10"))           # persen turun dari puncak, 0 = rem mati
 MODAL_REM_KALI = float(os.environ.get("QSE_GURITA_REM_KALI", "0.5"))
+# QC 127 MODE AKURAT (riset/upgrade/run_v243_ngamuk.py, hasil_v243_ngamuk.txt). Saat saldo Gurita turun > 10% dari puncak: sinyal skor 80+
+# x1.5, lainnya x0.5 (dulu semua x0.5). Jumlah sinyal sama. Saldo 150 USDT: latih 11851 ke 278603, uji 2719 ke 12489, 12 bulan 277 ke 711,
+# 6 bulan 211 ke 506. Drawdown terdalam naik: 27/39/39/27% ke 29/57/57/35%. Ngamuk semua sinyal x1.5/x2 kalah di 12 bulan (DD 77-87%).
+# Siaran (risiko 1%) tidak ikut: mode akurat kalah di periode uji (1312 ke 1095). Saklar QSE_REM_AKURAT=0.
+REM_AKURAT = os.environ.get("QSE_REM_AKURAT", "1") != "0"
 MODAL_SEGAR, MODAL_GESER = 2 * 3600, 0.5                                  # sinyal paling lama 2 jam dan harga masih dalam 0.5R dari entry
 MODAL_UJI = ("Uji modal 150 USDT (Jul 2022 sampai Okt 2026), sinyal 2+ teknik searah BTC, keluar aturan live, 12 posisi, risiko 1.5% saldo "
              "(3+ teknik x1.5, separuh saat saldo turun lebih dari 10% dari puncak), arah libur sesudah 2 SL, tren tua dua arah (QC 89): "
@@ -404,7 +409,11 @@ def modal_risiko(m, konf, arah=None, vonis=None, rsi=None, kali_skor=1.0):
         r = min(r, MODAL_RISIKO * 2.25)          # QC 112/122: total pengali paling besar 2.25x seperti uji
     turun = (1 - m["saldo"] / m["puncak"]) * 100 if m.get("puncak", 0) > 0 else 0.0
     if MODAL_REM_DD > 0 and turun > MODAL_REM_DD:
-        r *= MODAL_REM_KALI; cat.append(f"rem: saldo turun {turun:.0f}% dari puncak, risiko x{MODAL_REM_KALI:g}")
+        if REM_AKURAT and kali_skor and kali_skor >= 1.5:          # QC 127 MODE AKURAT: skor 80+ x1.5 saat saldo turun
+            r *= 1.5; cat.append(f"🎯 MODE AKURAT: saldo turun {turun:.0f}% dari puncak, skor 80+ x1.5")
+        else:
+            r *= MODAL_REM_KALI; cat.append(f"rem: saldo turun {turun:.0f}% dari puncak, risiko x{MODAL_REM_KALI:g}"
+                                            + (" (MODE AKURAT: hanya skor 80+ yang dibesarkan)" if REM_AKURAT else ""))
     return r, ", ".join(cat)
 
 

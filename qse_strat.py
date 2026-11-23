@@ -284,9 +284,10 @@ def v150_langkah(it, hi, lo, cl):
     if (lo <= v["sl"]) if d == 1 else (hi >= v["sl"]):
         v["R"] = v["real"] + v["sisa"] * (v["sl"] - e) * d / risk
         return
-    lv = e + d * TPS_R * risk
+    tr_ = tps_r("LONG" if d == 1 else "SHORT")          # QC 127: LONG +1R
+    lv = e + d * tr_ * risk
     if not v["aman"] and ((hi >= lv) if d == 1 else (lo <= lv)):
-        v["real"] += TPS_PORSI * TPS_R
+        v["real"] += TPS_PORSI * tr_
         v["sisa"] = 1.0 - TPS_PORSI
         v["aman"] = True
         v["sl"] = e - d * BUF_R * risk          # QC 108: ruang napas -0.25R, ke entry di +1.0R
@@ -330,8 +331,9 @@ def r_hasil(c):
     try:
         e = c["entry"]; risk = abs(e - c.get("sl0", c["sl"]))
         d = 1 if c["arah"] == "LONG" else -1
-        if risk > 0 and c.get("best") is not None and (c["best"] - e) * d / risk >= TPS_R:
-            return TPS_PORSI * TPS_R + (1 - TPS_PORSI) * max(R, 0.0)
+        tr_ = tps_r(c["arah"])
+        if risk > 0 and c.get("best") is not None and (c["best"] - e) * d / risk >= tr_:
+            return TPS_PORSI * tr_ + (1 - TPS_PORSI) * max(R, 0.0)
     except Exception:
         pass
     return R
@@ -768,7 +770,7 @@ def status_btc(bj=None, ambil=True):
         return "₿ BTC 4J: data belum tersedia"
     nm = "⚖️ <b>BTC NETRAL</b> · Long dan Short terbuka" if btc_netral(bj) else \
          ("📈 <b>BTC FOKUS LONG</b>" if bj > 0 else "📉 <b>BTC FOKUS SHORT</b>")
-    return f"{nm}  ·  4J {bj:+.1f}% dari EMA 50"
+    return f"{nm} (tren besar)  ·  4J {bj:+.1f}% dari EMA 50"
 
 
 def gerbang_qc71(k, arah, bj):
@@ -1000,6 +1002,22 @@ TPS_R, TPS_PORSI = 0.5, 0.20
 # Kondisional BTC searah (1J atau 4J) dan aturan jam ke-12 baru tidak lebih baik. Saklar QSE_BUFFER=0 kembali ke SL langsung entry.
 BUF_R = 0.25 if os.environ.get("QSE_BUFFER", "1") != "0" else 0.0
 BUF_LEPAS = 1.0
+# QC 127 TP SEBAGIAN LONG DI +1R (riset/upgrade/run_v244_lari_teknik.py, hasil_v244_lari_teknik.txt). Sinyal LONG: TP 20% di +1R
+# (bukan +0.5R), sesudah kena SL langsung ke entry (titik +1R = titik lepas napas). SHORT tetap +0.5R lalu napas -0.25R.
+# Dipilih di latih: semua teknik LONG plus di latih (ichimoku +28.6R, mcginley +40.5R, smc_choch +26.0R, msb_hpz +9.9R, rsi_vol +4.0R,
+# snr_vol +1.1R, orderblock +0.7R, total +110.8R). Terbukti: uji +82.9R, 12 bulan +30.2R, 6 bulan +43.9R. Jumlah sinyal sama.
+# SHORT tidak ikut (mcginley SHORT latih -107.7R, smc_choch SHORT uji -40.8R). Saklar QSE_TPS_LONG=0.5 kembali ke aturan lama.
+TPS_R_LONG = float(os.environ.get("QSE_TPS_LONG", "1.0") or 1.0)
+
+
+def tps_r(arah):
+    """Jarak TP sebagian dalam R per arah: LONG +1R (QC 127), SHORT +0.5R."""
+    return TPS_R_LONG if arah == "LONG" and TPS_R_LONG > 0 else TPS_R
+
+
+def tps_langsung_entry(arah):
+    """True kalau TP sebagian sudah di titik lepas napas (+1R): SL langsung ke entry sesudah TP kena."""
+    return BUF_R <= 0 or tps_r(arah) >= BUF_LEPAS
 
 
 def sl_napas(entry, risk, arah):
@@ -1015,7 +1033,7 @@ def lv_lepas(entry, risk, arah):
 def tp_sebagian(entry, sl0, arah):
     """Harga TP sebagian (+0.5R dari entry)."""
     risk = abs(entry - sl0)
-    return entry + TPS_R * risk if arah == "LONG" else entry - TPS_R * risk
+    return entry + tps_r(arah) * risk if arah == "LONG" else entry - tps_r(arah) * risk
 
 
 # Tangga TP lain diuji 27 Okt 2026 (mode seimbang, 2021-2026): 20% 0.5R + 25% 1R PF 1.49, + 25% 2R PF 1.54,
@@ -1052,7 +1070,10 @@ def rencana_tp(entry, sl, arah, tick, tp=None, jarak=None, fmt=None, uji=True, w
         return []
     pc = lambda x: abs(x - entry) / entry * 100
     tps = tp_sebagian(entry, sl, arah)
-    if BUF_R > 0:
+    if tps_langsung_entry(arah) and BUF_R > 0:          # QC 127: LONG TP 20% di +1R lalu SL langsung entry
+        rows = [f"💰 <b>TP {int(TPS_PORSI * 100)}% posisi: {fmt(tps, tick)} (+{pc(tps):.1f}%, +{tps_r(arah):g}R)</b>. Setelah kena, "
+                f"<b>pindahkan SL ke entry {fmt(entry, tick)}</b>"]
+    elif BUF_R > 0:
         sn, lp = sl_napas(entry, risk, arah), lv_lepas(entry, risk, arah)
         rows = [f"💰 <b>TP {int(TPS_PORSI * 100)}% posisi: {fmt(tps, tick)} (+{pc(tps):.1f}%)</b>. Setelah kena, "
                 f"<b>pindahkan SL ke {fmt(sn, tick)}</b> (-{BUF_R:g}R, ruang napas anti-sapu entry). "

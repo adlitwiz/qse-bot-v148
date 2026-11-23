@@ -107,6 +107,9 @@ def _api(metode, **data):
         return {}
     data.setdefault("chat_id", chat)
     data = {k: v for k, v in data.items() if v is not None}
+    if data.get("parse_mode") == "HTML" and "text" in data:          # QC 128: '<' bukan tag tidak memotong pesan
+        import telegram_notify as _TG
+        data["text"] = _TG.aman_html(data["text"])
     for k, v in list(data.items()):
         if isinstance(v, (dict, list)):
             data[k] = json.dumps(v, ensure_ascii=False)

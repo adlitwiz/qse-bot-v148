@@ -1059,7 +1059,8 @@ NAMA_JALUR = {"saran utama": "Sinyal 4J", "saran 1J": "Sinyal 1J", "saran cadang
               "saran orderblock": "Order Block + Volume", "saran trendline": "Tembus Trendline searah tren",
               "saran ema_short": "EMA Cross 20/50 SHORT", "saran rsi_vol": "RSI 50 + Volume",
               "saran mcginley": "McGinley 34 + Volume", "saran snr_vol": "SnR Pantul + Volume",
-              "saran msb_hpz": "MSB LuxAlgo HPZ", "saran smc_choch": "SMC CHoCH searah tren"}
+              "saran msb_hpz": "MSB LuxAlgo HPZ", "saran smc_choch": "SMC CHoCH searah tren",
+              "saran ict": "ICT sweep + MSS + FVG"}
 
 
 def boleh_ikut(jalur, arah=None, skor=None):
@@ -1229,6 +1230,11 @@ def jalur_aktif(sym):
         import qse_strat as ST
         for k, cfg in ST.STRAT.items():
             out += [dict(nama=cfg["nama"], jalur="saran " + k, **v) for v in ST.lihat(k)["open"].values() if v["sym"] == sym]
+    except Exception:
+        pass
+    try:          # QC 129: jalur ICT terpisah, supaya /entry dipantau (TP 20%, SL napas, PETA SL, GESER SL)
+        import qse_ict as ICT
+        out += [dict(nama="ICT sweep + MSS + FVG", jalur="saran ict", **v) for v in ICT.lihat()["open"].values() if v["sym"] == sym]
     except Exception:
         pass
     return out
@@ -2384,7 +2390,7 @@ def teks_waktu_habis(it, px, now, ulang=False):
         hasil = f"\nHarga sekarang {fp(px, t)}, hasil kira-kira {r:+.2f}R{_pmodal(r)}"
     if it.get("ikut"):
         import qse_strat as ST
-        tps = it["entry"] + (1 if it["arah"] == "LONG" else -1) * ST.TPS_R * _risk0(it)
+        tps = ST.tp_sebagian(it["entry"], it["entry"] - (1 if it["arah"] == "LONG" else -1) * _risk0(it), it["arah"])
         belum = f"belum kena TP 20% di {fp(tps, t)}"
     else:
         belum = "belum kena TP1 dan SL masih di sisi rugi"
@@ -2750,12 +2756,15 @@ def _jalan(it, rows, iv):
             if not it.get("tps_ts"):
                 import qse_strat as ST
                 r0 = _risk0(it)
-                tps = e + ST.TPS_R * r0 if L else e - ST.TPS_R * r0
+                tps = ST.tp_sebagian(e, e - (1 if L else -1) * r0, it["arah"])          # QC 127: LONG +1R
                 if (hi >= tps) if L else (lo <= tps):
                     r = _tutup_bagian(it, ST.TPS_PORSI, tps)
                     it["tps_ts"] = ts
-                    sn = ST.sl_napas(e, r0, it["arah"])          # QC 108: -0.25R dulu, entry di +1.0R
-                    it["napas"] = ST.BUF_R > 0
+                    lgs = ST.tps_langsung_entry(it["arah"])          # QC 127: LONG TP di +1R, SL langsung entry
+                    sn = e if lgs else ST.sl_napas(e, r0, it["arah"])          # QC 108: -0.25R dulu, entry di +1.0R
+                    it["napas"] = ST.BUF_R > 0 and not lgs
+                    if lgs and ST.BUF_R > 0:
+                        it["lepas_ts"] = ts
                     rugi_sisi = (sn > it["sl"]) if L else (sn < it["sl"])          # SL masih lebih jauh dari target
                     pindah = not it.get("sl_manual") and rugi_sisi
                     if pindah:
@@ -3218,6 +3227,11 @@ def _jalur_tutup(sym, arah):
             cl += ST.lihat(k).get("closed", [])
     except Exception:
         pass
+    try:
+        import qse_ict as ICT          # QC 129
+        cl += ICT.lihat().get("closed", [])
+    except Exception:
+        pass
     cl = [c for c in cl if c.get("sym") == sym and c.get("arah", "LONG") == arah]
     return max(cl, key=lambda c: c.get("selesai", 0)) if cl else None
 
@@ -3486,12 +3500,12 @@ def _hasil_di(it, lv, jenis):
     sisa, real = _sisa(it), _real(it)
     if jenis == "TPS":
         import qse_strat as ST
-        return real + sisa * ST.TPS_PORSI * ST.TPS_R
+        return real + sisa * ST.TPS_PORSI * ST.tps_r(it["arah"])
     if jenis == "TPJ" and it.get("ikut") and not it.get("tps_ts") and it["status"] in ("TERISI", "MENUNGGU") and not _be(it):
         import qse_strat as ST
-        r = _r_at(it, lv)
-        if r > ST.TPS_R:
-            return real + sisa * (ST.TPS_PORSI * ST.TPS_R + (1 - ST.TPS_PORSI) * r)
+        r = _r_at(it, lv); tr_ = ST.tps_r(it["arah"])
+        if r > tr_:
+            return real + sisa * (ST.TPS_PORSI * tr_ + (1 - ST.TPS_PORSI) * r)
         return real + sisa * r
     if jenis in ("SL", "TPJ"):
         return real + sisa * _r_at(it, lv)
@@ -5194,6 +5208,36 @@ def backtest_teks(r):
     return "\n".join(rows)
 
 
+@per_orang
+def cek_limit(now=None):
+    """QC 128: order LIMIT yang belum terisi dari sinyal jalur. Kalau sinyalnya sudah tidak berlaku (buku jalur robot sudah menutup
+    sinyal itu, atau lewat batas waktu entry valid di kartu), robot mengabari sekali: BATALKAN LIMIT. Return list teks."""
+    import qse_strat as ST
+    now = now or time.time()
+    pesan = []
+
+    def f(d):
+        for it in d["open"].values():
+            if it.get("status") != "MENUNGGU" or not it.get("ikut") or it.get("batal_kabar"):
+                continue
+            k = ST.kunci_jalur(it["ikut"]); jp = jalur_posisi(it["sym"], it["arah"]); why = None
+            if jp is None:
+                why = "sinyal jalurnya sudah selesai di buku robot (kena SL, TP, atau batal), jadi alasan entry sudah hilang"
+            else:
+                b = ST.batas_masuk(jp, k)
+                if b and now > b[2]:
+                    why = (f"lewat batas waktu entry valid ({time.strftime('%d/%m %H:%M', time.gmtime(b[2] + 7 * 3600))} WIB). "
+                           f"Uji entry telat: sesudah batas ini untungnya hilang")
+            if why:
+                it["batal_kabar"] = now
+                kd = it["sym"].replace("USDT", "")
+                pesan.append(f"🚫 <b>BATALKAN LIMIT  ·  {it['sym']} {it['arah']}</b>\n"
+                             f"↳ Order LIMIT di {fp(it['entry'], it.get('tick') or 0.0001)} belum terisi, dan {why}.\n"
+                             f"<b>Lakukan:</b> di Bybit buka Orders, Cancel order {it['sym']}. Lalu ketik /batal {kd} supaya robot berhenti memantau.")
+    ubah(f)
+    return pesan
+
+
 SL_RUTIN_MENIT = int(os.environ.get("QSE_SL_RUTIN", "40") or 40)          # QC 124: 0 = mati
 
 
@@ -5225,8 +5269,8 @@ def peta_sl():
                 tahap = f"⏳ Tahap 1. Saat harga {fp(lv_, t)} (+{_be(it):g}R): geser SL ke entry {fp(e, t)}" + (f", sisa {abs(lv_ / px - 1) * 100:.1f}%" if px else "")
             elif it.get("ikut") and not it.get("tps_ts"):
                 tps = ST.tp_sebagian(e, _sl_awal(it), it["arah"])
-                tahap = (f"⏳ Tahap 1. Saat harga {fp(tps, t)} (+{ST.TPS_R:g}R): tutup 20%, lalu SL ke "
-                         + (f"{fp(ST.sl_napas(e, r0, it['arah']), t)} (-{ST.BUF_R:g}R). Entry baru di +{ST.BUF_LEPAS:g}R" if ST.BUF_R > 0 else f"entry {fp(e, t)}")
+                tahap = (f"⏳ Tahap 1. Saat harga {fp(tps, t)} (+{ST.tps_r(it['arah']):g}R): tutup 20%, lalu SL ke "
+                         + (f"{fp(ST.sl_napas(e, r0, it['arah']), t)} (-{ST.BUF_R:g}R). Entry baru di +{ST.BUF_LEPAS:g}R" if not ST.tps_langsung_entry(it["arah"]) else f"entry {fp(e, t)}")
                          + (f". Sisa {abs(tps / px - 1) * 100:.1f}%" if px else ""))
             else:
                 tahap = "Posisi manual. SL ikuti rencana kamu sendiri."
@@ -5268,10 +5312,10 @@ def kartu_sl(tidur=False):
         elif jp and it.get("ikut") and not it.get("tps_ts"):
             try:
                 import qse_strat as ST
-                tps = e + (1 if L else -1) * ST.TPS_R * _risk0(it)
+                tps = ST.tp_sebagian(e, e - (1 if L else -1) * _risk0(it), it["arah"])
                 rows_sl.append(f"💰 <b>TP 20% di {fp(tps, t)}</b> belum kena. Setelah kena, <b>pindahkan SL ke "
                               + (f"{fp(__import__('qse_strat').sl_napas(e, _risk0(it), it['arah']), t)} (-0.25R)</b>, ke entry saat untung +1R"
-                                 if __import__('qse_strat').BUF_R > 0 else f"entry {fp(e, t)}</b>"))
+                                 if not __import__('qse_strat').tps_langsung_entry(it["arah"]) else f"entry {fp(e, t)}</b>"))
             except Exception:
                 pass
         elif it.get("be_ts"):
@@ -5496,7 +5540,7 @@ def sinyal_jalur(jam=False):
             if k == "ema_short" and not ju_:          # QC 116: kelas ringan menang atas label prioritas, satu keputusan saja
                 skor_t = skor_t.replace("🏆 <b>PRIORITAS UTAMA</b>  ·  ", "")
                 skor_t = (skor_t + "\n" if skor_t else "") + ("🟨 KELAS RINGAN, lot 0.2x: EMA Cross SHORT 12 bulan PF 0.84, 6 bulan 0.78 "
-                                                              "(uji v231). Skor 90 berasal dari pola combo, bukan dari teknik ini.")
+                                                              "(uji v231). Kelas = rapor teknik, SKOR SINYAL = nilai sinyal ini. Lot akhir = lot kelas x lot skor.")
             elif ju_:
                 skor_t = (skor_t + "\n" if skor_t else "") + "🟦 KELAS UTAMA: koin jagoan sejati"
             try:          # QC 116: hari condong naik menahan SHORT baru, juga di daftar sinyal valid

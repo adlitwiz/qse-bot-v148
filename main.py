@@ -1218,7 +1218,7 @@ def _blok_posisi_analisa(it, r):
         try:
             import qse_strat as ST
             r0 = SY._risk0(it)
-            tps = it["entry"] + (1 if it["arah"] == "LONG" else -1) * ST.TPS_R * r0
+            tps = ST.tp_sebagian(it["entry"], it["entry"] - (1 if it["arah"] == "LONG" else -1) * r0, it["arah"])
             sb = ("💰 TP sebagian 20% sudah kena, SL di entry atau lebih baik." if it.get("tps_ts") else
                   f"💰 <b>TP 20% di {TG.fp(tps, t)}</b>, setelah kena <b>pindahkan SL ke entry {TG.fp(it['entry'], t)}</b>.")
         except Exception:
@@ -2077,7 +2077,7 @@ def _baris_level(lv):
             return ""
         pc = lambda x: abs(x - e) / e * 100
         porsi = int(ST.TPS_PORSI * 100)
-        tps = e + (1 if sl < e else -1) * ST.TPS_R * risk
+        tps = ST.tp_sebagian(e, sl, "LONG" if sl < e else "SHORT")
         if lv.get("tp"):
             sisa = f"<b>TP {100 - porsi}% {TG.fp(lv['tp'], t)} (+{pc(lv['tp']):.1f}%)</b>"
         elif lv.get("jr"):

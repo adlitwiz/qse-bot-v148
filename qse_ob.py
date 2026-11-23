@@ -406,7 +406,7 @@ def kartu(no, it, sg):
         f"• Bukti: {BT_PENDEK}",
         "🛠 <b>Cara</b>",
         f"1. Masuk MARKET sekarang. SL {TG.fp(it['sl'], t)} ({pc:.1f}%), tepat di bawah order block",
-        f"2. TP {TG.fp(it['tp'], t)} (4R) untuk sisa posisi. TP sebagian 20% di +0.5R (baris 💰), setelah kena SL ke -0.25R, untung +1R SL ke entry",
+        f"2. TP {TG.fp(it['tp'], t)} (4R) untuk sisa posisi. TP sebagian 20% di +{__import__('qse_strat').tps_r('LONG'):g}R (baris 💰), setelah kena SL ke entry",
         "3. Jam ke-12 belum kena TP 20% dan harga melawan: SL naik ke -0.5R (harga searah: SL tetap). 30 jam belum kena: tutup market. Robot mengabari. "
         "Sudah aman tapi 10 hari belum kena SL atau TP: "
         "tutup manual",
