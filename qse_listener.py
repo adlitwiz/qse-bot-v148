@@ -59,6 +59,20 @@ def _st(upd=None):
 MOMENTUM_AKTIF = False
 
 
+def _scan_abdul(arah, sumber):
+    """QC 132: scan paksa sesudah pesan Abdul, maks sekali tiap 30 menit."""
+    try:
+        if time.time() - float(_st().get("abdul_t", 0)) < 1800:
+            return
+        _st({"abdul_t": time.time()})
+        import qse_radar as RD
+        b = RD.scan_abdul(arah, sumber)
+        if b:
+            TG.send(b)
+    except Exception as ex:
+        print("[WARN] scan abdul", ex)
+
+
 def _tugas_berkala():
     """Tiap 15 menit: peringatan dini posisi, BTC berbalik, scan momentum 15/30 menit.
     Tiap jam menit ke-2: jalankan main.py (cadangan jadwal GitHub yang sering telat). Ganda dicegah oleh main.py."""
@@ -75,6 +89,9 @@ def _tugas_berkala():
                 TG.send(["📰 <b>QSE v150 | NEWS PENTING</b>\n\n" + "\n\n".join(nb)])
             for m_ in NW.mulut(simbol):          # QC 104 kabar kilat berita baru terbit yang mungkin berdampak
                 TG.send(["🗣 <b>QSE v150 | MULUT ABDUL</b>\n\n" + m_])
+                ar_ = "LONG" if "condong 🟢 naik" in m_ else "SHORT" if "condong 🔴 turun" in m_ else None
+                if ar_:
+                    _scan_abdul(ar_, "MULUT ABDUL")
         except Exception as ex:
             print("[WARN] news", ex)
     if now - st.get("t15", 0) >= 900:
@@ -180,6 +197,15 @@ def _tugas_berkala():
         try:
             kumpul.sort(key=lambda z: z[0], reverse=True)
             kumpul = [z for z in kumpul if ST.lolos_mode(z[0])]          # mode profit: skor label rendah tidak dikirim
+            pilih_b = ""
+            try:          # QC 131: Kelas Utama dan skor tinggi dikirim paling dulu, tidak ada sinyal yang dibuang
+                import qse_skor as SKR_
+                kumpul.sort(key=lambda z: (*SKR_.dari_teks(z[3]), z[0]), reverse=True)
+                import re as _re
+                nm_ = lambda m: (lambda g: g.group(0) if g else "?")(_re.search(r"[A-Z0-9]+USDT (LONG|SHORT)", m))
+                pilih_b = SKR_.pilihan([(nm_(z[3]), *SKR_.dari_teks(z[3])) for z in kumpul])
+            except Exception as ex:
+                print("[WARN] urut skor 4J", ex)
             kirim = []
             try:
                 import qse_pagi as PG
@@ -226,7 +252,7 @@ def _tugas_berkala():
                                 jd += "\n🧯 <b>REM 7 HARI AKTIF</b>: hanya NILAI 10 yang dikirim, pakai setengah lot"
                         except Exception:
                             pass
-                        TG.send([f"📋 <b>QSE v150 | {len(kumpul)} SINYAL BARU</b>\n{jd}"
+                        TG.send([f"📋 <b>QSE v150 | {len(kumpul)} SINYAL BARU</b>\n{jd}" + (f"\n{pilih_b}" if pilih_b else "")
                                  + ("\n" + peta_btc if peta_btc else "") + ("\n\n" + "\n".join(slot_b) if slot_b else "")])
                     mid = None
                     try:
@@ -353,10 +379,11 @@ def _tugas_berkala():
             import bybit_fetch as B
             px = (B.get_tickers().get("BTCUSDT") or {}).get("last") or 0
             n = st.get("dca_n", 0) + 1
-            TG.send([f"🪙 <b>QSE v150 | JADWAL DCA BTC</b>\nHari ini jadwal beli BTC spot Rp100.000 (minggu ke-{n}).\n"
+            import qse_dca as QD          # QC 135: tombol ceklis per orang dan semua, disematkan sampai semua beli
+            QD.kirim(f"🪙 <b>QSE v150 | JADWAL DCA BTC</b>\nHari ini jadwal beli BTC spot Rp100.000 (minggu ke-{n}).\n"
                      + (f"Harga BTC sekarang {px:,.0f} USDT.\n" if px else "")
                      + "Beli sekarang dengan jumlah yang sama, jangan menunggu turun dan jangan lewati minggu ini walau harga naik. "
-                     "Uji 2018-2026: beli rutin tiap minggu +416%, lebih baik dari semua cara menunggu waktu beli."])
+                     "Uji 2018-2026: beli rutin tiap minggu +416%, lebih baik dari semua cara menunggu waktu beli.", f"dca{hari}")
         except Exception as ex:
             print("[WARN] dca", ex)
     # pengingat beli kedua (opsional) maksimal sekali seminggu, Selasa sampai Minggu jam 08:00 WIB: hari pertama BTC
@@ -376,12 +403,13 @@ def _tugas_berkala():
             turun = (c7[-1] / c7.max() - 1) * 100 if len(c7) else 0
             if turun <= -5 or wd == 6:
                 _st({"dca2_minggu": minggu})
-                TG.send([f"🪙 <b>QSE v150 | BELI KEDUA MINGGU INI (OPSIONAL)</b>\n"
+                import qse_dca as QD
+                QD.kirim(f"🪙 <b>QSE v150 | BELI KEDUA MINGGU INI (OPSIONAL)</b>\n"
                          + (f"BTC sedang koreksi {turun:.1f}% dari puncak 7 hari (tutup {c7[-1]:,.0f}). "
                             if turun <= -5 else "Minggu ini tidak ada koreksi 5%, jadi pengingat dikirim hari Minggu. ")
                          + "Kalau ada dana tambahan, ini waktu beli kedua minggu ini. Jadwal utama tetap Senin.\n"
                          "Jujur dari data: uji 2018-2026, beli tambahan saat koreksi hasilnya sama dengan beli di hari tetap "
-                         "(beda kurang dari 1%). Tidak ada waktu yang terbukti lebih murah."])
+                         "(beda kurang dari 1%). Tidak ada waktu yang terbukti lebih murah.", f"dca2{hari}")
         except Exception as ex:
             print("[WARN] dca2", ex)
     if now - hari >= 15 * 3600 and st.get("tidur_hari", 0) < hari and now - hari <= 16 * 3600:
@@ -900,6 +928,12 @@ def _gurita():
 
 
 def _tugas_menit():
+    try:          # QC 135: pengingat ceklis beli BTC 20:00 WIB
+        import qse_dca as QD
+        for m_ in QD.ingat():
+            TG.send([m_])
+    except Exception as ex:
+        print("[WARN] ingat dca", ex)
     try:          # QC 128: kabar BATALKAN LIMIT kalau sinyal asalnya sudah tidak berlaku (cek tiap 10 menit)
         import qse_saya as _SYl
         if time.time() - float(_st().get("limit_cek_t", 0)) >= 600:
@@ -988,6 +1022,7 @@ def _tugas_menit():
         hb = LT.hidung()
         if hb and LT.siar():
             TG.send(["👃 <b>QSE v150 | HIDUNG ABDUL</b>\n\n" + hb])
+            _scan_abdul(None, "HIDUNG ABDUL (ledakan volume)")
     except Exception as ex:
         print("[WARN] hidung", ex)
     try:
@@ -1085,6 +1120,17 @@ def _tugas_menit():
             TG.send(["📅 <b>QSE v150 | SIAGA BERITA BESAR</b>\n\n" + "\n\n".join(sb)])
     except Exception as ex:
         print("[WARN] siaga berita", ex)
+    try:          # QC 132: 60-75 menit sesudah rilis Hidung Abdul (sinyal baru boleh lagi): scan paksa searah arahan Hidung
+        import qse_berita as BR_
+        now_ = int(time.time() * 1000)
+        for e_ in BR_.kalender():
+            hj = BR_.hidung_jadwal(e_["judul"])
+            k_ = f"abdul{e_['ts']}"
+            if hj and 60 * 60000 <= now_ - e_["ts"] <= 75 * 60000 and not _st().get(k_):
+                _st({k_: 1})
+                _scan_abdul("LONG" if hj[0] == "SHORT" else "SHORT", f"HIDUNG ABDUL ({hj[1]} sudah rilis 1 jam)")
+    except Exception as ex:
+        print("[WARN] scan hidung jadwal", ex)
     try:
         import qse_berita as BR
         ag = BR.pesan_agenda(SY.posisi_berita)          # pengingat H-24 dan H-6, perubahan jadwal: otomatis, tanpa perintah
@@ -1095,7 +1141,7 @@ def _tugas_menit():
     try:
         pesan = SY.peringatan_dini()
         if pesan:
-            _pin_dini(TG.send(["⚠️ <b>QSE v150 | PERINGATAN DINI TRADE KAMU</b>\n\n" + "\n\n".join(pesan)]) or [])
+            _pin_dini(TG.send(["🛡 <b>QSE v150 | ANALISA ULANG POSISI</b>\n\n" + "\n\n".join(pesan)]) or [])
         elif _st().get("pin_dini") and not any(it["status"] in ("TERISI", "TP1") for it in SY.lihat()["open"].values()):
             TG.unpin(_st()["pin_dini"])           # semua posisi sudah tutup: lepas pin peringatan
             _st({"pin_dini": None})
@@ -1228,6 +1274,12 @@ def main():
                 continue
             fr = (cq or m).get("from") or {}
             nm_ = " ".join(x for x in (fr.get("first_name"), fr.get("last_name")) if x) or fr.get("username") or ""
+            try:          # QC 135: tombol ceklis beli BTC
+                import qse_dca as QD
+                if cq and QD.dari_update(cq, str(fr.get("id", "")), nm_):
+                    continue
+            except Exception as ex:
+                print("[WARN] ceklis dca", ex, flush=True)
             try:          # QC 86: tombol OKE alarm gawat, atau ketik "oke"
                 import qse_gawat as QG
                 if QG.dari_update(cq, None if cq else m.get("text"), str(fr.get("id", "")), nm_):

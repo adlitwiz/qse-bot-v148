@@ -421,14 +421,14 @@ def jawaban(v):
     besar = ("NAIK" if bj > 0 else "TURUN") if bj is not None else "?"
     k = str(v.get("kompas") or "")
     pendek = "NAIK" if "LONG" in k else "TURUN" if "SHORT" in k else "DATAR" if k else "?"
-    rows = ["🎯 <b>JAWABAN SINGKAT</b>",
-            f"1. Tren besar (BTC 4J, berganti dalam hitungan hari): <b>{besar}</b>"
-            + (f", {bj:+.1f}% dari EMA 50" if bj is not None else "") + (f", sudah {u[1]:.0f} hari" if u else ""),
-            f"2. Arah pendek (BTC 15 menit-1 jam, bisa berganti tiap jam): <b>{pendek}</b>",
-            f"3. Vonis gabungan 9 bahan (rata-rata berganti tiap 8 jam): <b>{ {'LONG': 'NAIK', 'SHORT': 'TURUN', 'NETRAL': 'NETRAL'}[vn] }</b> (suara {v['skor']:+d})"]
+    # QC 132: SATU arah saja di paling atas = vonis gabungan (satu-satunya yang diuji untuk lot, run_v226). Rincian waktu di bawahnya.
+    satu = {"LONG": "🟢 NAIK", "SHORT": "🔴 TURUN", "NETRAL": "⚪ TUNGGU (seimbang)"}[vn]
+    rows = [f"🧭 <b>ARAH PASAR: {satu}</b>"]
+    rinci = (f"Rincian: tren besar BTC 4J {besar.lower()}" + (f" ({bj:+.1f}% dari EMA 50)" if bj is not None else "")
+             + f", arah 1 jam {pendek.lower()}, suara 9 bahan {v['skor']:+d}.")
     if besar != "?" and pendek in ("NAIK", "TURUN") and pendek != besar:
-        rows.append(f"ℹ️ Arah pendek melawan tren besar = <b>pantulan</b> di tren {besar.lower()}. Ini normal dan sering terjadi. "
-                    f"Tren besar baru dianggap berganti kalau BTC 4J tutup {'di atas' if besar == 'TURUN' else 'di bawah'} EMA 50.")
+        rinci += (f" Arah 1 jam melawan tren besar = pantulan, bukan ganti arah. Tren besar baru berganti kalau BTC 4J tutup "
+                  f"{'di atas' if besar == 'TURUN' else 'di bawah'} EMA 50.")
     tahan = ""
     try:
         import qse_pagi as PG
@@ -448,11 +448,12 @@ def jawaban(v):
         aksi += ". BTC jenuh jual: SHORT baru ditahan robot"
     elif fase == "NAIK":
         aksi += ". BTC jenuh beli: LONG baru ditahan robot"
-    rows.append(f"👉 <b>Yang dilakukan sekarang:</b> {aksi}. Ikuti kartu sinyal: robot sudah memasukkan semua arah ini ke keputusan dan lot.")
+    rows.append(f"👉 <b>Yang dilakukan:</b> {aksi}. Ikuti kartu sinyal, lot di kartu sudah memakai arah ini.")
+    rows.append(f"<i>{rinci}</i>")
     return "\n".join(rows)
 
 
-def teks(v=None, tag=False, judul="ARAH PASAR DETIK INI"):
+def teks(v=None, tag=False, judul="Rincian vonis"):
     v = v or hitung()
     F = v["faktor"]
     tanda = 1 if v["skor"] > 0 else -1 if v["skor"] < 0 else 0

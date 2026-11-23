@@ -136,3 +136,23 @@ def baris(s, kl):
             f"konfluensi, vonis, hari naik, RSI 4J, gerak 72 jam, jarak EMA 50, BTC, lebar SL, ATR. Kelompok {grp})"
             + (f". <b>Lot x{kl:g}</b>" if kl != 1 else ". Lot normal")
             + (" (skor 80+ terbukti, lot dibesarkan)" if kl > 1 else " (skor di bawah 20, lot dikecilkan, tetap untung di uji)" if kl < 1 else ""))
+
+
+def dari_teks(m):
+    """QC 131: (kelas utama 1/0, skor atau -1) dari teks kartu jadi, untuk mengurutkan kartu."""
+    import re
+    g = re.search(r"SKOR SINYAL (\d+)/100", m or "")
+    return (0 if "KELAS RINGAN" in (m or "") else 1, int(g.group(1)) if g else -1)
+
+
+def pilihan(daftar):
+    """QC 131 baris PILIHAN TERBAIK. daftar: list (sym arah, utama 1/0, skor). Hanya mengurutkan dan menandai, tidak membuang sinyal."""
+    top = [x for x in daftar if x[1] and x[2] >= BATAS_TINGGI]
+    if top:
+        return ("⭐ <b>PILIHAN TERBAIK</b> (Kelas Utama + skor 80+, lot x1.5): "
+                + ", ".join(f"{nm} skor {sk}" for nm, _, sk in top[:3]))
+    ut = sorted([x for x in daftar if x[1] and x[2] >= 0], key=lambda x: -x[2])
+    if ut:
+        return (f"⭐ <b>Terbaik candle ini:</b> {ut[0][0]} (Kelas Utama, skor {ut[0][2]}). Belum ada Kelas Utama dengan skor 80+, "
+                "sinyal lain tetap valid dengan lot sesuai skor.")
+    return ""

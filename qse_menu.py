@@ -11,7 +11,7 @@ import requests
 from config import STATE_DIR
 
 PATH = os.path.join(STATE_DIR, "menu.json")
-VERSI = 11                 # naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
+VERSI = 12                 # QC 133 menu selalu tampil di laptop. naikkan kalau tata letak berubah, keyboard dikirim ulang sekali otomatis
 
 UTAMA = [["📊 Status", "📝 Entry", "📡 Sinyal 4J"],          # QC 107: yang dipakai tiap hari tampil di depan, sekali tekan
          ["🎯 Kelola Posisi", "🧭 Arah Pasar", "₿ Cek BTC"],
@@ -129,7 +129,10 @@ def keyboard():
     """QC 80: menu bawah tidak lagi memaksa terbuka. is_persistent mati supaya bisa dilipat lewat ikon kotak di kolom ketik, dan
     menu hanya dikirim sekali per versi atau saat /menu (bukan di setiap pesan robot). QSE_MENU_TETAP=1 mengembalikan cara lama."""
     # QC 103: one_time_keyboard (QC 100b) dicabut. Di grup, Telegram iPhone membuang menu bawah seluruhnya sesudah satu tombol ditekan.
-    return {"keyboard": [[{"text": t} for t in r] for r in UTAMA], "resize_keyboard": True, "is_persistent": MENU_TETAP(),
+    # QC 133: is_persistent hidup lagi (bawaan) supaya menu bawah selalu tampil di Telegram laptop seperti di HP, tanpa harus mengetik /.
+    # Menu tetap hanya dikirim sekali per versi atau saat /menu (tidak ditempel di setiap pesan). QSE_MENU_PERSIST=0 cara QC 80.
+    return {"keyboard": [[{"text": t} for t in r] for r in UTAMA], "resize_keyboard": True,
+            "is_persistent": MENU_TETAP() or os.environ.get("QSE_MENU_PERSIST", "1") != "0",
             "input_field_placeholder": "Menu QSE: ikon kotak di kanan"}
 
 

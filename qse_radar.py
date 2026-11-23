@@ -227,7 +227,7 @@ def _skor_baris(r, px, sl):
     try:
         import qse_skor as SKR
         it = dict(sym=r["sym"], arah=r["arah"], entry=float(px), sl=float(sl), sl0=float(sl))
-        s_, kl_, bt_ = SKR.skor(r.get("k") or "", it, btc_j=r.get("bj"))
+        s_, kl_, bt_ = r["_skor"] if r.get("_skor") else SKR.skor(r.get("k") or "", it, btc_j=r.get("bj"))
         if s_ is None:
             return ""
         r["skor100"] = s_
@@ -454,8 +454,26 @@ def radar_teks(lewat, inf):
 
 def bubble(valid, lewat, inf, judul="SCAN 1 JAM", maks=6, hanya_utama=False, otak=True):
     """List bubble: [pasar, kartu..., otak]. hanya_utama: kelas ringan tidak ditampilkan."""
-    tampil = [r for r in valid if not (hanya_utama and r["ringan"])][:maks]
+    tampil = [r for r in valid if not (hanya_utama and r["ringan"])]
+    try:          # QC 131: Kelas Utama dan skor tinggi di depan (20 calon pertama dihitung skornya), tidak ada sinyal yang dibuang
+        import qse_skor as SKR
+        for r in tampil[:20]:
+            if not r.get("_skor"):
+                r["_skor"] = SKR.skor(r.get("k") or "", dict(sym=r["sym"], arah=r["arah"], entry=float(r["px"]), sl=float(r["sl"]),
+                                                             sl0=float(r["sl"])), btc_j=r.get("bj"))
+        tampil.sort(key=lambda r: (bool(r.get("golden")) is False, r["ringan"], -((r.get("_skor") or (None,))[0] or -1)))
+    except Exception as ex:
+        print("[WARN] radar urut skor", ex)
+    tampil = tampil[:maks]
     out = [pasar_teks(inf, judul, sum(1 for r in tampil if not r["ringan"]), sum(1 for r in tampil if r["ringan"]))]
+    try:
+        import qse_skor as SKR
+        pl = SKR.pilihan([(f"{r['sym']} {r['arah']}", 0 if r["ringan"] else 1, (r.get("_skor") or (None,))[0]
+                           if (r.get("_skor") or (None,))[0] is not None else -1) for r in tampil])
+        if pl:
+            out[0] += "\n" + pl
+    except Exception as ex:
+        print("[WARN] radar pilihan", ex)
     out += [kartu(r, no, inf.get("bj"), paksa=judul == "PINDAI PAKSA") for no, r in enumerate(tampil, 1)]
     if otak:
         out.append(otak_teks(tampil, lewat, inf.get("bj")))
@@ -613,4 +631,24 @@ def gabung_batal(hasil):
     if rk:
         out.append("⚪ <b>Batal sebelum entry</b> (struktur berubah, dicoret dari daftar pantau): " + "  ·  ".join(rk[:8])
                    + (f" (+{len(rk) - 8} lagi)" if len(rk) > 8 else "") + "\nTidak ada posisi kamu di koin ini. Tidak perlu tindakan.")
+    return out
+
+
+def scan_abdul(arah=None, sumber="ABDUL", maks=3):
+    """QC 132: dipicu Mulut Abdul (berita dengan arah), Hidung Abdul jadwal (1 jam sesudah rilis, saat sinyal baru boleh lagi), atau
+    Hidung lalat. Pindai paksa semua mesin, hanya sinyal robot yang valid dan searah arahan Abdul, Kelas Utama dan skor tertinggi dulu.
+    Tidak ada aturan sinyal baru: berita hanya memicu waktu scan dan menyaring arah. Return list bubble ([] kalau tidak ada)."""
+    import qse_strat as ST
+    try:
+        valid, lewat, inf = ST.pindai_sekarang()
+    except Exception as ex:
+        print("[WARN] scan abdul", ex)
+        return []
+    if arah:
+        valid = [r for r in valid if r["arah"] == arah]
+    if not valid:
+        return []
+    out = bubble(valid, lewat, inf, f"SCAN PAKSA {sumber}", maks=maks, otak=False)
+    out[0] += ("\n🗣 Dipicu " + sumber + (f", arahan <b>{arah}</b>" if arah else "") + ". Yang tampil hanya sinyal teknik robot yang valid"
+               + (" dan searah arahan itu" if arah else "") + ". Berita bukan alasan entry, sinyal tetap ikut SL, TP, dan lot di kartu.")
     return out

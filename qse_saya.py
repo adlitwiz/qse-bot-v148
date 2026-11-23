@@ -4550,7 +4550,8 @@ def cek_patah():
             al = it.setdefault("alert", [])
             if lv["patah"] and "patah" not in al:
                 al.append("patah")
-                pesan.append(kabar_objektif(it, "struktur 1 jam patah melawan posisi kamu"))
+                if os.environ.get("QSE_KABAR_PATAH", "0") == "1":          # QC 134: bukan aksi teruji, bikin panik, mati bawaan
+                    pesan.append(kabar_objektif(it, "struktur 1 jam patah melawan posisi kamu"))
             elif not lv["patah"] and "patah" in al:
                 al.remove("patah")
         return pesan
@@ -4850,114 +4851,64 @@ def berita_depan(jam=3):
 
 
 @per_orang
-def peringatan_dini():
-    """Dipanggil listener tiap menit. Tiap trade jalan dinilai bertingkat, tiap tingkat dikirim sekali:
-    1 = mulai melawan (0.25 ATR atau 0.8%) dan ada tanda balik arah 15 menit / 1 jam / BTC
-    2 = sudah 40% jalan ke SL atau minus 1.5%, apa pun alasannya
-    3 = sudah 70% jalan ke SL. Kalau harga balik untung 0.3 ATR, tingkat direset."""
+def peringatan_dini(now=None):
+    """QC 134 ANALISA ULANG (pengganti peringatan tingkat 1-2-3 yang membuat panik). Uji 2021-2026 jalur terbukti: tutup setengah di
+    -0.4R profit turun 18%, keluar di -0.4R turun 37%, keluar di -0.7R turun 19%. Yang terbaik: diam, biarkan SL bekerja.
+    Jadi robot hanya mengirim dua jenis pesan, masing-masing sekali per posisi:
+    1. Rugi berjalan sudah 40% jalan ke SL: ANALISA ULANG, MASIH AMAN, IKUTI SL (cek ulang sinyal asal, SL, aturan tutup berikutnya).
+    2. Sinyal asal sudah selesai atau batal di buku robot padahal posisimu masih jalan: TUTUP SEKARANG (aturan keluar jalur).
+    Aturan tutup teruji lain (jam ke-12 rugi >= 0.5R, batas 30 jam, darurat, Hidung Abdul) tetap dikirim oleh pantau() seperti biasa."""
     d = _load()
     jalan = [it for it in d["open"].values() if it["status"] in ("TERISI", "TP1")]
     pesan = []
     if not jalan:
-        if d.get("btc_1j") is not None:
-            ubah(lambda dd: dd.update(btc_1j=None))
         return pesan
-    btc_naik, ch3 = btc_1j()
-    st_btc = d.get("btc_1j")
-    # Peringatan "BTC 1 jam berbalik" dimatikan. Uji 2021-2026 (35 ribu trade jalur terbukti): BTC 1J berbalik melawan
-    # di 94% trade, jadi bukan tanda bahaya. Geser SL ke entry saat itu menurunkan profit 18%, tutup setengah 39%, tutup penuh 78%.
-    if False:
-        kena = []
-        if kena:
-            pesan.append(f"⚠️ <b>BTC 1 JAM BERBALIK {'NAIK' if btc_naik else 'TURUN'}</b> (3 jam terakhir {ch3:+.1f}%)\n↳ posisi "
-                         + ", ".join(f"{it['sym']} {it['arah']}" for it in kena)
-                         + " jadi lebih berisiko. Pertimbangkan geser SL ke entry kalau sudah untung, atau kurangi lot.")
-    try:
-        b15 = _kline("BTCUSDT", "15", 8)[:-1]
-        btc15 = (b15[-1][3] / b15[-4][3] - 1) * 100 if len(b15) >= 4 else 0.0
-    except Exception:
-        btc15 = 0.0
-    ganti = {}
+    now = now or time.time()
+    tandai = {}
     for it in jalan:
         px = harga_live(it["sym"])
-        a = it.get("atr") or 0
-        if not px or a <= 0:
+        if not px:
             continue
         kunci = it.get("id", it["sym"])
-        L = it["arah"] == "LONG"
-        rugi = (it["entry"] - px) if L else (px - it["entry"])      # positif = harga melawan posisi
-        lv_lama = it.get("dini_lv", 1 if it.get("dini") else 0)
-        if rugi <= -0.3 * a:
-            if lv_lama:
-                ganti[kunci] = 0              # harga balik ke arah untung: peringatan berikutnya boleh keluar lagi
+        L = it["arah"] == "LONG"; t = it.get("tick") or 1e-8; e = it["entry"]
+        risk = it.get("risk0") or abs(e - it["sl"]) or 1e-12
+        ke_sl = ((e - px) if L else (px - e)) / risk
+        jp = jalur_posisi(it["sym"], it["arah"]) if it.get("ikut") else None
+        if it.get("ikut") and jp is None:
+            if it.get("dini_tutup"):
+                continue          # sudah disuruh tutup sekali
+            tandai[kunci] = "tutup"
+            pesan.append(f"🛑 <b>TUTUP SEKARANG  ·  {it['sym']} {it['arah']}</b>\n"
+                         f"Sinyal asal posisi ini sudah selesai di buku robot (kena SL jalur, trailing, atau batas waktu). Alasan entry sudah habis.\n"
+                         f"<b>Lakukan:</b> tutup posisi di Bybit (Close, Market), lalu /tutup {it['sym'].replace('USDT', '')} {fp(px, t)}.")
             continue
-        if rugi <= 0:
+        if ke_sl < 0.4 or it.get("dini_yakin"):
             continue
-        lawan = rugi / a
-        pct = rugi / it["entry"] * 100
-        risk = it.get("risk0") or abs(it["entry"] - it["sl"]) or a
-        ke_sl = rugi / risk
-        alasan = []
-        try:
-            k15 = _kline(it["sym"], "15", 10)[:-1]          # hanya candle 15 menit yang sudah tutup
-            if len(k15) >= 5:
-                c0, c1, c2 = k15[-1][3], k15[-2][3], k15[-3][3]
-                lo4, hi4 = min(x[2] for x in k15[-5:-1]), max(x[1] for x in k15[-5:-1])
-                if (L and c0 < lo4) or ((not L) and c0 > hi4):
-                    alasan.append("struktur 15 menit patah")
-                if (L and c0 < c1 < c2) or ((not L) and c0 > c1 > c2):
-                    alasan.append("2 candle 15 menit berturut melawan")
-        except Exception:
-            pass
-        try:
-            k1 = _kline(it["sym"], "60", 8)[:-1]
-            if len(k1) >= 4:
-                c_, low3, hi3 = k1[-1][3], min(x[2] for x in k1[-4:-1]), max(x[1] for x in k1[-4:-1])
-                if (L and c_ < low3) or ((not L) and c_ > hi3):
-                    alasan.append("struktur 1 jam patah")
-        except Exception:
-            pass
-        if (L and btc15 <= -0.3) or ((not L) and btc15 >= 0.3):
-            alasan.append(f"BTC 45 menit {btc15:+.2f}%")
-        elif btc_naik is not None and btc_naik != L:
-            alasan.append(f"BTC 1 jam melawan ({ch3:+.1f}% 3 jam)")
-        if ke_sl >= 0.7:
-            lv = 3
-        elif ke_sl >= 0.4 or pct >= 1.5:
-            lv = 2
-        else:                     # tingkat 1 (mulai melawan) dimatikan: gerak normal, tidak perlu aksi
-            lv = 0
-        if lv <= lv_lama:
-            continue
-        kd = it["sym"].replace("USDT", "")
-        ar = it["arah"].lower()
-        t = it.get("tick") or 1e-8
-        sl_now = it["entry"] if it["status"] == "TP1" and not it.get("sl_manual") else it["sl"]
-        # Uji 2021-2026 jalur terbukti: tutup setengah di -0.4R profit turun 18%, keluar di -0.4R turun 37%,
-        # tutup setengah di -0.7R turun 9%, keluar di -0.7R turun 19%. Yang terbaik: diam, biarkan SL bekerja.
-        if lv == 2:
-            sar = ("Diam, biarkan SL bekerja. Jangan geser SL menjauh. Uji 5 tahun: keluar atau kurangi lot di titik ini "
-                   "menurunkan profit 18 sampai 37%.")
+        tandai[kunci] = "yakin"
+        sl_now = it["sl"]
+        f0 = (it.get("fill_ts") or it.get("created_ts") or now * 1000) / 1000
+        jam = (now - f0) / 3600
+        cek_ = []
+        if jp:
+            cek_.append(f"✅ Sinyal asal ({TG_e(jp.get('nama', ''))}) masih berlaku di buku robot. Alasan entry belum batal.")
         else:
-            sar = ("Diam, biarkan SL bekerja. Jangan geser SL menjauh. Uji 5 tahun: keluar di titik ini menurunkan profit 19%, "
-                   "karena sebagian posisi balik untung.")
-        judul = {2: "RUGI MEMBESAR, TETAP TAHAN", 3: "DEKAT SL, TETAP TAHAN"}[lv]
-        pesan.append(f"{'⚠️' if lv < 3 else '🚨'} <b>{it['sym']} {it['arah']} {judul}</b> (tingkat {lv} dari 3)\n"
-                     f"Entry {fp(it['entry'], t)} | sekarang {fp(px, t)} | SL {fp(sl_now, t)}\n"
-                     f"Rugi berjalan -{pct:.2f}% atau -{ke_sl:.2f}R ({ke_sl * 100:.0f}% jalan ke SL)\n"
-                     + (f"Penyebab: {', '.join(alasan)}\n" if alasan else "")
-                     + f"Saran: {sar}")
-        ganti[kunci] = lv
-
-    if (btc_naik is not None and btc_naik != st_btc) or ganti:
+            cek_.append("✅ Posisi manual: batas rugimu tetap SL yang kamu pasang.")
+        cek_.append(f"✅ SL {fp(sl_now, t)} belum kena. Rugi maksimal sudah dihitung di lot, tidak bisa lebih besar dari itu.")
+        if it.get("ikut") and not _be(it) and not it.get("tps_ts") and jam < JAM8:
+            cek_.append(f"⏳ Pemeriksaan berikutnya jam ke-{JAM8} ({_jam_wib((f0 + JAM8 * 3600) * 1000)}): kalau saat itu rugi 0.5R atau lebih, "
+                        f"robot yang akan menyuruh tutup. Sampai itu, tidak perlu apa-apa.")
+        cek_.append("📊 Uji 2021-2026: tutup manual di titik ini menurunkan profit 18 sampai 37%, karena banyak posisi seperti ini balik untung.")
+        pesan.append(f"🛡 <b>ANALISA ULANG  ·  {it['sym']} {it['arah']}: MASIH AMAN, IKUTI SL</b>\n"
+                     f"Harga {fp(px, t)}, rugi berjalan {-ke_sl:+.2f}R. Saya cek ulang:\n" + "\n".join(cek_)
+                     + "\n👉 <b>Tidak perlu lakukan apa pun.</b> Kalau posisi harus ditutup, robot akan mengirim <b>TUTUP SEKARANG</b>.")
+    if tandai:
         def f(dd):
-            if btc_naik is not None:
-                dd["btc_1j"] = btc_naik
             for v in dd["open"].values():
                 k = v.get("id", v["sym"])
-                if k in ganti:
-                    v["dini_lv"] = ganti[k]
-                    v["dini"] = ganti[k] > 0
+                if tandai.get(k) == "yakin":
+                    v["dini_yakin"] = now
+                elif tandai.get(k) == "tutup":
+                    v["dini_tutup"] = now
         ubah(f)
     return pesan
 
@@ -5238,7 +5189,7 @@ def cek_limit(now=None):
     return pesan
 
 
-SL_RUTIN_MENIT = int(os.environ.get("QSE_SL_RUTIN", "40") or 40)          # QC 124: 0 = mati
+SL_RUTIN_MENIT = int(os.environ.get("QSE_SL_RUTIN", "20") or 20)          # QC 124: 0 = mati. QC 134: tiap 20 menit (dulu 40)
 
 
 @per_orang
@@ -5274,12 +5225,15 @@ def peta_sl():
                          + (f". Sisa {abs(tps / px - 1) * 100:.1f}%" if px else ""))
             else:
                 tahap = "Posisi manual. SL ikuti rencana kamu sendiri."
+            if it.get("ikut"):          # QC 134: status analisa ulang di tiap peta, konsisten dengan pesan ANALISA ULANG
+                tahap += ("\n✅ Analisa ulang: sinyal asal masih berlaku, ikuti SL. Tidak perlu apa-apa." if jp else
+                          "\n🛑 Sinyal asal sudah selesai di buku robot: <b>TUTUP SEKARANG</b>.")
             rows.append(kep + f"\n🛑 <b>SL sekarang {fp(sl, t)}</b>\n" + tahap)
         except Exception as ex:
             print("[WARN] peta SL", it.get("sym"), ex)
     if not rows:
         return []
-    return ["🧭 <b>QSE v150 | PETA SL RUTIN</b>\nTiap " + str(SL_RUTIN_MENIT) + " menit. Samakan SL di Bybit dengan angka ini.\n\n" + "\n\n".join(rows)]
+    return ["🧭 <b>QSE v150 | PETA SL RUTIN</b>\nTiap " + str(SL_RUTIN_MENIT) + " menit, posisi dianalisa ulang. Samakan SL di Bybit dengan angka ini.\n\n" + "\n\n".join(rows)]
 
 
 def kartu_sl(tidur=False):

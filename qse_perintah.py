@@ -14,7 +14,7 @@ LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 
 
-VERSI_QC = "QC 130 (23 Nov 2026)"
+VERSI_QC = "QC 135 (23 Nov 2026)"
 
 
 def _scan_baris():
