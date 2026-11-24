@@ -659,3 +659,88 @@ def scan_abdul(arah=None, sumber="ABDUL", maks=3):
     out[0] += ("\n🗣 Dipicu " + sumber + (f", arahan <b>{arah}</b>" if arah else "") + ". Yang tampil hanya sinyal teknik robot yang valid"
                + (" dan searah arahan itu" if arah else "") + ". Berita bukan alasan entry, sinyal tetap ikut SL, TP, dan lot di kartu.")
     return out
+
+
+VONIS_FILE = os.path.join(STATE_DIR, "scan_vonis.json")
+VONIS_ULANG_MENIT = int(os.environ.get("QSE_VONIS_ULANG", "60") or 60)          # QC 140: pindai ulang selama vonis baru, 0 = mati
+
+
+def _vb():
+    try:
+        with open(VONIS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _vt(d):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(VONIS_FILE + ".tmp", "w") as f:
+        json.dump(d, f)
+    os.replace(VONIS_FILE + ".tmp", VONIS_FILE)
+
+
+def scan_vonis(arah, awal=True, now=None, pindai=None):
+    """QC 140: scan paksa saat vonis berubah, tidak berbagi jeda 30 menit dengan scan Abdul.
+    Candle 4J tutup dan candle 4J berjalan (intrabar, saringan kelas_intrabar teruji) dipindai, hanya arah vonis.
+    awal=True: selalu ada jawaban, termasuk saat belum ada sinyal. awal=False (pindai ulang tiap 60 menit selama vonis <= 12 jam):
+    hanya kirim kalau ada koin searah yang belum pernah dikirim. Return list bubble."""
+    import qse_strat as ST
+    now = now or time.time()
+    d = _vb()
+    if awal or d.get("arah") != arah:
+        d = dict(arah=arah, t0=now, kirim=[], t=0)
+    d["t"] = now
+    _vt(d)
+    try:
+        valid, lewat, inf = (pindai or ST.pindai_sekarang)(batas=120, intrabar=True)
+    except Exception as ex:
+        print("[WARN] scan vonis", ex)
+        return ([f"🧭 <b>SCAN VONIS {arah}</b>: pindai gagal ({str(ex)[:80]}). Robot coba lagi dalam {VONIS_ULANG_MENIT} menit."]
+                if awal else [])
+    bj = inf.get("bj")
+    sah = []
+    for r in valid:
+        if r["arah"] != arah:
+            continue
+        try:
+            if r.get("intrabar") and not kelas_intrabar(r, bj):
+                continue
+        except Exception:
+            continue
+        sah.append(r)
+    baru = [r for r in sah if r["sym"] not in d.get("kirim", [])]
+    if baru:
+        d["kirim"] = (d.get("kirim", []) + [r["sym"] for r in baru])[-60:]
+        _vt(d)
+        out = bubble(baru, lewat, inf, f"SCAN VONIS {arah}" + ("" if awal else " (pindai ulang)"), maks=4, otak=False)
+        out[0] += (f"\n🧭 Dipicu vonis {arah} baru. Hanya sinyal teknik robot yang valid dan searah vonis. Lot searah vonis baru sudah "
+                   "dihitung di kartu.")
+        return out
+    if not awal:
+        return []
+    lw = [r for r in lewat if r["arah"] == arah]
+    jam_ = f"{VONIS_ULANG_MENIT} menit" if VONIS_ULANG_MENIT else "candle 4J berikutnya"
+    return [f"🧭 <b>SCAN VONIS {arah}</b> selesai: {inf.get('total', 0)} koin dipindai, belum ada sinyal {arah} yang valid di harga "
+            f"sekarang" + (f" ({len(lw)} sinyal {arah} sudah lewat, tidak dikejar)" if lw else "") + ".\n"
+            f"Jangan entry tanpa kartu sinyal. Robot pindai ulang tiap {jam_} selama vonis masih baru (12 jam), dan candle 4J "
+            "berikutnya tetap dipindai seperti biasa."]
+
+
+def ulang_vonis(now=None, pindai=None):
+    """QC 140: dipanggil tiap menit oleh listener. Pindai ulang tiap VONIS_ULANG_MENIT selama vonis yang memicu scan masih berlaku
+    dan umurnya <= 12 jam. Return list bubble (kosong kalau tidak ada sinyal baru)."""
+    if not VONIS_ULANG_MENIT:
+        return []
+    now = now or time.time()
+    d = _vb()
+    ar = d.get("arah")
+    if ar not in ("LONG", "SHORT") or now - float(d.get("t0", 0)) > 12 * 3600 or now - float(d.get("t", 0)) < VONIS_ULANG_MENIT * 60:
+        return []
+    try:
+        import qse_vonis as QV
+        if QV.arah_kini(now) != ar:
+            return []
+    except Exception:
+        return []
+    return scan_vonis(ar, awal=False, now=now, pindai=pindai)

@@ -73,6 +73,16 @@ def _scan_abdul(arah, sumber):
         print("[WARN] scan abdul", ex)
 
 
+def _scan_vonis(arah):
+    """QC 140: scan paksa vonis berubah. Tidak memakai jeda 30 menit scan Abdul, jadi tidak pernah diam karena scan lain."""
+    try:
+        import qse_radar as RD
+        for b_ in RD.scan_vonis(arah):
+            TG.send([b_])
+    except Exception as ex:
+        print("[WARN] scan vonis", ex)
+
+
 def _tugas_berkala():
     """Tiap 15 menit: peringatan dini posisi, BTC berbalik, scan momentum 15/30 menit.
     Tiap jam menit ke-2: jalankan main.py (cadangan jadwal GitHub yang sering telat). Ganda dicegah oleh main.py."""
@@ -937,6 +947,12 @@ def _gurita():
 
 
 def _tugas_menit():
+    try:          # QC 140: pindai ulang tiap 60 menit selama vonis baru (<= 12 jam), kirim hanya kalau ada sinyal searah baru
+        import qse_radar as _RDv
+        for b_ in _RDv.ulang_vonis():
+            TG.send([b_])
+    except Exception as ex:
+        print("[WARN] ulang vonis", ex)
     try:          # QC 135: pengingat ceklis beli BTC 20:00 WIB
         import qse_dca as QD
         for m_ in QD.ingat():
@@ -1105,8 +1121,8 @@ def _tugas_menit():
         for m_ in QV.cek():          # QC 104 vonis pasar berubah LONG <-> SHORT
             TG.send(["🧭 <b>QSE v150 | VONIS PASAR</b>\n\n" + m_])
             ar_ = "LONG" if "jadi LONG" in m_ else "SHORT" if "jadi SHORT" in m_ else None
-            if ar_:          # QC 137: vonis baru = jam terbaik sinyal searahnya, langsung scan paksa
-                _scan_abdul(ar_, f"VONIS BERUBAH ke {ar_}")
+            if ar_:          # QC 137/140: vonis baru = jam terbaik sinyal searahnya, langsung scan paksa (jeda sendiri, selalu dijawab)
+                _scan_vonis(ar_)
     except Exception as ex:
         print("[WARN] himbauan", ex)
     try:          # QC 86 alarm gawat: BTC 2% dalam 1 jam melawan posisi untung yang SL-nya belum di entry
