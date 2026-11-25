@@ -14,7 +14,7 @@ LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 
 
-VERSI_QC = "QC 143 (25 Nov 2026)"
+VERSI_QC = "QC 144 (25 Nov 2026)"
 
 
 def _scan_baris():
@@ -389,6 +389,14 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/kebelet", "/spot"):          # QC 92 rapor jalur Kebelet Spot
         import qse_kebelet as KB
         return KB.rapor()
+    if cmd in ("/diam", "/kesehatan"):        # QC 144 semua tempat error diam 24 jam
+        import config as _C
+        d_ = _C.daftar_diam()
+        if not d_:
+            return "🩺 <b>KESEHATAN KODE</b>\n0 error diam dalam 24 jam."
+        return ("🩺 <b>KESEHATAN KODE</b>: " + f"{sum(n for _, n, _ in d_)} error diam di {len(d_)} tempat dalam 24 jam\n"
+                + "\n".join(f"{i + 1}. {k} {n}x: {TG.e(m[:120])}" for i, (k, n, m) in enumerate(d_[:25]))
+                + "\n\nKirim pesan ini ke Opus untuk diperbaiki.")
     if cmd in ("/liar", "/koinliar"):         # QC 142 daftar koin liar seperti HMSTR
         import qse_liar as LI
         return LI.teks()
@@ -480,7 +488,7 @@ def balas(cmd, args, dari_main=False):
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/ict": "JALUR ICT", "/pikir": "OTAK UMUM", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/liar": "KOIN LIAR", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/ict": "JALUR ICT", "/pikir": "OTAK UMUM", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/liar": "KOIN LIAR", "/diam": "KESEHATAN KODE", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
 
 
 def _sisa_posisi():

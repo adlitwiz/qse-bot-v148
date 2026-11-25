@@ -27,6 +27,22 @@ def muat_semua():
     return gagal
 
 
+def kompil_lama():
+    """Kompilasi semua modul dengan Python 3.10 dan 3.11 kalau terpasang. VPS bisa memakai Python lebih lama dari mesin uji, dan
+    sintaks baru (misalnya kutip ganda di dalam f-string, baru sah sejak 3.12) membuat modul gagal dimuat di VPS. Return list gagal."""
+    import shutil
+    gagal = []
+    for py in ("python3.10", "python3.11"):
+        exe = shutil.which(py)
+        if not exe:
+            continue
+        for f in sorted(glob.glob(os.path.join(DIR, "*.py"))):
+            r = subprocess.run([exe, "-c", "import ast,sys; ast.parse(open(sys.argv[1]).read())", f], capture_output=True, text=True)
+            if r.returncode:
+                gagal.append((f"{os.path.basename(f)} ({py})", (r.stderr.strip().splitlines() or ["?"])[-1][:200]))
+    return gagal
+
+
 def tes_semua():
     tes = sorted(glob.glob(os.path.join(DIR, "riset", "upgrade", "uji_*.py")) + glob.glob(os.path.join(DIR, "riset", "v150", "uji_*.py")))
     tes = [t for t in tes if os.path.basename(t) not in LEWATI]
@@ -56,5 +72,9 @@ if __name__ == "__main__":
         print(f"GAGAL MUAT {m}: {e}")
     print(f"muat modul: {'semua OK' if not g else str(len(g)) + ' gagal'}")
     if "--semua" in sys.argv:
-        g = g or tes_semua()
+        kl = kompil_lama()
+        for m, e in kl:
+            print(f"GAGAL PYTHON LAMA {m}: {e}")
+        print(f"kompilasi Python lama: {'semua OK' if not kl else str(len(kl)) + ' gagal'}")
+        g = g or kl or tes_semua()
     sys.exit(1 if g else 0)

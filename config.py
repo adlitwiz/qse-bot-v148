@@ -115,7 +115,10 @@ _DIAM_T = [0.0]
 
 
 def diam(tempat, ex=None):
-    """Catat error yang sengaja dilewati. Tidak pernah melempar error."""
+    """Catat error yang sengaja dilewati. Tidak pernah melempar error. File state yang belum ada (FileNotFoundError) itu normal,
+    misalnya scan_vonis.json sebelum vonis pertama berubah, jadi tidak dihitung sebagai error."""
+    if isinstance(ex, FileNotFoundError):
+        return
     try:
         now = _time.time()
         with _DIAM_LOCK:
@@ -140,6 +143,23 @@ def diam(tempat, ex=None):
         return
 
 
+def daftar_diam(jam=24, now=None):
+    """Semua tempat error diam dalam `jam` terakhir, urut tersering. List (tempat, jumlah, pesan terakhir)."""
+    now = now or _time.time()
+    isi = {}
+    try:
+        with open(os.path.join(STATE_DIR, "diam.json")) as f:
+            isi = _json.load(f)
+    except Exception:
+        isi = {}
+    with _DIAM_LOCK:
+        for k, v in _DIAM.items():
+            isi[k] = dict(v)
+    baru = [(k, v.get("n", 0), v.get("pesan", "")) for k, v in isi.items() if now - float(v.get("t", 0)) <= jam * 3600
+            and not v.get("pesan", "").startswith("FileNotFoundError")]
+    return sorted(baru, key=lambda z: -z[1])
+
+
 def ringkas_diam(jam=24, now=None):
     """(jumlah error, jumlah tempat, 3 tempat tersering) dalam `jam` terakhir, dari memori proses ini dan state/diam.json."""
     now = now or _time.time()
@@ -152,6 +172,7 @@ def ringkas_diam(jam=24, now=None):
     with _DIAM_LOCK:
         for k, v in _DIAM.items():
             isi[k] = dict(v)
-    baru = {k: v for k, v in isi.items() if now - float(v.get("t", 0)) <= jam * 3600}
+    baru = {k: v for k, v in isi.items() if now - float(v.get("t", 0)) <= jam * 3600
+            and not v.get("pesan", "").startswith("FileNotFoundError")}
     top = sorted(baru.items(), key=lambda kv: -kv[1].get("n", 0))[:3]
     return sum(v.get("n", 0) for v in baru.values()), len(baru), [(k, v.get("n", 0), v.get("pesan", "")) for k, v in top]
