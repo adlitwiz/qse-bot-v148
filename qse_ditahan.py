@@ -44,8 +44,8 @@ def _sumber():
         try:
             m = __import__(mod)
             out += [(k, nm, it) for it in m.lihat()["open"].values()]
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_ditahan.py:47", _ex)
     return out
 
 
@@ -154,15 +154,15 @@ def kartu(k, nama, it):
     try:
         import qse_cuaca as CU
         cuaca = CU.baris(k, it)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_ditahan.py:157", _ex)
     try:
         import qse_kompas as KP
         _, kp_teks = KP.label(it["arah"])
         if kp_teks:
             cuaca = (cuaca + "\n" if cuaca else "") + kp_teks.replace("Lot dipotong 0.5x", "Kelas ringan")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_ditahan.py:164", _ex)
     try:
         import qse_modal as MD
         lot = MD.baris_lot(e, sl, kelas=kl)
@@ -213,22 +213,22 @@ def kelas(k, it, prio=None):
             import qse_jagoan as JG
             if JG.kelas_utama(it["jagoan"]):
                 return "UTAMA", "👑 koin jagoan sejati"
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_ditahan.py:216", _ex)
     # v175 QC 73: konfluensi 3+ teknik searah di koin yang sama = KELAS UTAMA (uji: -0.095 / +0.322 / +0.274 / +0.091R, WR 61%, PF 1.73)
     # v176 QC 74: 2+ teknik (bukan SHORT saat BTC 4J di atas EMA 50): +0.048 / +0.308 / +0.312 / +0.086R
     try:
         import qse_strat as ST_
         if ST_.konf_utama(it["arah"], it.get("btc_j"), len(it.get("combo") or []) + 1):
             return "UTAMA", f"⭐ konfluensi {len(it['combo']) + 1} teknik searah"
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_ditahan.py:224", _ex)
     try:          # QC 104 rawan sapu: entry menempel swing 20 candle, SL di seberang kolam stop
         if ST_.rawan_sapu(it.get("kolam"), 1):
             return "RINGAN", (f"rawan sapu: swing 20 candle 4J hanya {it['kolam']:.1f}R dari entry, SL di seberang kolam stop "
                               "(uji PF 0.59-0.80 di 4 periode)")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_ditahan.py:230", _ex)
     if it.get("netral_buka"):
         return "RINGAN", "BTC netral: arah ini dibuka tanpa izin BTC (uji tidak konsisten)"
     if (it.get("peringkat") or 0) > 110:
@@ -239,22 +239,22 @@ def kelas(k, it, prio=None):
         import qse_klaster as KS
         if KS.lemah(KS.skor(k, it)):
             return "RINGAN", "skor Tren di bawah 20 (BTC, EMA 50, EMA 200 tidak mendukung arah ini)"
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_ditahan.py:242", _ex)
     if it["arah"] == "LONG":
         try:
             import qse_kompas as KP
             if KP.label("LONG")[0] < 1:
                 return "RINGAN", "LONG saat kompas merah"
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_ditahan.py:249", _ex)
     try:
         import qse_overmind as OM
         r_, why_ = OM.kelas_jalur(k)
         if r_:
             return "RINGAN", why_
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_ditahan.py:256", _ex)
     pr = it.get("profil") or {}
     lab_kuat = it.get("combo_raja") or it.get("combo_fix") or it.get("combo_emas")
     if k == "ema_short":          # QC 62: EMA Cross SHORT rugi 2026 (-128R) dan tidak ada saringan latih yang membaliknya

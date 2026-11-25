@@ -159,8 +159,8 @@ def peta(maks_umur=300):
     v = hitung(d1, d4, dD)
     try:
         v["px"] = float(B.get_tickers()["BTCUSDT"]["last"]) or v["px"]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_btcmap.py:162", _ex)
     _CACHE.update(t=now, v=v)
     return v
 
@@ -206,7 +206,8 @@ def label_sinyal(arah):
     """Baris pendek untuk kartu sinyal: searah atau lawan komando BTC."""
     try:
         p = peta()
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_btcmap.py:209", _ex)
         return ""
     if p["fokus"] == "TAHAN":
         return f"🧭 Komando BTC: TAHAN (skor {p['skor']:+d}), pilih sinyal NILAI tertinggi saja"
@@ -234,13 +235,13 @@ def _cari_it(sym, arah):
     try:
         import qse_strat as ST
         sumber += [(k, ST.lihat(k)["open"].values()) for k in ST.STRAT]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_btcmap.py:237", _ex)
     for mod, k in (("qse_ichimoku", "ichimoku"), ("qse_ob", "orderblock")):
         try:
             sumber.append((k, __import__(mod).lihat()["open"].values()))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_btcmap.py:242", _ex)
     for k, items in sumber:
         for it in items:
             if it.get("sym") == sym and it.get("arah") == arah and (best is None or it.get("t", 0) > best[1].get("t", 0)):
@@ -291,8 +292,8 @@ def baris_kartu(m, pr=None):
         if time.time() - _CACHE.get("tick_t", 0) > 3600:
             try:
                 _CACHE.update(tick=B.get_symbols(), tick_t=time.time())
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_btcmap.py:294", _ex)
         t = (_CACHE.get("tick") or {}).get(sym, 1e-8)
         f = lambda v: "-" if v is None else TG.fp(v, t)
         rows.append(f"🧱 <b>Support 4J {f(sup)}</b> · <b>Resistance 4J {f(res)}</b> (pivot 3 candle, 150 candle terakhir)")
@@ -342,8 +343,8 @@ def kartu_ringkas(m, pr=None, nama=""):
         arah_btc = {1: "naik", -1: "turun", 0: "datar"}
         cocok = ("searah, lebih bagus" if p["fokus"] == arah else ("netral" if p["fokus"] == "TAHAN" else "lawan arah, hasil uji hampir impas"))
         rows.append(f"🧭 BTC fokus <b>{p['fokus']}</b> ({cocok})  ·  1J {arah_btc[p['s1']]}, 4J {arah_btc[p['s4']]}, 1D {arah_btc[p['sD']]}")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_btcmap.py:345", _ex)
     try:
         import bybit_fetch as B
         import telegram_notify as TG
@@ -354,8 +355,8 @@ def kartu_ringkas(m, pr=None, nama=""):
         if time.time() - _CACHE.get("tick_t", 0) > 3600:
             try:
                 _CACHE.update(tick=B.get_symbols(), tick_t=time.time())
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_btcmap.py:357", _ex)
         t = (_CACHE.get("tick") or {}).get(sym, 1e-8)
         px = float(d4["close"].values[-1])
         f = lambda v: "-" if v is None else f"{TG.fp(v, t)} ({(v / px - 1) * 100:+.1f}%)"

@@ -53,8 +53,8 @@ def jalur_harga(it, ambil=None, ambil4=None):
             if len(b):
                 out["btc_pct"] = (float(b["close"].iloc[-1]) / float(b["open"].iloc[0]) - 1) * 100
                 out["btc_maks_lawan"] = float(((b["low"].min() if L else b["high"].max()) / float(b["open"].iloc[0]) - 1) * 100)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_otopsi.py:56", _ex)
         try:          # QC 109: kondisi jenuh sebelum masuk (RSI 14 candle 4J, gerak 72 jam searah sinyal)
             n4 = int(min(900, (time.time() * 1000 - t0) / (4 * JAM) + 60))
             c4 = ambil4(it["sym"], n4) if ambil4 else __import__("bybit_fetch")._raw(it["sym"], "240", n4)
@@ -66,8 +66,8 @@ def jalur_harga(it, ambil=None, ambil4=None):
                     au = (au * 13 + a_) / 14; ad = (ad * 13 + b_) / 14
                 out["rsi4"] = float(100 - 100 / (1 + au / max(ad, 1e-12)))
                 out["gerak72"] = float((c4[-1] / c4[-19] - 1) * 100 * (1 if L else -1))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_otopsi.py:69", _ex)
         return out
     except Exception as ex:
         print("[WARN] otopsi jalur harga", it.get("sym"), ex)
@@ -118,6 +118,19 @@ def temuan(it, jh, rw):
             kp = jh.get("koin_pct") or 0
             if (kp < 0) == L and abs(kp) >= 2:
                 out.append(("KOIN_SENDIRI", f"BTC hampir diam ({bp:+.2f}%) tapi koin bergerak {kp:+.2f}%. Rugi dari koin itu sendiri."))
+        elif lawan <= -0.7:          # QC 141: BTC searah posisi, koin melawan (kasus HMSTR)
+            kp = jh.get("koin_pct") or 0
+            if (kp < 0) == L and abs(kp) >= 2:
+                out.append(("VONIS_BENAR_KOIN_LAWAN", f"Arah pasar benar: BTC {bp:+.2f}% searah {it['arah']}. Tapi koin bergerak {kp:+.2f}% "
+                            "melawan pasar. Rugi dari koin itu sendiri, bukan dari salah baca arah."))
+    try:          # QC 141: koin liar (ATR 4J >= 3.5%)
+        import qse_liar as LI
+        ya_, x_ = LI.liar(it["sym"], jh.get("df4"))
+        if ya_:
+            out.append(("KOIN_LIAR", f"Koin liar: gerak rata-rata {x_:.1f}% per candle 4J (ambang {LI.AMBANG:g}%). Kelompok ini menang 34-36%, "
+                        "PF 1.14 di uji dan 0.94 di 6 bulan terakhir."))
+    except Exception as _ex:
+        __import__("config").diam("qse_otopsi.py:132", _ex)
     rs, g72 = jh.get("rsi4"), jh.get("gerak72")
     if rs is not None and ((not L and rs <= 35) or (L and rs >= 70)):
         out.append(("JENUH", f"Masuk {it['arah']} saat RSI 4J {rs:.0f} (sudah {'jenuh jual' if not L else 'jenuh beli'}), gerak 72 jam searah "
@@ -191,8 +204,8 @@ def _lengkapi(it):
             b_ = ST_.btc_jarak()
             if b_ is not None:
                 it = dict(it, btc_j_kini=round(float(b_), 2))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_otopsi.py:207", _ex)
     try:          # QC 136: skor kartu sinyal asal dari log siaran (kartu yang dikirim robot)
         if it.get("skor100") is None:
             import telegram_notify as TG_
@@ -203,6 +216,40 @@ def _lengkapi(it):
     except Exception as ex:
         print("[WARN] otopsi skor", ex)
     return it
+
+
+# QC 141 STATUS RISET: tiap pola sudah diuji atau belum. Otopsi berikutnya langsung tahu jawabannya, prompt hanya meminta uji pola yang
+# BELUM diuji. None = belum diuji. Angka = selisih total R kalau aturan dipasang (latih / uji / 12 bulan / 6 bulan).
+RISET = {
+    "JENUH": "v221 + v259: SHORT saat BTC 4J <= -3% dari EMA 50 lot 0.5x +134.7 / +4.9 / +3.9 / -5.2R, gagal di 6 bulan. "
+             "SHORT saat BTC <= -5% justru PF 3.44 di 6 bulan.",
+    "RUGI_BERUNTUN": "v216: lot 0.5x sesudah 3 rugi beruntun per teknik, profit uji turun 348R. Ditolak.",
+    "KOIN_SENDIRI": "v216 + v259: lot 0.5x saat koin melawan BTC, profit uji turun 100-113R. Ditolak.",
+    "VONIS_BENAR_KOIN_LAWAN": "v259: koin naik saat BTC turun (atau sebaliknya) sebelum masuk, lot 0.5x profit uji turun 100.5R. Ditolak. "
+                              "Aturan keluar saat koin melawan BTC selama posisi: BELUM diuji.",
+    "BTC_MELAWAN": "v250: tutup saat BTC melawan 1.5-3%, profit turun di 3-4 periode. Ditolak.",
+    "LANGSUNG_SALAH": "v216: potong cepat di jam ke-2 sampai ke-6 kalau belum pernah +0.1R, hampir semua variasi menurunkan profit. Ditolak.",
+    "SL_CEPAT": "v216: sama dengan LANGSUNG_SALAH, potong cepat menurunkan profit. Ditolak.",
+    "BALIK_SEBELUM_TP1": "v203: kunci profit di +0.3R atau +0.4R menurunkan total di 4 periode. Ditolak.",
+    "BALIK_SESUDAH_TP1": "v239 sampai v242: TP 35%, TP 50% saat melemah, TP di +1R/+2R/+3R. Hanya TP LONG di +1R yang lolos (QC 127).",
+    "KOIN_LIAR": "v260 + v261: kelompok ini lebih lemah, tapi menaikkan WR dengan TP lebih awal membuat WR 50% dan profit latih turun 20-48R. "
+                 "Ditandai saja (QC 141).",
+    "KELAS_RINGAN": "v216: SHORT 1 teknik lot 0.5x, profit uji turun 288R. Ditolak.",
+    "TEKNIK_LEMAH_LIVE": "v216: kurangi lot sesudah teknik rugi beruntun menurunkan profit uji. Ditolak.",
+    "KOIN_LEMAH_LIVE": "v241: ingatan per koin tidak lolos uji. Ditolak.",
+    "RAWAN_SAPU": "v203: kolam stop < 0.8R PF 0.59-0.80.",
+    "MANUAL": "Perilaku, bukan aturan sinyal: ikuti kartu robot.",
+    "SEROK": "Perilaku: jangan menambah posisi saat minus.",
+    "SL_DIUBAH": "Perilaku: jangan mengubah SL sinyal.",
+    "TANPA_POLA": "Rugi biasa dari sinyal valid. Sistem menang sekitar 34-38%, profit dari trade yang lari jauh.",
+    "LAWAN_SISI_BTC": None,
+}
+BERULANG_N = 3          # pola sama muncul >= 3 kali dalam 14 hari = kandidat riset (kalau belum diuji) atau pengingat (kalau sudah)
+
+
+def berulang(kode, closed, t_ms):
+    """Berapa kali pola ini tercatat di otopsi 14 hari terakhir (sebelum trade ini)."""
+    return sum(1 for c in closed if kode in (c.get("pola") or []) and 0 < t_ms - (c.get("closed_ts") or 0) <= 14 * 24 * JAM)
 
 
 def _grup_skor(s):
@@ -241,13 +288,19 @@ def evaluasi(it, jh, pola):
     if (it.get("why") or "").upper() != "SL" and (it.get("result_r") or 0) > -0.9:
         rows.append(f"Posisi ditutup manual di {it.get('result_r', 0):+.2f}R sebelum SL. Aturan robot: ikuti SL. Di uji, tutup manual di -0.4R "
                     f"ke bawah menurunkan profit 18-37% karena banyak posisi balik untung.")
-    rows.append("👉 Ke depan: tidak ada aturan baru yang lolos uji untuk pola ini. Tetap ikuti sinyal, lot sudah menyesuaikan skor dan kelas.")
+    belum = [k for k in (pola or []) if RISET.get(k, None) is None and k in RISET]
+    if belum:
+        rows.append("👉 Ke depan: pola " + ", ".join(belum) + " BELUM pernah diuji. Kirim prompt di bawah ke Opus untuk diuji di data 2022-2026.")
+    else:
+        rows.append("👉 Ke depan: semua pola di trade ini sudah diuji dan tidak ada aturan yang lolos 4 periode. Tetap ikuti sinyal, "
+                    "lot sudah menyesuaikan skor, kelas, dan vonis. Prompt tidak perlu dikirim lagi untuk pola yang sama.")
     return rows
 
 
 def laporan(it, closed, ambil=None, nama=""):
     """Teks otopsi satu trade rugi, termasuk blok prompt untuk Opus."""
     import qse_saya as SY
+    it0 = it
     it = _lengkapi(it)
     jh = jalur_harga(it, ambil)
     rw = riwayat(it, closed)
@@ -265,10 +318,31 @@ def laporan(it, closed, ambil=None, nama=""):
         rows.append(f"📈 Selama posisi: untung tertinggi {jh['mfe']:+.2f}R di jam ke-{jh['jam_mfe']}, rugi terdalam {jh['mae']:+.2f}R, "
                     f"lama {jh['lama']:.1f} jam" + (f", BTC {jh['btc_pct']:+.2f}%" if "btc_pct" in jh else "") + ".")
     rows.append("<b>Kesimpulan robot:</b>\n" + "\n".join(f"• {x}" for _, x in tm))
+    kode = [k for k, _ in tm]
+    it["_pola"] = kode; it0["_pola"] = kode
+    if jh and "btc_pct" in jh:          # QC 141: vonis dinilai dari gerak BTC selama posisi
+        L_ = it["arah"] == "LONG"; bp_ = jh["btc_pct"]
+        benar = (bp_ > 0) == L_ and abs(bp_) >= 0.3
+        rows.append(f"🧭 <b>Arah pasar</b>: BTC {bp_:+.2f}% selama posisi, " + ("searah posisi, jadi arah vonis BENAR." if benar else
+                    "melawan posisi, jadi arah pasar berbalik." if abs(bp_) >= 0.3 else "hampir diam, arah tidak menentukan."))
     try:          # QC 136
-        rows.append("📌 <b>Evaluasi ke depan</b>\n" + "\n".join(f"• {x}" for x in evaluasi(it, jh, [k for k, _ in tm])))
+        rows.append("📌 <b>Evaluasi ke depan</b>\n" + "\n".join(f"• {x}" for x in evaluasi(it, jh, kode)))
     except Exception as ex:
         print("[WARN] otopsi evaluasi", ex)
+    try:          # QC 141 status riset tiap pola dan pola yang berulang
+        t_ms = it.get("closed_ts") or 0
+        st_ = []
+        for k_ in kode:
+            n_ = berulang(k_, closed, t_ms)
+            ul_ = f" Muncul {n_ + 1}x dalam 14 hari." if n_ + 1 >= BERULANG_N else ""
+            if RISET.get(k_):
+                st_.append(f"{k_}: {RISET[k_]}{ul_}")
+            elif k_ in RISET:
+                st_.append(f"{k_}: BELUM diuji.{ul_}" + (" 🔁 KANDIDAT RISET, kirim prompt." if ul_ else ""))
+        if st_:
+            rows.append("📚 <b>Status riset pola</b>\n" + "\n".join(f"• {x}" for x in st_))
+    except Exception as ex:
+        print("[WARN] otopsi status riset", ex)
     # ---- blok prompt ----
     p = [f"EVALUASI RUGI QSE v150 ({jenis})",
          f"Trade: {it['sym']} {it['arah']}, teknik {jl}, kelas {it.get('kelas') or '-'}, konfluensi {1 + len(it.get('combo') or [])} teknik, "
@@ -287,8 +361,13 @@ def laporan(it, closed, ambil=None, nama=""):
         p.append(f"10 trade terakhir teknik ini: {rw['jalur']['n']} trade, WR {rw['jalur']['wr']:.0f}%, total {rw['jalur']['tot']:+.2f}R. "
                  f"Rugi beruntun sebelum ini: {rw.get('beruntun', 0)}.")
     p.append("Pola yang cocok: " + ", ".join(k for k, _ in tm) + ".")
-    p.append("Tugas: cari apakah pola rugi ini bisa dicegah dengan aturan baru (saringan masuk, kelas, atau aturan keluar). "
-             "Uji di populasi siaran: pilih di latih, buktikan di uji, 12 bulan, dan 6 bulan sesudah biaya. "
+    sudah_ = [k for k in kode if RISET.get(k)]
+    if sudah_:
+        p.append("Sudah diuji (jangan diulang): " + " | ".join(f"{k}: {RISET[k]}" for k in sudah_))
+    if "VONIS_BENAR_KOIN_LAWAN" in kode:
+        p.append("Ide belum diuji: aturan keluar saat koin bergerak melawan posisi sementara BTC searah posisi.")
+    p.append("Tugas: cari apakah pola rugi ini bisa dicegah dengan aturan baru (saringan masuk, kelas, atau aturan keluar), fokus ke pola dan "
+             "ide yang BELUM diuji. Uji di populasi siaran: pilih di latih, buktikan di uji, 12 bulan, dan 6 bulan sesudah biaya. "
              "Pasang hanya kalau lolos semua periode dan tidak menurunkan frekuensi atau total profit. Kalau tidak lolos, laporkan apa adanya.")
     rows.append("📋 <b>Prompt untuk Opus</b> (tekan lama blok di bawah untuk salin):\n<pre>" + html.escape("\n".join(p)) + "</pre>")
     try:          # QC 129: otak umum (Claude API) menjawab langsung kalau ANTHROPIC_API_KEY ada
@@ -324,11 +403,21 @@ def cek(now=None, ambil=None):
                     c["otopsi"] = True
         SY.ubah(tandai)
         out = []
+        simpan = {}
         for c in baru[:3]:
             try:
                 out.append(laporan(c, d.get("closed", []), ambil))
+                if c.get("_pola"):
+                    simpan[(c.get("sym"), c.get("closed_ts"))] = c["_pola"]
             except Exception as ex:
                 print("[WARN] otopsi", c.get("sym"), ex)
+        if simpan:          # QC 141: kode pola disimpan supaya pola berulang 14 hari bisa dihitung
+            def isi(dd):
+                for c in dd.get("closed", []):
+                    k_ = (c.get("sym"), c.get("closed_ts"))
+                    if k_ in simpan:
+                        c["pola"] = simpan[k_]
+            SY.ubah(isi)
         return out
     return _isi_otopsi()
 
@@ -339,7 +428,8 @@ ARTI_POLA = {"LANGSUNG_SALAH": "untung tertinggi < +0.1R", "SL_CEPAT": "selesai 
              "RUGI_BERUNTUN": "rugi ke-3 atau lebih berturut-turut", "TEKNIK_LEMAH_LIVE": "teknik 10 trade terakhir total < -1R",
              "KOIN_LEMAH_LIVE": "koin 3+ trade terakhir total < -1.5R", "LAWAN_SISI_BTC": "masuk melawan sisi BTC 4J (>= 1% dari EMA 50)",
              "RAWAN_SAPU": "swing 20 candle 4J < 0.8R dari entry", "KELAS_RINGAN": "sinyal kelas ringan", "MANUAL": "entry manual",
-             "SEROK": "posisi ditambah saat jalan", "SL_DIUBAH": "SL diubah manual", "TANPA_POLA": "tidak cocok pola apa pun"}
+             "SEROK": "posisi ditambah saat jalan", "SL_DIUBAH": "SL diubah manual", "TANPA_POLA": "tidak cocok pola apa pun",
+             "VONIS_BENAR_KOIN_LAWAN": "BTC searah posisi, koin bergerak >= 2% melawan", "KOIN_LIAR": "ATR 4J >= 3.5% dari harga"}
 
 
 def rekap(hari=7, ambil=None, ambil4=None):

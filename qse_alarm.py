@@ -173,7 +173,8 @@ def _tutup_candle(sym, tf, tf_ms):
         now = time.time() * 1000
         return sorted((int(x[0]), float(x[4])) for x in r.json().get("result", {}).get("list", [])
                       if int(x[0]) + tf_ms <= now)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_alarm.py:176", _ex)
         return None
 
 

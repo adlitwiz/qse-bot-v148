@@ -24,7 +24,8 @@ def lihat():
     try:
         with open(FILE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_uji.py:27", _ex)
         return {}
 
 

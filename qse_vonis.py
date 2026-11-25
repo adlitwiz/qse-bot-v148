@@ -35,7 +35,8 @@ def _baca():
     try:
         with open(PATH) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:38", _ex)
         return {}
 
 
@@ -79,13 +80,13 @@ def bahan():
     try:
         import qse_himbauan as QH
         x["himbauan"] = (QH._baca().get("data") or {})
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:82", _ex)
     try:
         import qse_btcarah as BA
         x["fng"] = BA._fng()
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:87", _ex)
     return x
 
 
@@ -146,8 +147,8 @@ def hitung(x=None):
             cat.append(f"Rasio akun L/S BTC {h['ls']:.2f}" + (": 🔻 rawan dump, ritel LONG ramai" if h["ls"] >= QH.LS_DUMP else ": wajar"))
         if h.get("f3") is not None:
             cat.append(f"Funding BTC 3 hari {h['f3'] * 100:.4f}%" + (": 🔺 rawan pump, SHORT ramai" if h["f3"] <= QH.FUND_PUMP else ": wajar"))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:149", _ex)
     if x.get("fng") is not None:
         g = x["fng"]
         cat.append(f"Fear and Greed {g}" + (" (takut ekstrem)" if g <= 20 else " (takut)" if g < 40 else " (serakah ekstrem)" if g >= 80
@@ -177,7 +178,8 @@ def rsi4j(sym, df=None):
         for u_, d_ in zip(up[14:], dn[14:]):
             au, ad = (au * 13 + u_) / 14, (ad * 13 + d_) / 14
         return 100 - 100 / (1 + au / max(ad, 1e-12))
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:180", _ex)
         return None
 
 
@@ -186,8 +188,8 @@ def vonis_terakhir(maks_umur=3600):
         d = _baca()
         if time.time() - float(d.get("t", 0)) <= maks_umur:
             return d.get("calon")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:189", _ex)
     return None
 
 
@@ -227,8 +229,8 @@ def arah_kini(now=None):
         v = d.get("calon")
         if v in ("LONG", "SHORT") and now - float(d.get("t", 0)) <= 3600:
             return v
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:230", _ex)
     return ""
 
 
@@ -275,7 +277,8 @@ def _harga(v, sym):
     try:
         import qse_saya as SY
         return SY.harga_live(sym)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:278", _ex)
         return None
 
 
@@ -393,8 +396,8 @@ def siap_tembak(v, maks=2, now=None, sumber=None):
             try:
                 if ditahan(k, it):
                     continue
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_vonis.py:396", _ex)
             umur = (now - float(it["t"])) / 3600
             gm = False
             if RD is not None and L and konf >= 2:
@@ -470,8 +473,8 @@ def jawaban(v):
     try:
         import qse_pagi as PG
         tahan = PG.short_tahan()
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:473", _ex)
     fase = v.get("fase") or ""
     if vn == "LONG":
         aksi = "ambil sinyal LONG dengan lot 1.5x, sinyal SHORT tetap boleh dengan lot normal"
@@ -489,8 +492,8 @@ def jawaban(v):
         kv_, _ = lot_vonis_baru(vn)
         if kv_ > 1:
             aksi += f". Vonis {vn} ini masih baru (12 jam pertama): kartu sinyal {vn} otomatis lot x1.5, ini jam terbaiknya"
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:492", _ex)
     rows.append(f"👉 <b>Yang dilakukan:</b> {aksi}. Ikuti kartu sinyal, lot di kartu sudah memakai arah ini.")
     rows.append(f"<i>{rinci}</i>")
     return "\n".join(rows)
@@ -519,8 +522,8 @@ def teks(v=None, tag=False, judul="Rincian vonis"):
             j_ = (time.time() - float(d_["calon_t"])) / 3600
             rows.append(f"⏱ Vonis ini berlaku sejak {j_:.1f} jam lalu. Rata-rata vonis berganti tiap 8 jam (uji 2022-2026). Posisi yang sudah jalan "
                         "TIDAK perlu ditutup karena vonis berubah: ikuti SL, TP, dan pesan Himbauan atau Hidung Abdul saja.")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_vonis.py:522", _ex)
     try:          # QC 109: angka asli dominasi, selalu tampil
         rows.append(baris_dominasi(v))
     except Exception as ex:

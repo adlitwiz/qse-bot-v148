@@ -25,7 +25,8 @@ def _load():
     try:
         with open(CACHE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_makro.py:28", _ex)
         return {}
 
 

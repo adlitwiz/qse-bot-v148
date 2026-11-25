@@ -95,8 +95,8 @@ def dari_update(cq, uid, nama):
         import qse_menu as QM
         QM._api("answerCallbackQuery", callback_query_id=cq.get("id"), chat_id=None,
                 text="Tercatat sudah beli" if jenis == "ok" else "Tercatat semua sudah beli")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_dca.py:98", _ex)
     if not p:
         return True
     p.setdefault("sudah", {})

@@ -21,7 +21,8 @@ def _baca():
     try:
         with open(F) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_advisor.py:24", _ex)
         return {}
 
 
@@ -97,15 +98,15 @@ def _pasar():
             rows.append("📈 BTC 4J di atas EMA 50: GZH mencari LONG (fib 0.618), jalur LONG kelas utama kalau skor Tren mendukung")
         elif bn is False:
             rows.append("📉 BTC 4J di bawah EMA 50: GZH mencari SHORT (fib 0.786, kelas ringan), EMA Cross SHORT kelas ringan")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_advisor.py:100", _ex)
     try:
         import qse_kompas as KP
         k = KP.kompas()
         if k and k.get("status"):
             rows.append(f"🧭 Kompas: {k['status']}")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_advisor.py:107", _ex)
     return rows
 
 

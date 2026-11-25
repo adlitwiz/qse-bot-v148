@@ -22,7 +22,8 @@ def _kline(sym, iv, limit=80):
                          params={"category": "linear", "symbol": sym, "interval": iv, "limit": limit})
         rows = sorted(r.json()["result"]["list"], key=lambda x: int(x[0]))
         return np.array([[float(v) for v in x[1:6]] for x in rows[:-1]])      # buang candle berjalan
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_momentum.py:25", _ex)
         return None
 
 

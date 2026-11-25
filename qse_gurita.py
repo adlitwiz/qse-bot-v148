@@ -127,7 +127,8 @@ def _baca():
         try:
             with open(p) as f:
                 return json.load(f)
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_gurita.py:130", _ex)
             continue
     return {}
 
@@ -154,7 +155,8 @@ def _rezim():
         import qse_strat as ST
         b = ST.btc_naik()
         return None if b is None else ("naik" if b else "turun")
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:157", _ex)
         return None
 
 
@@ -179,8 +181,8 @@ def _sumber():
         try:
             m = __import__(mod)
             out += [(k, it) for it in m.lihat()["open"].values()]
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_gurita.py:182", _ex)
     return out
 
 
@@ -192,23 +194,23 @@ def _jejak_72j(now=None, jam=72):
         try:
             if now - float(it.get("t", 0)) <= jam * 3600:
                 o.setdefault((it.get("sym"), it.get("arah")), set()).add(k)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_gurita.py:195", _ex)
     try:
         import qse_strat as ST
         for k in ST.STRAT:
             d = ST.lihat(k)
             for it in list(d.get("open", {}).values()) + list(d.get("closed", []))[-300:]:
                 tambah(k, it)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:203", _ex)
     for mod, k in (("qse_ichimoku", "ichimoku"), ("qse_ob", "orderblock")):
         try:
             d = __import__(mod).lihat()
             for it in list(d.get("open", {}).values()) + list(d.get("closed", []))[-300:]:
                 tambah(k, it)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_gurita.py:210", _ex)
     return o
 
 
@@ -219,7 +221,8 @@ def _ditahan(k, it):
     try:
         import qse_strat as ST
         return not ST.lolos_mode(ST.prioritas(k, it))
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:222", _ex)
         return False
 
 
@@ -238,7 +241,8 @@ def _kelola(d):
             continue
         try:
             df = B._raw(p["sym"], "60", 60)
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_gurita.py:241", _ex)
             continue
         ms = int(time.time() * 1000)
         df = df[(df.index >= p["t"] * 1000) & (df.index + 3600000 <= ms)]
@@ -387,8 +391,8 @@ def vonis_terakhir(maks_umur=3600):
         d = QV._baca()
         if time.time() - float(d.get("t", 0)) <= maks_umur:
             return d.get("calon")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:390", _ex)
     return None
 
 
@@ -864,7 +868,8 @@ def _taker_binance(sym):
         js = requests.get("https://fapi.binance.com/fapi/v1/klines", params=dict(symbol=sym, interval="4h", limit=3), timeout=4).json()
         k = js[-2]
         return float(k[9]) / max(float(k[5]), 1e-12)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:867", _ex)
         return None
 
 
@@ -1081,7 +1086,8 @@ def baris_kartu(jalur, sym, arah):
         r = nilai_sinyal([dict(jalur=jalur, sym=sym, arah=arah)])[0]
         o, _ = otak()
         x = o.lengan.get(jalur, [])
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:1084", _ex)
         return ""
     lg = f"lengan {jalur} {len(x)} hasil terakhir rata {sum(x) / len(x):+.2f}R" if x else f"lengan {jalur} belum punya catatan"
     if SARING:
@@ -1105,7 +1111,8 @@ def peta_layak(r):
         L = r["pCL"] >= r["pCS"]
         return ((r["kL"] if L else r["kS"]) >= PETA_LENGAN and max(r["pCL"], r["pCS"]) >= PETA_PELUANG
                 and (r["pRL"] if L else r["pRS"]) > PETA_R)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:1108", _ex)
         return False
 
 

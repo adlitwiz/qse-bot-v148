@@ -112,7 +112,8 @@ def ST_tpc(it):
     try:
         import qse_strat as ST
         return ST.batas_masuk_teks(it, "ichimoku") + ST.tp_cepat_teks(it, k="ichimoku")
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_ichimoku.py:115", _ex)
         return []
 
 
@@ -120,7 +121,8 @@ def ST_combo(it):
     try:
         import qse_strat as ST
         return ST.combo_teks(it) + ST.mutu_teks(it)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_ichimoku.py:123", _ex)
         return []
 
 
@@ -208,8 +210,8 @@ def _jalankan(baru_ok=True):
     tick = {}
     try:
         tick = B.get_symbols()
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_ichimoku.py:211", _ex)
     # 1. kelola posisi terbuka
     buka = dict(d["open"])
     hasil = {}

@@ -28,7 +28,8 @@ def ukur():
     for s in ALT:
         try:
             c = _harian(s)
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_altseason.py:31", _ex)
             continue
         if len(c) >= 32:
             lr.append(c)

@@ -73,7 +73,8 @@ def _c1_searah(sym, arah):
             return None
         o, c = float(d["open"].iloc[-1]), float(d["close"].iloc[-1])
         return (c > o) if arah == "LONG" else (c < o)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_radar.py:76", _ex)
         return None
 
 
@@ -138,7 +139,8 @@ def _jalur_1j(sym, t0_ms):
         if not len(d):
             return None
         return float(d["high"].max()), float(d["low"].min()), float(d["close"].iloc[-1])
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_radar.py:141", _ex)
         return None
 
 
@@ -235,8 +237,8 @@ def _skor_baris(r, px, sl):
         try:          # QC 137 searah vonis baru
             import qse_vonis as QV
             kv_, tv_ = QV.lot_vonis_baru(r["arah"])
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_radar.py:238", _ex)
         k_ = kl_ * kv_
         return "\n" + bt_ + (f"\n{tv_}" if tv_ else "") + (f". Kalikan saran entry di bawah x{k_:g}" if k_ != 1 else "")
     except Exception as ex:
@@ -261,6 +263,13 @@ def kartu(r, no=None, bj=None, paksa=False):
                 f"  ·  ⚡ MOMENTUM (harga dan candle 1 jam searah, {r['momentum']})")
     if r.get("konf", 1) >= 2:
         tek += f"  ·  ⭐ KONFLUENSI {r['konf']} TEKNIK (+ {TG.e(', '.join(r['konf_nama']))})"
+    try:          # QC 141: tanda koin liar (seperti HMSTR), label saja
+        import qse_liar as LI
+        tl_ = LI.tag(r["sym"], (r.get("df") if hasattr(r.get("df"), "columns") else None))
+        if tl_:
+            tek += f"  ·  {tl_} (menang 34-36%, PF lebih rendah, lot tetap)"
+    except Exception as ex:
+        print("[WARN] tanda liar radar", ex)
     px, o = (r["entry_robot"], "LIMIT") if tunggu else (r["px"], "MARKET")
     if r.get("golden"):          # QC 107: SL TETAP di SL sinyal (tidak ikut geser), jadi jarak rugi lebih pendek. TP dihitung dari risiko baru
         sl = r["sl_asli"]; rn = px - sl
@@ -311,8 +320,8 @@ def pasar_teks(inf, judul, n_utama, n_ringan):
         vp = ST.vol_pasar()
         if vp:
             rows.append(f"💧 Likuiditas: volume BTC 4J {vp:.1f}x rata 30 hari" + (" (tinggi, sinyal lebih kuat)" if vp > 2.5 else " (sepi)" if vp < 0.6 else ""))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_radar.py:321", _ex)
     rows.append(f"🔎 {inf['n']}" + (f" dari {inf['total']}" if inf["n"] < inf["total"] else "") + f" koin Futures, 10 mesin + konfluensi, {inf['detik']:.0f} detik")
     rows.append(f"🎯 Hasil: <b>{n_utama} Kelas Utama</b>, {n_ringan} kelas ringan" + (". Tiap koin satu pesan di bawah." if n_utama + n_ringan else ""))
     return "\n".join(rows)
@@ -341,8 +350,8 @@ def otak_teks(sinyal=None, lewat=None, bj=None):
         if vp:
             rows.append(f"• Likuiditas: volume BTC 4J {vp:.1f}x rata 30 hari, " + ("tinggi. Tembusan lebih bisa dipercaya" if vp > 2.5 else
                         "tipis. Tembusan rawan palsu, utamakan Limit" if vp < 0.6 else "normal"))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_radar.py:351", _ex)
     # 3. teknik dominan
     hit = {}
     for r in list(sinyal) + [x for x in lewat if "struktur berubah" not in x.get("why", "")]:
@@ -356,8 +365,8 @@ def otak_teks(sinyal=None, lewat=None, bj=None):
             pj = (OM._baca() or {}).get("pemimpin_jalur")
             if pj:
                 rows.append(f"• Teknik dominan: belum ada pemicu di candle ini. Pemimpin 20 trade terakhir: {TG.e(str(pj))}")
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_radar.py:366", _ex)
     ht = None
     try:
         import qse_nyawa as NY
@@ -533,8 +542,8 @@ def jalankan(now=None, paksa=False):
             if x and not (kl == "UTAMA" and x.get("kelas") == "RINGAN"):
                 d["kirim"][k] = [now, x.get("kelas") or "UTAMA"]          # sudah disiarkan lewat pesan 4 jam atau kartu jalur
                 continue
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_radar.py:543", _ex)
         baru.append(r)
     for r in gm:          # QC 107: kartu Golden Moment sekali per sinyal (8 jam), walau kartu sinyalnya sudah pernah disiarkan
         kg = f"{r['sym']}|{r['arah']}|GM"
@@ -669,7 +678,8 @@ def _vb():
     try:
         with open(VONIS_FILE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_radar.py:679", _ex)
         return {}
 
 
@@ -706,7 +716,8 @@ def scan_vonis(arah, awal=True, now=None, pindai=None):
         try:
             if r.get("intrabar") and not kelas_intrabar(r, bj):
                 continue
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_radar.py:716", _ex)
             continue
         sah.append(r)
     baru = [r for r in sah if r["sym"] not in d.get("kirim", [])]
@@ -741,6 +752,7 @@ def ulang_vonis(now=None, pindai=None):
         import qse_vonis as QV
         if QV.arah_kini(now) != ar:
             return []
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_radar.py:751", _ex)
         return []
     return scan_vonis(ar, awal=False, now=now, pindai=pindai)

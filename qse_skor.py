@@ -83,8 +83,8 @@ def fitur(k, it, df4=None, btc_j=None, vonis_skor=None, naik=None, jejak8=None, 
             import qse_vonis as QV
             ak = QV._baca().get("akhir") or {}
             vonis_skor = ak.get("skor") if vonis_skor is None else vonis_skor
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_skor.py:86", _ex)
         try:
             import qse_pagi as PG
             hr = PG.arah_hari()

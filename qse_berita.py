@@ -25,7 +25,8 @@ def _load():
     try:
         with open(CACHE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_berita.py:28", _ex)
         return {}
 
 
@@ -114,8 +115,8 @@ def _ambil_ff(c, now):
         c["kal_gagal"] = now
         try:
             _save(c)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_berita.py:117", _ex)
 
 
 def _sama(e, f):
@@ -552,8 +553,8 @@ def rilis_kilat(now_ms=None):
                 u = k["usdt"]
                 ks = (f"USDT.D {'🔺 NAIK (uang ke tunai)' if u['naik'] else '🔻 TURUN (uang masuk kripto)' if u['turun'] else '➖ datar'}"
                       f"  ·  kompas {k['ikon']} {k['status']}")
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_berita.py:555", _ex)
             ang = _angka(e)
             if tahap == "R0":
                 out.append(f"⚡ <b>BERITA BARU RILIS: {nm}</b> {dampak(e['judul'], 'USD')}\n"

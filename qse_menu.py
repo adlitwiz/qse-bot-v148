@@ -221,7 +221,8 @@ def _nama(uid, nama=""):
     try:
         import qse_saya as SY
         return str(SY.nama_pengguna(uid))
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_menu.py:224", _ex)
         return ""
 
 
@@ -232,7 +233,8 @@ def _posisi(uid, nama=""):
         if uid is not None:
             SY.pakai(str(uid), nama)
         return list(SY.lihat()["open"].values())
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_menu.py:235", _ex)
         return []
     finally:
         SY.pakai(None)
@@ -499,8 +501,8 @@ def _kirim_milik(uid, nm, **data):
     try:
         catat_pemilik([(js.get("result") or {}).get("message_id")], uid, nm)
         jadwal_bersih([(js.get("result") or {}).get("message_id")], "hapus")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_menu.py:502", _ex)
     return js
 
 

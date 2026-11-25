@@ -417,8 +417,8 @@ def harga_live(sym):
         lst = r.json().get("result", {}).get("list", [])
         if lst:
             return float(lst[0]["lastPrice"])
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:420", _ex)
     try:          # v170: koin tanpa Perpetual (token klub) atau gangguan jaringan -> rantai Bybit Spot / Binance dengan retry
         import bybit_fetch as _BF
         return _BF.harga(sym)
@@ -431,7 +431,8 @@ def harga_semua():
         r = requests.get(BYBIT_URL + "/v5/market/tickers", params={"category": "linear"}, timeout=15)
         return {x["symbol"]: float(x["lastPrice"]) for x in r.json().get("result", {}).get("list", [])
                 if x.get("lastPrice")}
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:434", _ex)
         return {}
 
 
@@ -447,7 +448,8 @@ def _kline(sym, iv, limit=1000):
             import bybit_fetch as _BF
             df = _BF._raw(sym, str(iv), int(limit))
             return sorted((int(t), float(x.high), float(x.low), float(x.close)) for t, x in df.iterrows())
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:450", _ex)
             return []
     out = [(int(x[0]), float(x[2]), float(x[3]), float(x[4])) for x in rows]
     return sorted(out)
@@ -472,8 +474,8 @@ def hasil_robot(sym):
             for r in json.load(f):
                 if r["symbol"] == sym and r.get("tf", "240") == "240":
                     return r
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:475", _ex)
     return None
 
 
@@ -512,8 +514,8 @@ def jalur_saran(sym, arah, harga, r=None, dengan_pola=False):
                          else "saran 1J" if it.get("tf") == "60" else "saran utama")
                     hasil = (j, it["pola"])
                     break
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:515", _ex)
     return hasil if dengan_pola else hasil[0]
 
 
@@ -545,8 +547,8 @@ def asal_saran(sym, arah, harga, r=None):
                     s = next((x for x in r["saran"] if x["pola"] == it["pola"] and x["arah"] == arah), None)
                     sk = skor_setup(r, s, pu) if s else None
                 return dict(jalur=j, pola=it["pola"], skor=sk)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:548", _ex)
     if r and a:
         for s in r["saran"]:
             if s["arah"] == arah and s["eksekusi"] and dekat(s["entry"], 0.5):
@@ -558,45 +560,45 @@ def asal_saran(sym, arah, harga, r=None):
                 j = "saran momentum" if it["jalur"] == "momentum" else "saran news" if it["jalur"].startswith("news") \
                     else "saran " + it["jalur"]
                 return dict(jalur=j, pola=CT.NAMA.get(it["jalur"], it["jalur"]), skor=_skor_ket(it.get("ket")))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:561", _ex)
     try:
         import qse_ichimoku as IC
         for it in IC.lihat()["open"].values():
             if it["sym"] == sym and it["arah"] == arah:
                 return dict(jalur="saran ichimoku", pola="Ichimoku TK Awan Trail", skor=None)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:568", _ex)
     try:
         import qse_ob as OB
         for it in OB.lihat()["open"].values():
             if it["sym"] == sym and arah == "LONG":
                 return dict(jalur="saran orderblock", pola="Order Block + Volume", skor=None)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:575", _ex)
     try:
         import qse_strat as ST
         for k, cfg in ST.STRAT.items():
             for it in ST.lihat(k)["open"].values():
                 if it["sym"] == sym and it["arah"] == arah:
                     return dict(jalur="saran " + k, pola=cfg["nama"], skor=None)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:583", _ex)
     try:
         with open(os.path.join(STATE_DIR, "sentuh_fib.json")) as f:
             g = json.load(f).get("sinyal", {}).get(sym)
         if g and g["arah"] == arah and time.time() - g["t"] <= 2 * 86400 and dekat(g["entry"], 1.0):
             return dict(jalur="saran GZH", pola="Golden Zone Hunter", skor=g.get("skor"))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:590", _ex)
     try:          # v173 QC 71: setup yang pernah disiarkan robot 12 jam terakhir (kandidat conditional, GZH, Whip, lalat, sniper, dst)
         import telegram_notify as _TG
         x = _TG.siaran_cocok(sym, arah, harga)
         if x:
             return dict(jalur=("saran " + x["kunci"]) if x.get("kunci") else "saran siaran", pola=x.get("nama") or x.get("judul") or "siaran robot",
                         skor=None)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:598", _ex)
     return dict(jalur="manual", pola="manual", skor=None)
 
 
@@ -752,8 +754,8 @@ def siklus_btc():
             ath = max(x[1] for x in w)
             teks += (f" | harga {(cl[-1] / ath - 1) * 100:+.0f}% dari puncak | "
                      f"{'di atas' if cl[-1] > ma else 'di bawah'} rata-rata 200 minggu")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:755", _ex)
     _SIK.update(t=time.time(), v=teks)
     return teks
 
@@ -790,8 +792,8 @@ def baris_konteks():
         naik_n = sum(1 for v in ch if v > 0)
         sifat = "lebih kuat dari BTC" if med > bt + 1 else "lebih lemah dari BTC" if med < bt - 1 else "searah BTC"
         alt = f"Altcoin {sifat} (50 alt teratas median {med:+.1f}% 24 jam, {naik_n}/50 naik, BTC {bt:+.1f}%)"
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:793", _ex)
     news = "Berita: tidak ada berita penting 6 jam terakhir"
     try:
         with open(os.path.join(STATE_DIR, "news.json")) as f:
@@ -800,8 +802,8 @@ def baris_konteks():
             p = sum(1 for x in tr if x["arah"] == "LONG")
             news = (f"Berita 6 jam terakhir: {p} positif, {len(tr) - p} negatif, condong "
                     + ("LONG" if p > len(tr) - p else "SHORT" if p < len(tr) - p else "campur"))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:803", _ex)
     bd = berita_depan(3)
     if bd:
         news += f" | berita besar USD {bd['judul']} dalam 3 jam"
@@ -994,7 +996,8 @@ def _live_jalur(jalur):
             import qse_catat as CT
             s = CT.statistik(CT_KEY[jalur])
             return (s["n"], s["wr"], s["pf"], s["net"]) if s["n"] else None
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:997", _ex)
             return None
     if not rs:
         return None
@@ -1070,8 +1073,8 @@ def boleh_ikut(jalur, arah=None, skor=None):
         import qse_overmind as OM          # QC 57: jalur yang 20 trade terakhirnya minus -> kelas ringan
         if OM.kelas_jalur(jalur)[0]:
             lot = "0.2x"
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1073", _ex)
     return tk in IKUT, tk, ik, lot
 
 
@@ -1162,8 +1165,8 @@ def nilai(sym, arah, entry=None):
             merah.append(st["alasan"])
         elif MD.cek_arah(st, arah):
             merah.append(MD.cek_arah(st, arah))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1165", _ex)
     # Rapor koin (A/B/C/D) tidak dipakai lagi: uji 30 ribu trade jalur terbukti 2021-2026, rapor D PF 1.27, A 1.17, B 1.26, C 1.20.
     ps = r.get("pasar", {})
     if ps.get("arah") and ps["arah"] != arah:
@@ -1218,25 +1221,25 @@ def jalur_aktif(sym):
     try:
         import qse_ichimoku as IC
         out += [dict(nama="Ichimoku", jalur="saran ichimoku", **v) for v in IC.lihat()["open"].values() if v["sym"] == sym]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1221", _ex)
     try:
         import qse_ob as OB
         out += [dict(nama="Order Block + Volume", jalur="saran orderblock", **dict(v, arah="LONG")) for v in OB.lihat()["open"].values()
                 if v["sym"] == sym]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1227", _ex)
     try:
         import qse_strat as ST
         for k, cfg in ST.STRAT.items():
             out += [dict(nama=cfg["nama"], jalur="saran " + k, **v) for v in ST.lihat(k)["open"].values() if v["sym"] == sym]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1233", _ex)
     try:          # QC 129: jalur ICT terpisah, supaya /entry dipantau (TP 20%, SL napas, PETA SL, GESER SL)
         import qse_ict as ICT
         out += [dict(nama="ICT sweep + MSS + FVG", jalur="saran ict", **v) for v in ICT.lihat()["open"].values() if v["sym"] == sym]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1238", _ex)
     return out
 
 
@@ -1290,8 +1293,8 @@ def konsultasi(sym, arah=None, entry=None):
     try:
         d24 = FD.derivatif(sym).get("p24")
         p24 = f" | 24 jam {d24:+.1f}%" if d24 is not None else ""
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1293", _ex)
     ja = jalur_aktif(sym)
     if ja:
         rows = ["🎯 <b>SINYAL JALUR TERBUKTI DI KOIN INI</b>"]
@@ -1345,8 +1348,8 @@ def konsultasi(sym, arah=None, entry=None):
     try:
         import qse_pola as PL
         rows += PL.teks(r.get("pola_chart"))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1348", _ex)
     hk = hari_ini_koin(r, arah)
     if hk:
         rows.append(hk)
@@ -1406,8 +1409,8 @@ def konsultasi(sym, arah=None, entry=None):
         if mb:
             rows.append(__import__("html").escape(mb))
         rows += ["Berita: " + __import__("html").escape(b) for b in MK.berita(3)]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1409", _ex)
     try:
         import qse_berita as BR
         hari = BR.hari_ini()
@@ -1496,41 +1499,41 @@ def _sinyal_dari_harga(entry, sl=None):
         for v in list(led["open"].values()) + led["closed"][-300:]:
             if cocok(v.get("entry")) and (time.time() * 1000 - (v.get("sent_ts") or 0)) <= 3 * 86400000:
                 calon.append((v["sym"], v["arah"], v.get("sl")))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1499", _ex)
     try:
         import qse_catat as CT
         d = CT._baca()
         calon += [(v["sym"], v["arah"], v.get("sl")) for v in d["open"] + d["closed"][-200:] if cocok(v.get("entry"))]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1505", _ex)
     try:
         with open(os.path.join(STATE_DIR, "sentuh_fib.json")) as f:
             calon += [(k, g["arah"], g.get("sl")) for k, g in json.load(f).get("sinyal", {}).items() if cocok(g.get("entry"))]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1510", _ex)
     try:
         import qse_alarm as AL
         calon += [(a["sym"], "LONG" if a["L"] else "SHORT", a.get("sl")) for a in AL._lihat()["list"]
                   if a.get("jenis") == "gzh" and cocok(a.get("harga"))]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1516", _ex)
     try:
         import qse_ichimoku as IC
         calon += [(v["sym"], v["arah"], v.get("sl0")) for v in IC.lihat()["open"].values() if cocok(v.get("entry"))]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1521", _ex)
     try:
         import qse_ob as OB
         calon += [(v["sym"], "LONG", v.get("sl")) for v in OB.lihat()["open"].values() if cocok(v.get("entry"))]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1526", _ex)
     try:
         import qse_strat as ST
         for k in ST.STRAT:
             calon += [(v["sym"], v["arah"], v.get("sl0")) for v in ST.lihat(k)["open"].values() if cocok(v.get("entry"))]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1532", _ex)
     for r in _peta_robot().values():
         calon += [(r["symbol"], x["arah"], x.get("sl")) for x in r.get("saran", []) if cocok(x.get("entry"))]
     if sl:
@@ -1637,8 +1640,8 @@ def sinyal_terakhir(sym, arah, harga, hari=3):
             ts = (it.get("sent_ts") or it.get("start_ts") or 0) / 1000
             if it.get("sym") == sym and it.get("arah") == arah and ts >= batas:
                 calon.append((ts, dict(it, jalur=_jalur_led(it))))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1640", _ex)
     try:
         import qse_catat as CT
         d = CT._baca()
@@ -1648,8 +1651,8 @@ def sinyal_terakhir(sym, arah, harga, hari=3):
                     else "saran " + it["jalur"]
                 calon.append((it["t"], dict(it, pola=CT.NAMA.get(it["jalur"], it["jalur"]), jalur=j,
                                             skor=_skor_ket(it.get("ket")))))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1651", _ex)
     rb = None
     for s in (r["saran"] if r else []):
         if s["arah"] == arah:
@@ -1853,8 +1856,8 @@ def entry(args):
         bl = "" if uk.get("usdt") else MD.baris_lot(harga, sl, lot_jalur(jalur), int(kv["LEV"]) if kv.get("LEV") else None)
         if bl:
             rows.insert(4, bl)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:1856", _ex)
     rows.insert(4, teks_ukuran(uk, harga, sl, sym))
     if jp and not kv.get("terisi"):
         try:
@@ -2349,7 +2352,8 @@ def _be(it):
     try:
         import qse_strat as ST
         return ST.be_r(it.get("ikut")) if it.get("ikut") else None
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:2352", _ex)
         return None
 
 
@@ -2563,7 +2567,8 @@ def pernah_dipakai(sym, arah, t_sinyal, uid=None):
         return None
     try:
         d = _baca(_path_uid(uid)) if uid is not None else _load()
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:2566", _ex)
         return None
     batas = (float(t_sinyal) - 900) * 1000
     hasil = None
@@ -3144,8 +3149,8 @@ def JALUR_TERBUKTI():
     try:
         import qse_strat as ST
         out |= {"saran " + k for k in ST.STRAT}
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3147", _ex)
     return out
 
 
@@ -3214,24 +3219,24 @@ def _jalur_tutup(sym, arah):
     try:
         import qse_ichimoku as IC
         cl += IC.lihat().get("closed", [])
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3217", _ex)
     try:
         import qse_ob as OB
         cl += OB.lihat().get("closed", [])
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3222", _ex)
     try:
         import qse_strat as ST
         for k in ST.STRAT:
             cl += ST.lihat(k).get("closed", [])
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3228", _ex)
     try:
         import qse_ict as ICT          # QC 129
         cl += ICT.lihat().get("closed", [])
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3233", _ex)
     cl = [c for c in cl if c.get("sym") == sym and c.get("arah", "LONG") == arah]
     return max(cl, key=lambda c: c.get("selesai", 0)) if cl else None
 
@@ -3246,7 +3251,8 @@ def tren_teks(sym):
         d = lambda e: "di atas" if c[-1] > e else "di bawah"
         return (f"{sym.replace('USDT', '')} 4J {d(e50)} EMA 50 ({(c[-1] / e50 - 1) * 100:+.1f}%) dan {d(e200)} EMA 200 "
                 f"({(c[-1] / e200 - 1) * 100:+.1f}%)")
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3249", _ex)
         return ""
 
 
@@ -3424,8 +3430,8 @@ def baris_pnl(fl, uid=None):
             lev = lev or p["lev"]
             usd = (p["entry"] * fl["pct"] / 100 * fl["sisa"] + fl["real"] * p["modal"] * p["risiko"] / 100) if p.get("entry") \
                 else fl["r"] * p["modal"] * p["risiko"] / 100
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3427", _ex)
     untung = fl["r"] >= 0
     rows = [f"{'🟩' if untung else '🟥'} <b>{'UNTUNG' if untung else 'RUGI'} {fl['r']:+.2f}R</b>"]
     if lev:
@@ -3462,7 +3468,8 @@ def _peta_robot():
     try:
         with open(HASIL) as f:
             return {r["symbol"]: r for r in json.load(f) if r.get("tf", "240") == "240"}
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3465", _ex)
         return {}
 
 
@@ -3521,7 +3528,8 @@ def _pmodal(R):
     try:
         import qse_modal as MD
         return MD.teks_pmodal(R)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:3524", _ex)
         return ""
 
 
@@ -3651,8 +3659,8 @@ def teknik_asal(it):
         for mod, k, nm in (("qse_ichimoku", "ichimoku", "Ichimoku"), ("qse_ob", "orderblock", "Order Block + Volume")):
             try:
                 sumber.append((k, nm, __import__(mod).lihat()))
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_saya.py:3654", _ex)
         for k, nm, d in sumber:
             for x in list(d.get("open", {}).values()) + list(d.get("closed", []))[-200:]:
                 if x.get("sym") == it["sym"] and x.get("arah") == it["arah"] and abs((x.get("t") or 0) - ts) <= 12 * 3600:
@@ -3672,8 +3680,8 @@ def teknik_asal(it):
                             import qse_ichimoku as IC
                             if IC._sinyal(d_)[0] == it["arah"]:
                                 sg = {"ichimoku": 1}
-                        except Exception:
-                            pass
+                        except Exception as _ex:
+                            __import__("config").diam("qse_saya.py:3675", _ex)
                     if sg:
                         k = max(sg, key=lambda z: ST.PF_JALUR.get(z, 1.0))
                         hasil = (k, (ST.STRAT.get(k) or {}).get("nama") or "Ichimoku"); break
@@ -4488,8 +4496,8 @@ def cek_darurat():
             pu = None
             try:
                 pu = __import__("qse_modal").pnl_usdt(it, r)
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_saya.py:4491", _ex)
             st = "OVERSOLD" if it["arah"] == "SHORT" else "OVERBOUGHT"
             pesan.append(f"🚨 <b>DARURAT TP MANUAL / TUTUP SEKARANG: {it['sym']} {it['arah']}</b>\n"
                          f"• Tanda pembalikan di candle 4J terakhir: {tl['alasan']}\n"
@@ -4783,40 +4791,40 @@ def arah_aktif(sym):
             for v in FX.load()["open"].values():
                 if v["status"] in ("MENUNGGU", "TERISI", "TP1"):
                     tambah(v["sym"], v["arah"], "saran robot")
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:4786", _ex)
         try:
             import qse_catat as CT
             for v in CT._baca()["open"]:
                 tambah(v["sym"], v["arah"], "saran " + v["jalur"])
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:4792", _ex)
         try:
             import qse_ichimoku as IC
             for v in IC.lihat()["open"].values():
                 tambah(v["sym"], v["arah"], "Ichimoku")
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:4798", _ex)
         try:
             import qse_ob as OB
             for v in OB.lihat()["open"].values():
                 tambah(v["sym"], "LONG", "Order Block")
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:4804", _ex)
         try:
             import qse_strat as ST
             for k, cfg in ST.STRAT.items():
                 for v in ST.lihat(k)["open"].values():
                     tambah(v["sym"], v["arah"], cfg["nama"])
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:4811", _ex)
         try:
             import qse_alarm as AL
             for a in AL._lihat()["list"]:
                 if a.get("jenis") == "gzh":
                     tambah(a["sym"], "LONG" if a["L"] else "SHORT", "GZH")
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:4818", _ex)
         _AKTIF.update(t=time.time(), peta=peta)
     return list(_AKTIF["peta"].get(sym, []))
 
@@ -4882,7 +4890,21 @@ def peringatan_dini(now=None):
                          f"Sinyal asal posisi ini sudah selesai di buku robot (kena SL jalur, trailing, atau batas waktu). Alasan entry sudah habis.\n"
                          f"<b>Lakukan:</b> tutup posisi di Bybit (Close, Market), lalu /tutup {it['sym'].replace('USDT', '')} {fp(px, t)}.")
             continue
-        if ke_sl < 0.4 or it.get("dini_yakin"):
+        try:          # QC 142: koin liar (HMSTR) dikawal lebih rapat, keputusan di 0.3R dan 0.7R
+            import qse_liar as LI_
+            liar_ = LI_.liar(it["sym"])[0]
+        except Exception as _ex:
+            __import__("config").diam("qse_saya.py:liar_dini", _ex)
+            liar_ = False
+        if liar_ and ke_sl >= 0.7 and it.get("dini_yakin") and not it.get("dini_liar2"):
+            tandai[kunci] = "liar2"
+            pesan.append(f"🐹 <b>KAWAL KOIN LIAR  ·  {it['sym']} {it['arah']}: TETAP TAHAN, JANGAN CL</b>\n"
+                         f"Harga {fp(px, t)}, rugi berjalan {-ke_sl:+.2f}R. SL {fp(it['sl'], t)} tetap batas rugi, tidak bisa lebih dari 1R.\n"
+                         "📊 Uji khusus koin liar 2022-2026 (run_v262): CL di -0.7R atau sesudah 6-12 jam masih minus tidak lolos 4 periode "
+                         "(latih -19R sampai -75R). Koin liar sering balik dari sini.\n"
+                         "👉 <b>Keputusan robot: biarkan SL bekerja.</b> Kalau sinyal asal selesai, robot langsung kirim TUTUP SEKARANG.")
+            continue
+        if ke_sl < (0.3 if liar_ else 0.4) or it.get("dini_yakin"):
             continue
         tandai[kunci] = "yakin"
         sl_now = it["sl"]
@@ -4898,6 +4920,9 @@ def peringatan_dini(now=None):
             cek_.append(f"⏳ Pemeriksaan berikutnya jam ke-{JAM8} ({_jam_wib((f0 + JAM8 * 3600) * 1000)}): kalau saat itu rugi 0.5R atau lebih, "
                         f"robot yang akan menyuruh tutup. Sampai itu, tidak perlu apa-apa.")
         cek_.append("📊 Uji 2021-2026: tutup manual di titik ini menurunkan profit 18 sampai 37%, karena banyak posisi seperti ini balik untung.")
+        if liar_:
+            cek_.append("🐹 KOIN LIAR (seperti HMSTR). Uji khusus koin liar (run_v262): CL di -0.5R, -0.6R, atau saat koin melawan BTC "
+                        "tidak lolos 4 periode (latih -88R, -36R, -3R). Robot kabari lagi di rugi 0.7R.")
         pesan.append(f"🛡 <b>ANALISA ULANG  ·  {it['sym']} {it['arah']}: MASIH AMAN, IKUTI SL</b>\n"
                      f"Harga {fp(px, t)}, rugi berjalan {-ke_sl:+.2f}R. Saya cek ulang:\n" + "\n".join(cek_)
                      + "\n👉 <b>Tidak perlu lakukan apa pun.</b> Kalau posisi harus ditutup, robot akan mengirim <b>TUTUP SEKARANG</b>.")
@@ -4907,6 +4932,8 @@ def peringatan_dini(now=None):
                 k = v.get("id", v["sym"])
                 if tandai.get(k) == "yakin":
                     v["dini_yakin"] = now
+                elif tandai.get(k) == "liar2":
+                    v["dini_liar2"] = now
                 elif tandai.get(k) == "tutup":
                     v["dini_tutup"] = now
         ubah(f)
@@ -5030,7 +5057,8 @@ def sentuh_fib(min_skor=70):
     try:
         with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
             lama = json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5033", _ex)
         return []
     cal = [r for r in lama if r.get("tf", "240") == "240" and r.get("gzh") and not r["gzh"].get("sudah")]
     if not cal:
@@ -5051,8 +5079,8 @@ def sentuh_fib(min_skor=70):
     out = []
     try:
         cal.sort(key=lambda r: -nilai_gzh(r)[0])          # jatah harian dipakai setup skor tertinggi dulu
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5054", _ex)
     for r in cal:
         sym, px = r["symbol"], harga.get(r["symbol"])
         if not px:
@@ -5270,8 +5298,8 @@ def kartu_sl(tidur=False):
                 rows_sl.append(f"💰 <b>TP 20% di {fp(tps, t)}</b> belum kena. Setelah kena, <b>pindahkan SL ke "
                               + (f"{fp(__import__('qse_strat').sl_napas(e, _risk0(it), it['arah']), t)} (-0.25R)</b>, ke entry saat untung +1R"
                                  if not __import__('qse_strat').tps_langsung_entry(it["arah"]) else f"entry {fp(e, t)}</b>"))
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_saya.py:5273", _ex)
         elif it.get("be_ts"):
             rows_sl.append("🔒 SL sudah ke entry (+0.4R)")
         elif it.get("tps_ts"):
@@ -5331,13 +5359,13 @@ def sinyal_jalur(jam=False):
     try:
         import qse_ichimoku as IC
         sumber.append(("ichimoku", "Ichimoku", IC.lihat()["open"].values()))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5334", _ex)
     try:
         import qse_ob as OB
         sumber.append(("orderblock", "Order Block", OB.lihat()["open"].values()))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5339", _ex)
     for k, cfg in ST.STRAT.items():
         sumber.append((k, cfg["nama"], ST.lihat(k)["open"].values()))
     telat_ok = {"ema_short", "rsi_vol", "mcginley", "snr_vol", "smc_choch", "ichimoku"}
@@ -5622,7 +5650,8 @@ def siaga_berita():
     try:
         import qse_berita as BR
         kal = BR.kalender()
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5625", _ex)
         return []
     now = int(time.time() * 1000)
     ev = [e for e in kal if 60 * 60000 <= e["ts"] - now <= 75 * 60000 and BR.hidung_jadwal(e["judul"])]          # QC 108: + GDP, NFP
@@ -5883,8 +5912,8 @@ def cek_jalur(sym, arah=None, entry=None):
         waktu.append(f"Berita besar USD {bd['judul']} dalam 3 jam, sinyal baru ditahan sampai 1 jam sesudah rilis.")
     try:
         waktu.append("BTC: " + ST.btc_ema50_teks().split(" ", 1)[1] + ". Info saja, tidak dipakai menyaring sinyal.")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5886", _ex)
     try:
         import qse_pagi as PG
         lu_ = PG.pasar_luas() or {}
@@ -5929,8 +5958,8 @@ def tentang_koin(sym, df, px):
     f = {}
     try:
         f = FD.coingecko(sym) or {}
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5932", _ex)
     if f:
         rk = f.get("rank")
         kelas = ("koin besar" if rk and rk <= 20 else "koin menengah" if rk and rk <= 100 else
@@ -5951,8 +5980,8 @@ def tentang_koin(sym, df, px):
             out.append(f"Likuiditas: peringkat {pos} dari {len(urut)} koin futures Bybit menurut nilai transaksi 24 jam "
                        f"({FD._uang(tk[sym]['turnover'])})" + (". Makin likuid, makin bagus hasil teknik robot di uji."
                                                                 if pos <= 50 else ". Di luar 50 besar, sebagian teknik robot tidak dipakai di koin ini."))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5954", _ex)
     if df is not None and len(df) > 200:
         h, l, c = (df[k].values.astype(float) for k in ("high", "low", "close"))
         hari_ = [(h[i:i + 6].max() - l[i:i + 6].min()) / c[i + 5] * 100 for i in range(len(c) - 180, len(c) - 5, 6)]
@@ -5969,8 +5998,8 @@ def tentang_koin(sym, df, px):
         if rs:
             out.append(f"Riwayat sinyal robot di koin ini (live): {len(rs)} trade, WR {sum(r > 0 for r in rs) / len(rs) * 100:.0f}%, "
                        f"total {sum(rs):+.1f}R.")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_saya.py:5972", _ex)
     return out
 
 

@@ -45,7 +45,8 @@ def _hasil_lab():
         from config import STATE_DIR
         with open(os.path.join(STATE_DIR, "lab", "slsaran_auto.json")) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_slsaran.py:48", _ex)
         return None
 
 
@@ -56,7 +57,8 @@ def konfig(baku=False):
         try:
             lv, pr = x.split(":")
             tp.append((float(lv), float(pr)))
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_slsaran.py:59", _ex)
             continue
     k = dict(aktif=False, interval=_env("QSE_SLSARAN_INTERVAL", 1.0, float), sumber="mati",
              lev=_env("QSE_LEVERAGE", 1.0, float), buffer=_env("QSE_SL_BUFFER", 0.12, float),

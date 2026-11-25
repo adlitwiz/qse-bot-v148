@@ -102,3 +102,56 @@ SAHAM |= {x.strip().upper() for x in os.environ.get("QSE_SAHAM", "").split(",") 
 def bukan_saham(symbol):
     b = symbol[:-4] if symbol.endswith("USDT") else symbol
     return b.upper() not in SAHAM
+
+
+# QC 142 PENJAGA ERROR DIAM. Blok "except Exception: pass" dulu menelan error tanpa jejak. Sekarang tiap blok itu memanggil diam():
+# error dicatat per tempat (file:baris), dicetak ke log maksimal sekali per jam per tempat, dan ringkasannya ditulis ke state/diam.json
+# tiap 10 menit. /status menampilkan jumlah error diam 24 jam terakhir. Perilaku program tidak berubah (blok tetap lanjut seperti dulu).
+import time as _time
+import threading as _thr
+_DIAM = {}
+_DIAM_LOCK = _thr.Lock()
+_DIAM_T = [0.0]
+
+
+def diam(tempat, ex=None):
+    """Catat error yang sengaja dilewati. Tidak pernah melempar error."""
+    try:
+        now = _time.time()
+        with _DIAM_LOCK:
+            d = _DIAM.setdefault(tempat, dict(n=0, t=0.0, cetak=0.0, pesan=""))
+            d["n"] += 1; d["t"] = now; d["pesan"] = f"{type(ex).__name__}: {ex}"[:160] if ex is not None else ""
+            cetak = now - d["cetak"] >= 3600
+            if cetak:
+                d["cetak"] = now
+            tulis = now - _DIAM_T[0] >= 600
+            if tulis:
+                _DIAM_T[0] = now
+                isi = {k: dict(v) for k, v in _DIAM.items()}
+        if cetak:
+            print(f"[DIAM] {tempat}: {d['pesan']}", flush=True)
+        if tulis:
+            os.makedirs(STATE_DIR, exist_ok=True)
+            p = os.path.join(STATE_DIR, "diam.json")
+            with open(p + ".tmp", "w") as f:
+                _json.dump(isi, f)
+            os.replace(p + ".tmp", p)
+    except Exception:
+        return
+
+
+def ringkas_diam(jam=24, now=None):
+    """(jumlah error, jumlah tempat, 3 tempat tersering) dalam `jam` terakhir, dari memori proses ini dan state/diam.json."""
+    now = now or _time.time()
+    isi = {}
+    try:
+        with open(os.path.join(STATE_DIR, "diam.json")) as f:
+            isi = _json.load(f)
+    except Exception:
+        isi = {}
+    with _DIAM_LOCK:
+        for k, v in _DIAM.items():
+            isi[k] = dict(v)
+    baru = {k: v for k, v in isi.items() if now - float(v.get("t", 0)) <= jam * 3600}
+    top = sorted(baru.items(), key=lambda kv: -kv[1].get("n", 0))[:3]
+    return sum(v.get("n", 0) for v in baru.values()), len(baru), [(k, v.get("n", 0), v.get("pesan", "")) for k, v in top]

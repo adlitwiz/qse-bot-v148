@@ -59,8 +59,8 @@ def _work(sym, tick, pk, tfs):
                                             h1_live=pk.get("h1")))
                 try:          # EMA 200 candle 4J tutup terakhir, untuk jalur Tembus Trendline searah tren
                     out[-1]["e200"] = float(df["close"].ewm(span=200, adjust=False).mean().iloc[-1])
-                except Exception:
-                    pass
+                except Exception as _ex:
+                    __import__("config").diam("main.py:62", _ex)
             else:
                 df = pk["h1c"].iloc[-(TV_BARS - 1):]
                 if len(df) < MIN_BARS:
@@ -108,7 +108,8 @@ def _st_load():
     try:
         with open(STATE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("main.py:111", _ex)
         return {}
 
 
@@ -214,8 +215,8 @@ def _susun_scan(now):
     try:
         c = d4["b1"]["close"].values
         kond.append(f"BTC 1 jam {(c[-1] / c[-2] - 1) * 100:+.2f}% | 3 jam {(c[-1] / c[-4] - 1) * 100:+.2f}%")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("main.py:217", _ex)
     ctx = d4.get("ctx")
     if ctx:
         kond += [TG.e(x) for x in _berita_baris(ctx)]
@@ -308,8 +309,8 @@ def main():
         try:
             TG.send(["⚠️ <b>QSE v150 | SCAN TERLALU LAMA</b>\nmain.py lewat 52 menit dan aku hentikan paksa. "
                      "Jadwal berikutnya tetap jalan. Log: ~/qse_state/main.log"])
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("main.py:311", _ex)
         os._exit(3)
     import threading
     threading.Thread(target=_penjaga_keras, daemon=True).start()
@@ -505,30 +506,30 @@ def _ada_sinyal_hari_ini(led):
         if any(it.get("t", 0) * 1000 >= h0 and SY.boleh_ikut(peta.get(it.get("jalur"), "lain"), it.get("arah"))[0]
                for it in d["open"] + d["closed"][-300:]):
             return True
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("main.py:508", _ex)
     try:
         import qse_ichimoku as IC
         d = IC.lihat()
         if any(it.get("t", 0) * 1000 >= h0 for it in list(d["open"].values()) + d["closed"][-100:]):
             return True
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("main.py:515", _ex)
     try:
         import qse_strat as ST
         for k in ST.STRAT:
             d = ST.lihat(k)
             if any(it.get("t", 0) * 1000 >= h0 for it in list(d["open"].values()) + d["closed"][-100:]):
                 return True
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("main.py:523", _ex)
     try:
         import qse_ob as OB
         d = OB.lihat()
         if any(it.get("t", 0) * 1000 >= h0 for it in list(d["open"].values()) + d["closed"][-100:]):
             return True
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("main.py:530", _ex)
     return False
 
 
@@ -1100,7 +1101,8 @@ def cek_1j(now, jalur_aktif=True, paksa=False):
     try:
         with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
             lama = json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("main.py:1103", _ex)
         return
     r4 = {r["symbol"]: r for r in lama if r.get("tf", "240") == "240" and r["rapor"] in ("A", "B")}
     if not r4:
@@ -1189,7 +1191,8 @@ def uji_mingguan(paksa=False):
     try:
         with open(os.path.join(STATE_DIR, "screening_terbaru.json")) as f:
             lama = json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("main.py:1192", _ex)
         return
     tickers = B.get_tickers()
     syms = B.get_symbols()
@@ -1330,8 +1333,8 @@ def _kartu_jam(results, b1, led):
         c = b1["close"].values
         ch1, ch3 = (c[-1] / c[-2] - 1) * 100, (c[-1] / c[-4] - 1) * 100
         rows.append(f"₿ BTC {c[-1]:,.0f}  ·  1 jam {ch1:+.2f}%  ·  3 jam {ch3:+.2f}%")          # v150: peta BTC satu baris di bawah
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("main.py:1333", _ex)
     pos = [it for it in SY.lihat()["open"].values() if it["status"] in ("TERISI", "TP1")]
     if pos:
         peta = {r["symbol"]: r for r in results}
@@ -2062,7 +2065,8 @@ def _tpc_main(it, k="", entry=None, sl=None):
         if sl is not None:
             it2["sl"] = it2["sl0"] = sl
         return ST.batas_masuk_teks(it, k) + ST.tp_cepat_teks(it2, k=k)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("main.py:2065", _ex)
         return []
 
 
@@ -2086,7 +2090,8 @@ def _baris_level(lv):
             sisa = f"<b>sisa {100 - porsi}% ikut SL berjalan</b>"
         return (f"↳ Entry {TG.fp(e, t)}  ·  SL {TG.fp(sl, t)} (-{pc(sl):.1f}%)  ·  "
                 f"<b>TP {porsi}% {TG.fp(tps, t)} (+{pc(tps):.1f}%)</b>  ·  {sisa}")
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("main.py:2089", _ex)
         return ""
 
 
@@ -2359,8 +2364,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                 lot2, _ = PO_h.lot_hari(lot.split(" ")[0])
                 if lot2 != lot.split(" ")[0]:
                     lot = f"{lot2} (akhir pekan)"
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("main.py:2362", _ex)
             items = [x_ for x_ in items if not x_.get("batal") and not x_.get("uji_live")]          # QC 72 batal, QC 74 uji live: tidak ditawarkan
             if UTAMA_4J:          # v175 QC 73: siaran 4 jam hanya KELAS UTAMA. Kelas ringan dikirim lewat scan 1 jam
                 try:
@@ -2579,8 +2584,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                 if bd:
                     ktx += (f"\n📅 Berita besar USD {TG.e(bd['judul'])} {BR.jam_wib(bd['ts'])}. Sinyal jalur tetap boleh diikuti. "
                             "CPI/FOMC: robot kirim SIAGA 1 jam sebelum")
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("main.py:2582", _ex)
         if tf == "240":          # v175 QC 73: bubble 1 hanya ringkasan pasar. Tiap koin di pesan sendiri, analisa otak di pesan terakhir
             try:
                 import qse_strat as ST_h
@@ -2591,8 +2596,8 @@ def _pesan_tf(tf, results, sel, tag_of, led, events, syms, now, tfs=("240", "60"
                 slot_ = []
                 try:
                     slot_ = MD.baris_slot()
-                except Exception:
-                    pass
+                except Exception as _ex:
+                    __import__("config").diam("main.py:2594", _ex)
                 so.insert(0, f"🎯 <b>QSE v150 | SINYAL {judul}</b>\n{SY.baris_jadwal(rs[0]['tf_ms'] if rs else 4 * 3600000, tutup)}\n{st_btc}\n"
                              f"🟦 <b>{len(ring_rb) + len(ikut)} sinyal KELAS UTAMA</b>: {TG.e(nama_s)}\nTiap koin satu pesan di bawah, urut prioritas."
                              + ("\n" + "\n".join(slot_) if slot_ else "")
@@ -2645,8 +2650,8 @@ if __name__ == "__main__":
             import multiprocessing as _mp
             for _c in _mp.active_children():
                 _c.kill()
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("main.py:2648", _ex)
         sys.stdout.flush()
         sys.stderr.flush()
         os._exit(_kode)

@@ -119,7 +119,8 @@ def _baca():
     try:
         with open(STATE_F) as fh:
             return json.load(fh)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_otak.py:122", _ex)
         return {}
 
 

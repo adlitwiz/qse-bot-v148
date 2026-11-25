@@ -152,8 +152,8 @@ def _markup(teks, markup, terakhir):
     rows = [[{"text": t, "copy_text": {"text": d[2:][:256]}} for t, d in r] for r in salin]
     try:          # QC 108: tombol konfirmasi SL dan tanya entry di pesan posisi
         rows += [[{"text": t, "callback_data": d[:64]} for t, d in r] for r in _QM.baris_aksi(teks)]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("telegram_notify.py:155", _ex)
     if markup and markup.get("inline_keyboard"):
         rows += markup["inline_keyboard"]
     elif markup:
@@ -171,7 +171,8 @@ def _keyboard():
     try:
         import qse_menu as _QM
         return _QM.keyboard()
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("telegram_notify.py:174", _ex)
         return None
 
 
@@ -243,7 +244,8 @@ def siaran_cocok(sym, arah, harga, jam=12, tol=0.03, now=None):
         from config import STATE_DIR
         with open(os.path.join(STATE_DIR, "siaran.json")) as fh:
             lama = json.load(fh)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("telegram_notify.py:246", _ex)
         return None
     now = now or time.time()
     ok = [x for x in lama if x["sym"] == sym and x["arah"] == arah and now - x["t"] <= jam * 3600

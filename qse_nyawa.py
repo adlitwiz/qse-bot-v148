@@ -62,13 +62,13 @@ def sinkron():
     for k in ST.STRAT:
         try:
             sumber.append((k, ST.lihat(k).get("closed", [])))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_nyawa.py:65", _ex)
     for nm, mod in (("ichimoku", "qse_ichimoku"), ("orderblock", "qse_ob")):
         try:
             sumber.append((nm, __import__(mod).lihat().get("closed", [])))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_nyawa.py:70", _ex)
     d = _baca(); sudah = set(d["sudah"]); baru = []
     for k, cl in sumber:
         for it in cl:

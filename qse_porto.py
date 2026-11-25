@@ -147,19 +147,19 @@ def rem():
     try:
         import qse_ichimoku as IC
         cl += [("ichimoku", c) for c in IC.lihat().get("closed", [])]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_porto.py:150", _ex)
     try:
         import qse_ob as OB
         cl += [("orderblock", c) for c in OB.lihat().get("closed", [])]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_porto.py:155", _ex)
     try:
         import qse_strat as ST
         for k in ST.STRAT:
             cl += [(k, c) for c in ST.lihat(k).get("closed", [])]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_porto.py:161", _ex)
     eq = peak = 0.0
     rugi = 0
     for k, c in sorted(cl, key=lambda z: z[1].get("selesai", 0)):

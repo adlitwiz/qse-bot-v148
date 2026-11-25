@@ -158,8 +158,8 @@ def ambil_derivatif():
         v = [float(x["sumOpenInterest"]) for x in j]
         if len(v) == 25:
             oi24 = (v[-1] / v[0] - 1) * 100
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_himbauan.py:161", _ex)
     if oi24 is None:
         try:
             import config as CF

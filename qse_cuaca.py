@@ -72,8 +72,8 @@ def baris(k, it):
         ka = OM.label_kelas_a(it["sym"], k, it["arah"])
         if ka:
             t += f"\n{ka}"
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_cuaca.py:75", _ex)
     if pr:
         src = f"gabungan {pr['gabungan']} sinyal semua koin" if pr.get("gabungan") else f"{pr['n']} sinyal koin ini"
         t += f"\n🏅 Kelas koin {kl or '-'}  ·  rekam jejak teknik ini: WR {pr['wr']:.0f}%, PF {pr['pf']:.2f} ({src})"

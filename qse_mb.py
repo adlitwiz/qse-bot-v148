@@ -92,8 +92,8 @@ class Otak:
             w = np.load(path)
             if w.shape == self.w0.shape:
                 self.w = w.astype(np.float64)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_mb.py:95", _ex)
         return self
 
     def simpan(self, path=F_BOBOT):

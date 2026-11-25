@@ -89,8 +89,8 @@ def _cg():
             d = _baca()
             d["cg"] = [x for x in d.get("cg", []) if time.time() - x[0] < 3 * 86400] + [[time.time(), v["btc"], v["usdt"]]]
             _tulis(d)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_kompas.py:92", _ex)
     return v
 
 
@@ -109,7 +109,8 @@ def _baca():
     try:
         with open(F) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_kompas.py:112", _ex)
         return {}
 
 

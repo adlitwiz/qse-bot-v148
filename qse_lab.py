@@ -117,7 +117,8 @@ def _json(nama):
     try:
         with open(os.path.join(LAB, nama)) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_lab.py:120", _ex)
         return None
 
 
@@ -142,8 +143,8 @@ def _universe():
             try:
                 d = pd.read_csv(os.path.join(LOKAL, f), usecols=["close", "volume"]).tail(2190)
                 skor[f[:-8]] = float((d["close"] * d["volume"]).mean())
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_lab.py:145", _ex)
         top = sorted(skor, key=lambda s: -skor[s])[:N_KOIN]
     else:
         import bybit_fetch as B
@@ -210,8 +211,8 @@ def _binance_arsip(sym, sampai):
                     z = zipfile.ZipFile(io.BytesIO(r.content))
                     teks = z.read(z.namelist()[0]).decode()
                     return [ln.split(",")[:6] for ln in teks.strip().splitlines() if ln and ln[0].isdigit()]
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_lab.py:213", _ex)
         gagal[0] += 1
         return []
     with ThreadPoolExecutor(8) as ex:
@@ -235,8 +236,8 @@ def data_lama(sym, sampai):
     p = os.path.join(DATA, f"{sym}_lama.pkl")
     try:
         return pd.read_pickle(p)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_lab.py:238", _ex)
     tanda = p + ".gagal"
     if os.path.exists(tanda) and time.time() - os.path.getmtime(tanda) < 86400:
         return kosong                                        # baru gagal: coba lagi besok, jangan memperlambat sinyal
@@ -831,8 +832,8 @@ def riset():
     t0 = time.time()
     try:
         os.nice(10)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_lab.py:834", _ex)
     FS = muat_semua()
     if len(FS) < 10 or not any(F["t"][-1] >= _batas() for F in FS.values()):
         _log("data kurang, riset batal", len(FS))
@@ -1099,14 +1100,14 @@ def _posisi_robot():
         import qse_strat as ST
         for k in ST.STRAT:
             out |= {v["sym"] for v in ST.lihat(k).get("open", {}).values()}
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_lab.py:1102", _ex)
     for mod in ("qse_ichimoku", "qse_ob"):
         try:
             m = __import__(mod)
             out |= {v["sym"] for v in m.lihat().get("open", {}).values()}
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_lab.py:1108", _ex)
     return out
 
 
@@ -1133,20 +1134,20 @@ def sinyal():
         try:
             import bybit_fetch as B
             tick = B.get_symbols()
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_lab.py:1136", _ex)
     pesan = _kelola_open(d, FSd, tick)
     tahan, ST = "", None
     try:
         import qse_strat as ST
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_lab.py:1142", _ex)
     if not LOKAL:
         try:
             import qse_pagi as PG
             tahan = PG.short_tahan()
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_lab.py:1148", _ex)
     try:
         import qse_saya as SY
     except Exception:
@@ -1208,8 +1209,8 @@ def _rencana(tr, arah, t):
                              jarak=(tr["x"] * tr["atr"] if tr.get("tipe") == "trail" else None), fmt=_fmt, uji=False)
         if rows:
             return rows
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_lab.py:1211", _ex)
     return [f"💰 <b>TP 20% posisi: {_fmt(tr['entry'] + 0.5 * tr['s'] * tr['risk'], t)} (+0.5R)</b>. Setelah kena, "
             f"<b>pindahkan SL ke entry {_fmt(tr['entry'], t)}</b>"]
 

@@ -97,8 +97,8 @@ def pikir(args):
     try:
         konteks += "\n\nPOSISI SAYA:\n" + "\n".join(f"{v['sym']} {v['arah']} {v['status']} entry {v['entry']} SL {v['sl']}"
                                                   for v in SY.lihat()["open"].values())
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_otak_umum.py:100", _ex)
     j = tanya(f"Koin {sym}. Pertanyaan: {tanyaan}", konteks)
     if not j:
         return "🧠 Otak umum tidak menjawab (jatah harian habis atau koneksi gagal). Kartu /cek tetap jadi acuan."

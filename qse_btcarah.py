@@ -204,8 +204,8 @@ def analisa():
         bd = berita_depan(24)
         if bd:
             rows.append(f"📅 Berita besar 24 jam ke depan: {bd['judul']}. Harga biasanya bergerak cepat di jam itu.")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_btcarah.py:207", _ex)
     oi = {}
     try:
         import qse_lab as LB
@@ -218,8 +218,8 @@ def analisa():
         bk = NW.berita_koin("BTCUSDT", maks=3)
         if bk:
             rows += ["📰 Berita BTC terbaru:"] + bk
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_btcarah.py:221", _ex)
     rows.append("")
 
     # 4. arah hari ini (aturan pagi dan lebar pasar)

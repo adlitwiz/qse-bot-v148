@@ -28,7 +28,8 @@ def _baca():
     try:
         with open(F) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_overmind.py:31", _ex)
         return {}
 
 
@@ -69,15 +70,15 @@ def _hasil_agen():
     try:
         import qse_gzh2 as GZ
         out["🟡 GZH pantulan"] = [(c.get("selesai", 0), c["R"], c["sym"], c.get("arah", "LONG"), "gzh2") for c in GZ._baca().get("closed", [])]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_overmind.py:72", _ex)
     try:
         import qse_whip as WP          # v170 QC 65: mesin news Whip-Fade
         tutup = WP._baca().get("closed", [])
         if tutup:
             out["⚡ Whip-Fade news"] = [(c.get("selesai", 0), c["R"], c["sym"], "LONG", "whip") for c in tutup]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_overmind.py:79", _ex)
     return out
 
 

@@ -66,8 +66,8 @@ def arah_hari(now=None):
             d = json.load(fh)
         if d.get("hari") == aw:
             return d
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_pagi.py:69", _ex)
     import bybit_fetch as B
     import pandas as pd
     h = B._raw("BTCUSDT", "60", 24 * 150)
@@ -91,8 +91,8 @@ def arah_hari(now=None):
         with open(f + ".tmp", "w") as fh:
             json.dump(d, fh)
         os.replace(f + ".tmp", f)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_pagi.py:94", _ex)
     return d
 
 
@@ -234,8 +234,8 @@ def ramal(sesi="pagi", gerak_t=0):
         bd = berita_depan(jam_berita)
         if bd:
             rows += ["", f"📅 Berita besar {jam_berita} jam ke depan: {bd['judul']}. Jam rilis biasanya memicu gerak cepat."]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_pagi.py:237", _ex)
     rows += ["", "Pastikan semua SL terpasang di Bybit. Robot mengirim peringatan GERAK SERENTAK kalau terjadi."]
     return "\n".join(rows)
 
@@ -310,8 +310,8 @@ def pasar_luas():
         if time.time() - j["t"] < 1800 and "dom_turun" in j["res"]:
             _LUAS[:] = [j["t"], j["res"]]
             return j["res"]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_pagi.py:313", _ex)
     import bybit_fetch as B
     tk = B.get_tickers()
     top = [s for s, _ in sorted(((s, v["turnover"]) for s, v in tk.items() if s.endswith("USDT") and s not in STABIL),
@@ -331,7 +331,8 @@ def pasar_luas():
                     if len(c) >= p:
                         hit[k][1] += 1
                         hit[k][0] += int(c.iloc[-1] > c.ewm(span=p, adjust=False).mean().iloc[-1])
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_pagi.py:334", _ex)
             continue
     res = {k: (v[0] / v[1] if v[1] else None) for k, v in hit.items()}
     res.update(_altbtc(harian))
@@ -340,8 +341,8 @@ def pasar_luas():
         with open(fcache + ".tmp", "w") as f:
             json.dump({"t": time.time(), "res": res}, f)
         os.replace(fcache + ".tmp", fcache)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_pagi.py:343", _ex)
     return res
 
 

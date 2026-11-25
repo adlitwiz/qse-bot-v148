@@ -19,7 +19,8 @@ def _load():
     try:
         with open(CACHE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_fundamental.py:22", _ex)
         return {}
 
 
@@ -184,30 +185,30 @@ def derivatif(sym):
                          timeout=10).json()["result"]["list"][0]
         out.update(funding=float(t.get("fundingRate") or 0) * 100, oi_usd=float(t.get("openInterestValue") or 0),
                    vol=float(t.get("turnover24h") or 0), p24=float(t.get("price24hPcnt") or 0) * 100)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_fundamental.py:187", _ex)
     try:
         r = requests.get(BYBIT_URL + "/v5/market/open-interest", timeout=10, params=dict(
             category="linear", symbol=sym, intervalTime="1h", limit=25)).json()["result"]["list"]
         oi = [float(x["openInterest"]) for x in sorted(r, key=lambda x: int(x["timestamp"]))]
         if len(oi) >= 25 and oi[0] > 0:
             out["oi_ch"] = (oi[-1] - oi[0]) / oi[0] * 100
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_fundamental.py:195", _ex)
     try:
         r = requests.get(BYBIT_URL + "/v5/market/account-ratio", timeout=10, params=dict(
             category="linear", symbol=sym, period="1h", limit=1)).json()["result"]["list"]
         if r:
             out["long_pct"] = float(r[0]["buyRatio"]) * 100
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_fundamental.py:202", _ex)
     try:
         r = requests.get(BYBIT_URL + "/v5/market/instruments-info", timeout=10,
                          params=dict(category="linear", symbol=sym)).json()["result"]["list"]
         if r and r[0].get("launchTime"):
             out["umur"] = (time.time() * 1000 - int(r[0]["launchTime"])) / 86400000
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_fundamental.py:209", _ex)
     return out
 
 

@@ -11,8 +11,8 @@ import requests
 try:
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
-except Exception:
-    pass
+except Exception as _ex:
+    __import__("config").diam("qse_listener.py:14", _ex)
 
 STATE_DIR = os.environ.get("QSE_STATE_DIR") or os.path.expanduser("~/qse_state")
 ENV = os.path.join(STATE_DIR, ".env")
@@ -67,10 +67,20 @@ def _scan_abdul(arah, sumber):
         _st({"abdul_t": time.time()})
         import qse_radar as RD
         b = RD.scan_abdul(arah, sumber)
-        if b:
-            TG.send(b)
+        for b_ in b or []:
+            _kirim_kartu(b_)
     except Exception as ex:
         print("[WARN] scan abdul", ex)
+
+
+def _kirim_kartu(b_, teknik="", paksa=False):
+    """QC 143: kartu sinyal terbukti bagus (NILAI 9/10 atau skor 80+) dan bukan koin liar wajib bergambar. Lainnya teks seperti dulu."""
+    try:
+        import qse_gambar as GB
+        return GB.kirim_kartu(b_, teknik, paksa=paksa)
+    except Exception as ex:
+        __import__("config").diam("qse_listener.py:_kirim_kartu", ex)
+        return TG.send([b_]) or []
 
 
 def _scan_vonis(arah):
@@ -78,7 +88,7 @@ def _scan_vonis(arah):
     try:
         import qse_radar as RD
         for b_ in RD.scan_vonis(arah):
-            TG.send([b_])
+            _kirim_kartu(b_)
     except Exception as ex:
         print("[WARN] scan vonis", ex)
 
@@ -205,8 +215,9 @@ def _tugas_berkala():
             if ST.TAMBAHAN:          # QC 139: LONG tambahan saat vonis LONG baru, pesan sendiri, tidak memakan 12 slot
                 TG.send(["🚀 <b>QSE v150 | SINYAL TAMBAHAN SEARAH VONIS LONG</b>\nVonis LONG masih baru (12 jam pertama). Sinyal LONG "
                          "teknik tunggal di bawah biasanya hanya uji live, tapi saat vonis LONG baru hasil ujinya bagus: PF 1.70 / 1.74 / "
-                         "1.61 / 2.07 (latih, uji, 12 bulan, 6 bulan). Pakai modal terpisah atau lot setengah, tidak memakan 12 slot.\n\n"
-                         + "\n\n".join(ST.TAMBAHAN[:6])])
+                         "1.61 / 2.07 (latih, uji, 12 bulan, 6 bulan). Pakai modal terpisah atau lot setengah, tidak memakan 12 slot."])
+                for kt_ in ST.TAMBAHAN[:6]:          # QC 143: jalur PF 1.6-2.1, tiap kartu bergambar (kecuali koin liar)
+                    _kirim_kartu(kt_, paksa=True)
         except Exception as ex:
             print("[WARN] strategi", ex)
         try:
@@ -269,8 +280,8 @@ def _tugas_berkala():
                             import qse_catat as CT
                             if CT.rem7()["aktif"]:
                                 jd += "\n🧯 <b>REM 7 HARI AKTIF</b>: hanya NILAI 10 yang dikirim, pakai setengah lot"
-                        except Exception:
-                            pass
+                        except Exception as _ex:
+                            __import__("config").diam("qse_listener.py:272", _ex)
                         TG.send([f"📋 <b>QSE v150 | {len(kumpul)} SINYAL BARU</b>\n{jd}" + (f"\n{pilih_b}" if pilih_b else "")
                                  + ("\n" + peta_btc if peta_btc else "") + ("\n\n" + "\n".join(slot_b) if slot_b else "")])
                     mid = None
@@ -284,7 +295,10 @@ def _tugas_berkala():
                             mid = TG.kirim_foto(png, cap)
                     except Exception as ex:
                         print("[WARN] gambar sinyal", ex)
-                    ids = [mid] if mid else TG.send([f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk])
+                    if mid:
+                        ids = [mid]
+                    else:          # QC 143: caption kepanjangan atau gambar gagal, sinyal terbukti tetap bergambar
+                        ids = _kirim_kartu(f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk, nama)
                     if _layak_pin(rk):          # QC 71: yang disematkan hanya KELAS UTAMA dan KOIN JAGOAN
                         _pin_sinyal(ids)
                     try:
@@ -299,7 +313,7 @@ def _tugas_berkala():
                 except Exception as ex:
                     print("[WARN] baris kartu", ex)
                     tambah = []
-                ids = TG.send([f"📌 <b>QSE v150 | DETAIL SINYAL BARU {nama}</b>\n"
+                ids = _kirim_kartu(f"📌 <b>QSE v150 | DETAIL SINYAL BARU {nama}</b>\n"
                                + (f"<b>{ST.kelas(pr[0])}</b>\n" if ST.kelas(pr[0]) else "")
                                +
                                f"{('⭐ ' + ' + '.join(lb)) if lb else 'tanpa label'}  ·  PF jalur {pr[1]:.2f}  ·  "
@@ -307,7 +321,7 @@ def _tugas_berkala():
                                f"{SY.baris_jadwal(telat_menit=3)}\n" + (btc_b + "\n" if btc_b else "")
                                + (peta_btc + "\n" if peta_btc and no == 1 else "")
                                + ("\n".join(tambah) + "\n" if tambah else "")
-                               + ("\n".join(slot_b) + "\n" if slot_b and no == 1 else "") + m])
+                               + ("\n".join(slot_b) + "\n" if slot_b and no == 1 else "") + m, nama)
                 if _layak_pin(m):
                     kirim.append((slot, ids))
             terbaik = {}
@@ -576,8 +590,8 @@ def _jadwal_lab(now):
             if now - LABP["t"] > 50 * 60:
                 try:
                     os.killpg(p.pid, signal.SIGKILL)
-                except Exception:
-                    pass
+                except Exception as _ex:
+                    __import__("config").diam("qse_listener.py:579", _ex)
                 print("[WARN] lab", LABP["tugas"], "lebih dari 50 menit, dihentikan")
                 LABP["p"] = None
             return
@@ -628,8 +642,8 @@ def _bunuh_main(alasan):
     try:
         if p is not None and p.poll() is None:
             os.killpg(p.pid, signal.SIGKILL)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_listener.py:631", _ex)
     subprocess.run(["pkill", "-9", "-f", "main.py$"], check=False)
     MAIN["p"] = None
     print("[WARN] main.py dihentikan:", alasan)
@@ -642,7 +656,8 @@ def _ekor_log(n=600):
             f.seek(0, 2)
             f.seek(max(0, f.tell() - n))
             return f.read().decode("utf-8", "ignore")
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_listener.py:645", _ex)
         return ""
 
 
@@ -856,19 +871,19 @@ def waktu_sinyal_terakhir():
         s = LT.state()
         t += [float(x.get("t", 0)) for x in s.get("open", {}).values()] + [float(x.get("t", 0)) for x in s.get("riwayat", [])[-20:]
                                                                             if x.get("R") is not None]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_listener.py:859", _ex)
     try:
         import qse_gzh2 as GZ2
         g = GZ2._baca()
         t += [float(x.get("t", 0)) for x in g.get("open", {}).values()] + [float(x.get("t", 0)) for x in g.get("closed", [])[-20:]]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_listener.py:865", _ex)
     try:
         import qse_gurita as GR
         t += [float(p.get("t", 0)) for p in GR._baca().get("pick", [])[-20:]]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_listener.py:870", _ex)
     return max(t)
 
 
@@ -950,7 +965,7 @@ def _tugas_menit():
     try:          # QC 140: pindai ulang tiap 60 menit selama vonis baru (<= 12 jam), kirim hanya kalau ada sinyal searah baru
         import qse_radar as _RDv
         for b_ in _RDv.ulang_vonis():
-            TG.send([b_])
+            _kirim_kartu(b_)
     except Exception as ex:
         print("[WARN] ulang vonis", ex)
     try:          # QC 135: pengingat ceklis beli BTC 20:00 WIB
@@ -1001,7 +1016,7 @@ def _tugas_menit():
     try:          # v175 QC 73: scan otomatis tiap 1 jam, satu koin satu bubble, ditutup analisa otak dan saran GZH
         import qse_radar as RD
         for b_ in RD.jalankan():
-            ids = TG.send([b_])
+            ids = _kirim_kartu(b_)
             if _layak_pin(b_) and "ANALISA OTAK" not in b_:
                 _pin_sinyal(ids or [])
     except Exception as ex:
@@ -1254,6 +1269,14 @@ def main():
         raise SystemExit(f"Isi TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di {ENV}")
     os.makedirs(STATE_DIR, exist_ok=True)
     print("QSE listener aktif", flush=True)
+    try:          # QC 142 CEK MANDIRI saat hidup: semua modul qse_* harus bisa dimuat. Gagal = kabar ke grup, bukan diam.
+        import cek_mandiri as _CM
+        _gagal = _CM.muat_semua()
+        if _gagal:
+            TG.send(["🩺 <b>CEK MANDIRI ROBOT: ADA MODUL GAGAL DIMUAT</b>\n" + "\n".join(f"• {TG.e(m)}: {TG.e(e)}" for m, e in _gagal[:10])
+                     + "\nFitur di modul itu tidak jalan sampai diperbaiki. Kirim pesan ini ke Opus."])
+    except Exception as _ex:
+        __import__("config").diam("qse_listener.py:cek_mandiri", _ex)
     try:
         import qse_saya as _SY
         _SY.hapus_manual_sekali()

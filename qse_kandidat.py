@@ -32,8 +32,8 @@ def fokus():
             return "SHORT"
         if k and k["status"] in ("FOKUS LONG", "CONDONG LONG"):
             return "LONG"
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_kandidat.py:35", _ex)
     try:
         import qse_strat as ST
         return "LONG" if ST.btc_naik() else "SHORT"

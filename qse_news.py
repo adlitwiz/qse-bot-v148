@@ -184,7 +184,8 @@ def _load():
     try:
         with open(FILE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_news.py:187", _ex)
         return {}
 
 
@@ -205,7 +206,8 @@ def _ambil_json(nama, x):
     import json as _json
     try:
         js = _json.loads(x)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_news.py:208", _ex)
         return []
     out = []
     if nama == "CryptoCompare":
@@ -272,11 +274,12 @@ def _waktu(s):
     try:
         from email.utils import parsedate_to_datetime
         return parsedate_to_datetime(s).timestamp()
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_news.py:275", _ex)
     try:
         return dt.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_news.py:279", _ex)
         return None
 
 
@@ -324,8 +327,8 @@ def _hasil(sym):
             for r in json.load(f):
                 if r["symbol"] == sym and r.get("tf", "240") == "240":
                     return r
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_news.py:327", _ex)
     return None
 
 
@@ -335,7 +338,8 @@ def _harga(sym):
         t = requests.get(BYBIT_URL + "/v5/market/tickers", params={"category": "linear", "symbol": sym},
                          timeout=10).json()["result"]["list"][0]
         return float(t["lastPrice"])
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_news.py:338", _ex)
         return None
 
 
@@ -346,7 +350,8 @@ def _atr1j(sym, pub, now):
         rows = requests.get(BYBIT_URL + "/v5/market/kline", timeout=10, params={"category": "linear", "symbol": sym,
                             "interval": "60", "limit": 40}).json()["result"]["list"]
         k = sorted(([int(x[0]), float(x[1]), float(x[2]), float(x[3]), float(x[4])] for x in rows), key=lambda z: z[0])
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_news.py:349", _ex)
         return None
     if len(k) < 16:
         return None
@@ -647,7 +652,8 @@ def _k5(sym, n=30):
         import config as CF
         r = requests.get(CF.BYBIT_URL + "/v5/market/kline", params=dict(category="linear", symbol=sym, interval="5", limit=n), timeout=8)
         return sorted((int(x[0]), float(x[1]), float(x[2]), float(x[3]), float(x[4]), float(x[5])) for x in r.json()["result"]["list"])
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_news.py:650", _ex)
         return []
 
 

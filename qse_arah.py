@@ -72,7 +72,8 @@ def _hari_sama(sym):
     for th in range(now.tm_year - 1, now.tm_year - 6, -1):
         try:
             t = calendar.timegm((th, now.tm_mon, now.tm_mday, 0, 0, 0)) * 1000
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_arah.py:75", _ex)
             continue
         i = int(np.searchsorted(idx, t))
         if i >= len(idx) or abs(idx[i] - t) > 86400000 or i < 7 or i + 7 >= len(c):
@@ -174,8 +175,8 @@ def teks(args):
     try:
         import qse_saya as SY
         blok.append(SY.baris_pasar())
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_arah.py:177", _ex)
     return "\n\n".join(blok)
 
 
@@ -237,11 +238,11 @@ def harian():
             + (": robot kirim SIAGA sekitar 1 jam sebelum (tutup yang untung, tahan yang rugi)"
                if any(x in e["judul"].upper() for x in ("CPI", "FOMC", "FED", "INTEREST RATE")) else "")
             for e in ev[:5]) + "\nSinyal jalur tetap jalan saat berita (uji 2021-2026: tidak lebih jelek)." if ev else "Tidak ada."))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_arah.py:240", _ex)
     try:
         blok.append("₿ <b>BTC</b> (info, tidak dipakai menyaring sinyal)\n" + ST.btc_ema50_teks())
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_arah.py:244", _ex)
     blok.append("Detail satu koin: /cek KOIN  ·  sinyal valid kapan saja: /sinyal4j  ·  hasil live: /jalur")
     return "\n\n".join(blok)

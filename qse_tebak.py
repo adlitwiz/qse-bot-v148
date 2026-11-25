@@ -74,7 +74,8 @@ def _f(path, isi=None):
         try:
             with open(p) as fh:
                 return json.load(fh)
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_tebak.py:77", _ex)
             return None
     try:
         with open(p + ".tmp", "w") as fh:
@@ -89,7 +90,8 @@ def _harga_di(s, T):
     k = (T - 3600) * 1000
     try:
         return float(s.loc[k]) if k in s.index else None
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_tebak.py:92", _ex)
         return None
 
 
@@ -113,7 +115,8 @@ def _alt24(T, now):
                 a, b = _harga_di(df["close"].astype(float), T), _harga_di(df["close"].astype(float), T - 86400)
                 if a and b:
                     vals.append(max(-0.5, min(0.5, math.log(a / b))))
-            except Exception:
+            except Exception as _ex:
+                __import__("config").diam("qse_tebak.py:116", _ex)
                 continue
     return sum(vals) / len(vals) if len(vals) >= 15 else None
 

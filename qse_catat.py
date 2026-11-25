@@ -71,7 +71,8 @@ def _k15(sym, mulai_ms):
                          params={"category": "linear", "symbol": sym, "interval": "15", "start": int(mulai_ms), "limit": 1000})
         rows = sorted(r.json()["result"]["list"], key=lambda x: int(x[0]))
         return [(int(x[0]), float(x[2]), float(x[3]), float(x[4])) for x in rows[:-1]]   # hanya candle tutup
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_catat.py:74", _ex)
         return None
 
 
@@ -175,19 +176,19 @@ def _tutup_terbukti():
     try:
         import qse_ichimoku as IC
         out += [("ichimoku", "Ichimoku", c) for c in IC.lihat().get("closed", [])]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_catat.py:178", _ex)
     try:
         import qse_ob as OB
         out += [("orderblock", "Order Block + Volume", c) for c in OB.lihat().get("closed", [])]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_catat.py:183", _ex)
     try:
         import qse_strat as ST
         for k, cfg in ST.STRAT.items():
             out += [(k, cfg["nama"], c) for c in ST.lihat(k).get("closed", [])]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_catat.py:189", _ex)
     # v150: R = hasil menurut aturan keluar yang diikuti orang (TPawal 20% lalu SL ke entry, jam 12, 30 jam), R_jalur = aturan jalur lama
     hasil = []
     for k, n, c in out:
@@ -228,8 +229,8 @@ def rem7(maks_umur=300):
                 try:
                     if ST.prioritas(k, c)[0] < 3:
                         continue
-                except Exception:
-                    pass
+                except Exception as _ex:
+                    __import__("config").diam("qse_catat.py:231", _ex)
                 tot += float(c["R"]); n += 1
             v = dict(aktif=tot < REM7_BATAS, total_r=round(tot, 2), n=n)
     except Exception as ex:
@@ -329,8 +330,8 @@ def teks():
         rm = PO.rem()
         rows.append("🛡 Rem portofolio: " + (f"AKTIF, lot setengah ({rm})" if rm else "tidak aktif, lot normal" if PO.REM_LOT else
                                             f"mati, diganti batas {MD.MAKS_POSISI} posisi jalan per orang"))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_catat.py:332", _ex)
     if lama:
         rows += ["", "🗄 " + _baris(f"Arsip sebelum v150 (tidak dihapus)", lama)]
     try:

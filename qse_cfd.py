@@ -275,8 +275,8 @@ def baris_lot(bsym, harga, jarak, faktor=1.0):
             pem = str(SY._peng().get("pemilik") or "")
             if pem and pem not in uids:
                 uids.insert(0, pem)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_cfd.py:278", _ex)
         for u in uids:
             p = MD.profil(u)
             if p:
@@ -285,8 +285,8 @@ def baris_lot(bsym, harga, jarak, faktor=1.0):
                 except Exception:
                     nm = str(u)
                 orang.append((str(nm), p["modal"], p["risiko"]))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_cfd.py:288", _ex)
     if not orang:
         orang = [("contoh modal 100 USD", 100.0, 1.0)]
     rows = []
@@ -423,8 +423,8 @@ def cek(now=None, data=None):
                     r2_ = rsi2(C)[-1]
                     if C[-1] > sma(C, 200)[-1]:
                         dekat.append((round(r2_, 1), nama))
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_cfd.py:426", _ex)
         except Exception as ex:
             print("[WARN] cfd", kode, ex)
     d["diag"] = dict(t=now, terbaca=terbaca, total=len(INST), dekat=sorted(dekat)[:4])

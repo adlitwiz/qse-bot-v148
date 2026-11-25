@@ -102,7 +102,8 @@ def _sinyal_robot():
                 r = float(it.get("risk") or abs(e - float(it.get("sl0") or it["sl"])))
                 if e > 0 and r > 0:
                     out.append(dict(sym=it["sym"], arah=it["arah"], entry=e, t=t, risk=r))
-            except Exception:
+            except Exception as _ex:
+                __import__("config").diam("qse_mingguan.py:105", _ex)
                 continue
     return out
 

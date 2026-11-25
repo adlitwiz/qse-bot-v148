@@ -334,8 +334,8 @@ def r_hasil(c):
         tr_ = tps_r(c["arah"])
         if risk > 0 and c.get("best") is not None and (c["best"] - e) * d / risk >= tr_:
             return TPS_PORSI * tr_ + (1 - TPS_PORSI) * max(R, 0.0)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:337", _ex)
     return R
 
 
@@ -422,8 +422,8 @@ def btc_ema50_teks():
         k = KP.kompas()
         if k:
             teks = f"{k['ikon']} Kompas {k['status']} (15m/1J/4J + USDT.D)  ·  " + teks
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:425", _ex)
     return teks
 
 
@@ -526,8 +526,8 @@ def sepi_jam(now=None):
         import qse_radar as RD
         for v in (RD._baca().get("kirim") or {}).values():
             akhir = max(akhir, float(v[0] if isinstance(v, list) else v))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:529", _ex)
     return (now - akhir) / 3600 if akhir > 0 else 0.0
 
 
@@ -558,8 +558,8 @@ def akhir_siaran():
         import qse_radar as RD
         for v in (RD._baca().get("kirim") or {}).values():
             akhir = max(akhir, float(v[0] if isinstance(v, list) else v))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:561", _ex)
     return akhir
 
 
@@ -719,7 +719,8 @@ def tambahan_vonis(it):
     try:
         import qse_vonis as QV
         return QV.lot_vonis_baru("LONG")[0] > 1
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:722", _ex)
         return False
 
 
@@ -757,14 +758,14 @@ def uji_live_teks():
             for c in lihat(k).get("closed", []):
                 if c.get("uji_live") and c.get("R") is not None:
                     g.setdefault(c["uji_live"].split(" (")[0], []).append(float(c["R"]))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_strat.py:760", _ex)
     rows = ["🧪 <b>UJI LIVE</b> (kelompok yang rugi atau impas di uji mundur: dicatat robot, tidak disiarkan. Naik lagi kalau hasil live berbalik)"]
     try:
         import qse_lalat as LT
         rows.append(LT.rapor_uji() + ("" if not LT.siar() else " (yang disiarkan hanya medali dan kualitas tinggi)"))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:766", _ex)
     if not g:
         rows.append("Belum ada trade kertas uji live jalur yang selesai.")
     for nm, r in sorted(g.items(), key=lambda z: -len(z[1])):
@@ -886,7 +887,8 @@ def kolam_r(lo, hi, arah, px, risk, n=20):
         if not risk or risk <= 0 or len(lo) < n:
             return None
         return float((px - min(lo[-n:])) / risk) if arah == "LONG" else float((max(hi[-n:]) - px) / risk)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:889", _ex)
         return None
 
 
@@ -927,7 +929,8 @@ def pump_tolak(df, arah):
             return f"candle 4J sinyal sudah anjlok {dump * 100:.0f}%, SHORT di dasar dump (uji 2021-2026 rata -0.18R)"
         r30 = float(c.iloc[-1]) / float(c.iloc[-181]) - 1
         return f"koin sudah naik {r30 * 100:.0f}% dalam 30 hari, SHORT melawan pump" if r30 > 0.30 else ""
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:930", _ex)
         return ""
 
 
@@ -966,7 +969,8 @@ def batas_masuk(it, k):
             return None
         akhir = it.get("t", time.time()) + 14400 * umur_maks(k)      # sama dengan aturan pesan 4J
         return it["entry"] - 0.5 * risk, it["entry"] + 0.5 * risk, akhir
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:969", _ex)
         return None
 
 
@@ -1152,7 +1156,8 @@ def tp_cepat_teks(it, fmt=None, k=None, waktu=True):
             return rencana_be(it["entry"], sl0, it.get("arah", "LONG"), it.get("tick", 0.0001), be, jarak=jarak, fmt=fmt, waktu=waktu)
         return rencana_tp(it["entry"], sl0, it.get("arah", "LONG"), it.get("tick", 0.0001), tp=it.get("tp"), jarak=jarak, fmt=fmt,
                           waktu=waktu)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:1155", _ex)
         return []
 
 
@@ -1230,8 +1235,8 @@ def lolos_mode(pr):
         import qse_catat as CT
         if CT.rem7()["aktif"] and pr[0] < REM7_NILAI:
             return False
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:1233", _ex)
     return pr[0] >= MODE_MIN[mode_sinyal()]
 
 
@@ -1410,8 +1415,8 @@ def _combo(df, k, arah, bn, sym=None):
             try:
                 if OB._sinyal(d):
                     nama.add("Order Block")
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_strat.py:1413", _ex)
     # EMA 9/21 cross searah EMA 200 dengan volume 20% tertinggi: diuji 20 Okt 2026 sebagai teknik baru. Sendiri impas
     # (PF 0.98 saat tidak bareng jalur lain), jadi bukan jalur sinyal, tapi sebagai pendukung combo: sinyal jalur yang
     # sendirian PF 1.19, dengan pendukung ini PF 1.33 (2021-23 1.25, 2024-26 1.38). Stochastic, Williams %R, RSI 30/70 rugi,
@@ -1431,8 +1436,8 @@ def _combo(df, k, arah, bn, sym=None):
                 nama.add("EMA 9/21 + Volume")
             if arah == "SHORT" and e9[i] < e21[i] and e9[i - 1] >= e21[i - 1] and cc[i] < e2[i]:
                 nama.add("EMA 9/21 + Volume")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:1434", _ex)
     if sym:
         # GZH dikirim terpisah (alarm fib), dicek dari catatan jalur GZH 72 jam terakhir
         try:
@@ -1441,8 +1446,8 @@ def _combo(df, k, arah, bn, sym=None):
                 if v.get("sym") == sym and v.get("arah") == arah and 0 <= now - v.get("t", 0) <= 72 * 3600 and k != "GZH":
                     nama.add(STRAT["GZH"]["nama"])
                     break
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_strat.py:1444", _ex)
     # candle sinyal inside bar (high dan low di dalam candle sebelumnya): uji 2021-2026 PF 1.39 (dev 1.33, uji 1.45)
     # vs 1.25, konsisten di 7 dari 9 jalur. Dihitung satu pendukung combo: combo 3+ jadi 4.0 per hari, PF tetap 1.42
     h, l = df["high"].values.astype(float), df["low"].values.astype(float)
@@ -1519,6 +1524,11 @@ def jalankan(baru_ok=True):
         df = k4_kuat(sym, 600)          # QC 123: ulang otomatis kalau gagal atau candle terakhir telat
         if df is None or len(df) < 261:
             return sym, {}, None, 0.0
+        try:          # QC 142: tiap scan 4J sekaligus mengukur koin liar di semua koin (data sudah ada, tanpa panggilan tambahan)
+            import qse_liar as LI
+            LI.atr_pct(sym, df)
+        except Exception as _ex:
+            __import__("config").diam("qse_strat.py:liar_scan", _ex)
         return sym, sinyal(df, bn, netral_longgar(bj)), df, float((df["close"] * df["volume"]).iloc[-180:].sum())
     with ThreadPoolExecutor(8) as ex:
         semua = list(ex.map(cek, pindai))
@@ -1842,8 +1852,8 @@ def pindai_sekarang(batas=60, top=None, intrabar=False):
             if not why:
                 try:
                     why = __import__("qse_nyawa").kapok(sym, arah)
-                except Exception:
-                    pass
+                except Exception as _ex:
+                    __import__("config").diam("qse_strat.py:1845", _ex)
             if not why and mundur and QPL:          # sinyal candle sebelumnya: batal kalau candle terakhir memberi tanda lawan
                 tl = QPL.tanda_lawan(sym, arah)
                 if tl and tl["batal"]:
@@ -1851,8 +1861,8 @@ def pindai_sekarang(batas=60, top=None, intrabar=False):
             pc = ""
             try:
                 pc = QPL.pola_sinyal(*(d_[x_].values.astype(float) for x_ in ("open", "high", "low", "close")), arah) if QPL else ""
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_strat.py:1854", _ex)
             sp = SPESIALIS.get((k, arah))
             sp_ok = bool(sp and bj is not None and (sp[0] == "atas") == (bj > 0))
             nilai = (2 if sp_ok else 0) + (1 if pc and QPL and (k, arah) in QPL.POLA_TERUJI else 0) + (1 if geser < 0 else 0) + (0 if mundur else 1) \
@@ -1971,8 +1981,8 @@ def pindai_teks(maks=6):
     for r in valid:          # QC 107: label ✨ Golden Moment juga tampil di pindai paksa
         try:
             RD.golden(r, inf.get("bj"))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_strat.py:1974", _ex)
     return TG.PISAH.join(RD.bubble(valid, lewat, inf, "PINDAI PAKSA", maks=maks))
 
 
@@ -1982,7 +1992,8 @@ def _sudah_pakai(it):
     try:
         import qse_saya as SY
         return SY.baris_sudah_pakai(it["sym"], it["arah"], it.get("t"))
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:1985", _ex)
         return []
 
 
@@ -2017,8 +2028,8 @@ def kartu(k, no, it, a):
             kp_teks = (kp_teks + "\n" if kp_teks else "") + why_
         if kk != 1.0:
             lot_b = "0.2x"          # kelas ringan
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:2020", _ex)
     try:          # QC 112: LONG jenuh beli tanpa vonis LONG, lot 0.5x
         import qse_vonis as QV
         km, kt = QV.lot_momentum(it["sym"], it["arah"])
@@ -2049,6 +2060,14 @@ def kartu(k, no, it, a):
             kp_teks = (kp_teks + "\n" if kp_teks else "") + bt_
     except Exception as ex:
         print("[WARN] skor sinyal kartu", ex)
+    try:          # QC 141: tanda koin liar (seperti HMSTR), label saja
+        import qse_liar as LI
+        lb_ = LI.baris(it["sym"], (a or {}).get("df") if isinstance(a, dict) else None)
+        if lb_:
+            it["liar"] = True
+            kp_teks = (kp_teks + "\n" if kp_teks else "") + lb_
+    except Exception as ex:
+        print("[WARN] tanda liar", ex)
     jg, ju = [], False
     try:
         import qse_jagoan as JG          # QC 60/61: label koin jagoan, KELAS UTAMA otomatis untuk jagoan sejati
@@ -2188,5 +2207,6 @@ def baris_scan():
         return (f"Cakupan scan: {si.get('terbaca', 0)}/{si.get('koin', 0)} koin terbaca"
                 + (f", {si['telat']} kali tunggu data telat" if si.get("telat") else "")
                 + (f", {si['gagal']} gagal sesudah 3 kali coba" if si.get("gagal") else "") + "\n")
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:2199", _ex)
         return ""

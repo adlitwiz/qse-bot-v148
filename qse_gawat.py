@@ -38,7 +38,8 @@ def _baca():
     try:
         with open(PATH) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_gawat.py:41", _ex)
         return {}
 
 
@@ -221,8 +222,8 @@ def dari_update(cq, pesan, uid, nama):
             import qse_menu as QM
             QM._api("answerCallbackQuery", callback_query_id=cq.get("id"), chat_id=None,
                     text="Tercatat OKE" if data == "g:oke" else "Tercatat OKE untuk semua anggota")
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_gawat.py:224", _ex)
         if not oke(uid, nama, semua=data == "g:semua"):
             return True
         return True

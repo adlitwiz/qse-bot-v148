@@ -74,16 +74,16 @@ def rotasi(tk):
             d = BA._btcd()
             if d:
                 rows.append(f"• BTC.D {d:.1f}%")
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_sesi.py:77", _ex)
     try:
         import qse_altseason as AS
         u = AS.ukur()
         if u:
             ke = "mengalir ke ALTCOIN" if u["rasio7"] > 2 else "tersedot ke BTC" if u["rasio7"] < -2 else "seimbang"
             rows.append(f"• Alt besar lawan BTC 7 hari: {u['rasio7']:+.1f}% (alt {u['alt7']:+.1f}%, BTC {u['btc7']:+.1f}%): dana {ke}")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_sesi.py:85", _ex)
     top = sorted((s for s in tk if s.endswith("USDT") and s != "BTCUSDT"), key=lambda s: -tk[s]["turnover"])[:50]
     if top:
         naik = sum(1 for s in top if tk[s]["chg24"] > 0) / len(top) * 100
@@ -106,8 +106,8 @@ def radar_bandar(tk):
             a, b = float(oi[-1]["openInterest"]), float(oi[0]["openInterest"])
             ch = (b / a - 1) * 100
             rows.append(f"• Open interest BTC 24 jam: {ch:+.1f}%" + (" (posisi baru menumpuk)" if ch >= 5 else " (posisi ditutup)" if ch <= -5 else ""))
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_sesi.py:109", _ex)
     b = tk.get("BTCUSDT")
     if b:
         rows.append(f"• Funding BTC {b['funding'] * 100:+.4f}% per 8 jam" + (" (long ramai)" if b["funding"] >= 0.0003 else
@@ -134,14 +134,14 @@ def _valid_jalur(tk):
         import qse_strat as ST
         for k in ST.STRAT:
             sumber += [(k, it) for it in ST.lihat(k)["open"].values()]
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_sesi.py:137", _ex)
     for mod, k in (("qse_ichimoku", "ichimoku"), ("qse_ob", "orderblock")):
         try:
             m = __import__(mod)
             sumber += [(k, it) for it in m.lihat()["open"].values()]
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_sesi.py:143", _ex)
     now = time.time()
     for k, it in sumber:
         px = (tk.get(it["sym"]) or {}).get("last")
@@ -189,14 +189,14 @@ def peringatan_hari_ini(now=None):
                 jam = time.strftime("%d %b %H:%M WIB", time.gmtime(e["ts"] / 1000 + 7 * 3600))
                 rows.append(f"• 🔴 {e['judul']} {jam}. Mode siaga otomatis: 1 jam sebelum rilis posisi untung ditutup, "
                             "sinyal baru ditahan sampai 1 jam sesudah rilis.")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_sesi.py:192", _ex)
     try:
         import qse_unlock as UL
         for e in UL.kalender(hari=1, now=now)[:3]:
             rows.append(f"• 🔓 Unlock {e['sym']} {e['pct']:.1f}% pasokan {UL._jam(e['t'])}. LONG koin ini ditahan robot 7 hari sebelum unlock.")
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_sesi.py:198", _ex)
     return rows
 
 
@@ -244,6 +244,7 @@ def amd_melawan(sym, arah, now=None):
             return "AMD melawan: low Asia sudah disapu lalu harga balik ke range (uji 2023-2026 rata -0.01R)"
         if arah == "SHORT" and max(x[1] for x in lanjut) > ah:
             return "AMD melawan: high Asia sudah disapu lalu harga balik ke range (uji 2023-2026 rata -0.01R)"
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_sesi.py:247", _ex)
         return ""
     return ""

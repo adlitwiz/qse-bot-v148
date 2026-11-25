@@ -14,15 +14,30 @@ LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 
 
-VERSI_QC = "QC 140 (24 Nov 2026)"
+VERSI_QC = "QC 143 (25 Nov 2026)"
 
 
 def _scan_baris():
     try:
         import qse_strat as _S
-        return _S.baris_scan()
+        b_ = _S.baris_scan()
+    except Exception as _ex:
+        __import__("config").diam("qse_perintah.py:_scan_baris", _ex)
+        b_ = ""          # tampil di /status dan /bantuan, naikkan tiap QC
+    return b_ + baris_kesehatan()
+
+
+def baris_kesehatan():
+    """QC 142: jumlah error diam (blok except yang dilewati) 24 jam terakhir, supaya bug diam kelihatan di /status."""
+    try:
+        import config as _C
+        n, t, top = _C.ringkas_diam()
+        if not n:
+            return "\n🩺 Kesehatan kode: 0 error diam dalam 24 jam."
+        return (f"\n🩺 Kesehatan kode: {n} error diam di {t} tempat dalam 24 jam. Teratas: "
+                + "; ".join(f"{k} {c}x ({TG.e(m[:60]) if hasattr(TG, 'e') else m[:60]})" for k, c, m in top))
     except Exception:
-        return ""          # tampil di /status dan /bantuan, naikkan tiap QC
+        return ""
 
 def _radar_hidung():
     """QC 108: baris Radar Hidung Abdul (badai makro terdekat dan penciuman leverage) di /berita, /status, /pasar."""
@@ -287,8 +302,8 @@ def balas(cmd, args, dari_main=False):
         try:
             if otak_:
                 isi += TG.PISAH + otak_
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_perintah.py:290", _ex)
         return isi
     if cmd in ("/sinyal1j", "/sinyal1"):
         return ("Saran 1J dimatikan. Uji 111 koin data 1 jam 2020-2026: 9 jalur terbukti versi 1J PF 1.00 sampai 1.11, "
@@ -374,6 +389,9 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/kebelet", "/spot"):          # QC 92 rapor jalur Kebelet Spot
         import qse_kebelet as KB
         return KB.rapor()
+    if cmd in ("/liar", "/koinliar"):         # QC 142 daftar koin liar seperti HMSTR
+        import qse_liar as LI
+        return LI.teks()
     if cmd in ("/otopsi", "/evalrugi"):       # QC 104 rekap rugi dan prompt gabungan untuk Fable
         import qse_otopsi as QO
         return QO.rekap(int(SY._angka(args[0]) or 7) if args else 7)          # QC 109: 7 hari
@@ -462,7 +480,7 @@ def balas(cmd, args, dari_main=False):
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/ict": "JALUR ICT", "/pikir": "OTAK UMUM", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/ict": "JALUR ICT", "/pikir": "OTAK UMUM", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/liar": "KOIN LIAR", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
 
 
 def _sisa_posisi():
@@ -473,7 +491,8 @@ def _sisa_posisi():
         if not op:
             return "\n\n📭 Posisi aktif kamu sekarang: kosong."
         return "\n\n📋 Posisi aktif kamu sekarang: " + ", ".join(f"{v['sym'].replace('USDT', '')} {v['arah']}" for v in op[:10])
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_perintah.py:476", _ex)
         return ""
 
 

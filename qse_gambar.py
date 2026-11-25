@@ -3,6 +3,7 @@ Candle 4J terakhir, garis entry (biru), SL (merah), TP sebagian (hijau muda), TP
 skala harga di kanan dengan label (font 3x5 buatan sendiri). Dipakai sebagai gambar di gelembung sinyal Telegram.
 QC 138: setup dicoret di gambar. Indikator teknik ikut digambar (EMA 20/50/200, McGinley 34, RSI 14 untuk teknik RSI), panel volume,
 panah di candle sinyal, zona risiko (entry-SL merah tipis) dan zona untung (entry-TP hijau tipis), label huruf di tiap garis, judul."""
+import os
 import struct
 import zlib
 import numpy as np
@@ -223,3 +224,72 @@ def chart_sinyal(sym, arah, entry, sl, tps=None, tp=None, sup=None, res=None, df
     except Exception as ex:
         print("[WARN] chart", sym, ex)
         return None
+
+
+# QC 143 GAMBAR WAJIB: sinyal yang terbukti bagus (PF di atas 1.5) dan bukan koin liar selalu dikirim dengan gambar chart.
+# Terbukti bagus = NILAI 9 (PF 1.7) atau NILAI 10 (PF 2.2) dari skor label (uji 2021-2026), atau SKOR SINYAL 80+ (uji PF 1.50-1.91).
+# Caption terlalu panjang: gambar dikirim dengan caption pendek, kartu lengkap menyusul tepat di bawahnya. Gambar gagal: dicoba sekali lagi.
+import re as _re
+
+
+def _sym_arah(teks):
+    m = _re.search(r"<b>(?:[^<]*?)?([A-Z0-9]+USDT) (LONG|SHORT)", teks or "")
+    return (m.group(1), m.group(2)) if m else (None, None)
+
+
+def terbukti(teks, paksa=False):
+    """True kalau kartu ini sinyal terbukti bagus (PF > 1.5) dan bukan koin liar. paksa=True: jalur yang PF-nya sendiri > 1.5."""
+    t = teks or ""
+    if "KOIN LIAR" in t:
+        return False
+    s = _re.search(r"SKOR SINYAL (\d+)/100", t)
+    bagus = paksa or "NILAI 9" in t or "NILAI 10" in t or bool(s and int(s.group(1)) >= 80)
+    if not bagus:
+        return False
+    sym, _ = _sym_arah(t)
+    try:
+        import qse_liar as LI
+        return not (sym and LI.liar(sym)[0])
+    except Exception as _ex:
+        __import__("config").diam("qse_gambar.py:terbukti", _ex)
+        return True
+
+
+def kirim_kartu(teks, teknik="", kirim_foto=None, kirim=None, buat=None, paksa=False):
+    """Kirim satu kartu sinyal. Terbukti bagus = dengan gambar (wajib). Lainnya = teks seperti dulu. Return list id pesan."""
+    import telegram_notify as TG
+    kirim_foto = kirim_foto or TG.kirim_foto
+    kirim = kirim or TG.send
+    buat = buat or chart_sinyal
+    sym, arah = _sym_arah(teks)
+    if not sym or not terbukti(teks, paksa) or os.environ.get("QSE_GAMBAR_WAJIB", "1") == "0":
+        return kirim([teks]) or []
+    try:
+        import qse_btcmap as BM
+        lv = BM.level_dari_kartu(teks)
+    except Exception as _ex:
+        __import__("config").diam("qse_gambar.py:level", _ex)
+        lv = {}
+    if not lv.get("entry") or not lv.get("sl"):
+        return kirim([teks]) or []
+    png = None
+    for _ in range(2):
+        try:
+            png = buat(sym, arah, lv["entry"], lv["sl"], lv.get("tps"), lv.get("tp"), lv.get("sup"), lv.get("res"), teknik=teknik)
+        except Exception as _ex:
+            __import__("config").diam("qse_gambar.py:chart", _ex)
+            png = None
+        if png:
+            break
+    if not png:
+        return kirim([teks]) or []
+    try:
+        import qse_btcmap as BM
+        cap = BM.caption_sinyal(teks)
+    except Exception:
+        cap = None
+    if cap:
+        mid = kirim_foto(png, cap)
+        return [mid] if mid else (kirim([teks]) or [])
+    mid = kirim_foto(png, f"📈 <b>{sym} {arah}</b>  ·  sinyal terbukti, kartu lengkap di bawah")
+    return ([mid] if mid else []) + (kirim([teks]) or [])

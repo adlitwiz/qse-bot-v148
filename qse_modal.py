@@ -110,7 +110,8 @@ def _baca_profil():
         with open(PROFIL_FILE) as f:
             d = json.load(f)
         return d if isinstance(d, dict) else {}
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_modal.py:113", _ex)
         return {}
 
 
@@ -454,8 +455,8 @@ def baris_slot():
                     import qse_saya as SY_j
                     dh = SY_j.teks_dihitung(st["jeda"])
                     why += f" (dihitung: {html.escape(dh)})" if dh else ""
-                except Exception:
-                    pass
+                except Exception as _ex:
+                    __import__("config").diam("qse_modal.py:457", _ex)
             rows.append((f"⛔ <b>{nm} {st['n_total']}/{st['maks']} posisi jalan: {why}, jangan entry baru dulu</b>" if not st.get("maks_aman") else
                          f"⛔ <b>{nm} {st['n_posisi']}/{st['maks']} posisi berisiko{aman}: {why}, jangan entry baru dulu</b>")
                         + (f"  ·  {rk}" if rk else ""))
@@ -575,8 +576,8 @@ def baris_lot(entry, sl, kali=1.0, lev=None, kelas=None, konf=None, arah=None, b
                 mr = SY.mode_ringan(SY._baca(SY._path_uid(u)).get("closed", []))
                 if mr["aktif"]:
                     kl, cat = "RINGAN", f"🧯 {mr['n']} SL beruntun: kelas ringan sampai 1 TP, geser SL ke entry saat untung +0.3R"
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("qse_modal.py:578", _ex)
             kk, ck = kali_konf(kl, konf, arah, bj)
             if p:
                 baris.append(_baris_lot_dolar(html.escape(str(SY.nama_pengguna(u))), p, sl_pct, kl, lev, cat, kk))

@@ -91,7 +91,8 @@ def _baca_live():
     try:
         with open(LIVE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_latih.py:94", _ex)
         return []
 
 
@@ -223,7 +224,8 @@ def model_aktif():
                 m = json.load(f)
             if all(str(H) in m.get("sesi", {}) for H in SESI):
                 return m, p
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_latih.py:226", _ex)
             continue
     raise RuntimeError("arah_model.json tidak ada")
 
@@ -281,8 +283,8 @@ def jalankan(kirim=True):
             import qse_tebak as TB
             TB._MODEL[0] = None
             TB._MEM.clear()
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_latih.py:284", _ex)
         rows.append("✅ <b>Model baru dipakai</b> mulai sesi berikutnya. 4 sesi lolos semua penjaga (tanda koefisien sama, "
                     f"akurasi tidak turun lebih dari {TOL_AKURASI:g} poin).")
     teks = "\n".join(rows)

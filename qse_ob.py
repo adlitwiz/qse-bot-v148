@@ -342,7 +342,8 @@ def _tpc(it):
     try:
         import qse_strat as ST
         return ST.batas_masuk_teks(dict(it, arah="LONG"), "orderblock") + ST.tp_cepat_teks(dict(it, arah="LONG"), k="orderblock")
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_ob.py:345", _ex)
         return []
 
 
@@ -351,7 +352,8 @@ def _tpc_rencana(it):
     try:
         import qse_strat as ST
         return ST.tp_cepat_teks(dict(it, arah="LONG"), k="orderblock")
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_ob.py:354", _ex)
         return []
 
 
@@ -359,7 +361,8 @@ def _combo_teks(it):
     try:
         import qse_strat as ST
         return ST.combo_teks(it) + ST.mutu_teks(it)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_ob.py:362", _ex)
         return []
 
 
@@ -548,7 +551,8 @@ def proses_sl():
     try:
         with open(FILE_SL) as fh:
             antri = dict(json.load(fh).get("antri", {}))
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_ob.py:551", _ex)
         return []
     out, selesai = [], []
     for k, it in antri.items():

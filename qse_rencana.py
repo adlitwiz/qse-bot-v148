@@ -43,7 +43,8 @@ def _lapar_nyala():
     try:
         import qse_lalat as LT
         return bool(LT.state().get("mode_lapar", False))
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_rencana.py:46", _ex)
         return False
 
 
@@ -52,7 +53,8 @@ def daftar_spesialis():
     try:
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lalat_bawaan.json")) as f:
             return json.load(f).get("spesialis", {})
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_rencana.py:55", _ex)
         return {}
 
 
@@ -71,7 +73,8 @@ def spesialis(minv=SPESIALIS_MIN):
     try:
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lalat_bawaan.json")) as f:
             tok = json.load(f).get("token", {})
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_rencana.py:74", _ex)
         return {}
     out = {}
     for k, v in tok.items():
@@ -85,7 +88,8 @@ def _baca():
     try:
         with open(PATH) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_rencana.py:88", _ex)
         return {}
 
 
@@ -100,7 +104,8 @@ def _btc_naik():
     try:
         import qse_strat as ST
         return ST.btc_naik()
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_rencana.py:103", _ex)
         return None
 
 
@@ -197,8 +202,8 @@ def daftar(tk=None, maks=5, segar=False, semua=False):
     try:
         from config import bukan_saham
         calon = [s for s in calon if bukan_saham(s)]          # saham/indeks tidak ikut
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_rencana.py:200", _ex)
     from concurrent.futures import ThreadPoolExecutor
 
     gagal = set()
@@ -300,7 +305,8 @@ def B_sumber(sym):
     try:
         import bybit_fetch as B
         return B.sumber(sym)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_rencana.py:303", _ex)
         return None
 
 
@@ -335,8 +341,8 @@ def _kuota_spot(rows, now=None, catat=True):
             with open(PATH_SPOT + ".tmp", "w") as f:
                 json.dump(st, f)
             os.replace(PATH_SPOT + ".tmp", PATH_SPOT)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_rencana.py:338", _ex)
     return boleh, len(st["kartu"])
 
 

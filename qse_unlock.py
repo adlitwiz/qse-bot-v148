@@ -38,7 +38,8 @@ def _load():
     try:
         with open(CACHE) as f:
             return json.load(f)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_unlock.py:41", _ex)
         return {}
 
 
@@ -215,7 +216,8 @@ def tolak_long(sym, arah, now=None):
         return ""
     try:
         u = dekat(sym, now=now)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_unlock.py:218", _ex)
         return ""
     if not u:
         return ""
@@ -228,7 +230,8 @@ def teks(sym, arah=None, now=None):
     now = now or time.time()
     try:
         u = dekat(sym, now=now)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_unlock.py:231", _ex)
         return ""
     if not u:
         return ""

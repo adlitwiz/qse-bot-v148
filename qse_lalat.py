@@ -128,8 +128,8 @@ def _memori_baru():
     try:
         with open(F_BAWAAN) as f:
             pri = json.load(f).get("token", {})
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:131", _ex)
     return dict(kc=[1.0] * N_KC, token={k: float(v) for k, v in pri.items()}, n={}, bawaan=bool(pri))
 
 
@@ -323,8 +323,8 @@ def _hidup(st, now=None):
     try:
         import qse_strat as ST
         tenang = 10.0 if getattr(ST, "btc_atr_pct", lambda: 2.0)() < 1.2 else 0.0
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:326", _ex)
     target = max(0.0, min(100.0, 50 + 60 * (wr - 0.5) + tenang + (10 if sum(r10[-3:]) > 0 else 0)))
     st["SER"] = st["SER"] + (target - st["SER"]) * min(1.0, 0.2 * dt)
     st["OCT"] = st["lapar"]
@@ -340,7 +340,8 @@ def _makan_posisi_user(st, m):
     for u in SY.daftar_pengguna():
         try:
             d = SY._baca(SY._path_uid(u))
-        except Exception:
+        except Exception as _ex:
+            __import__("config").diam("qse_lalat.py:343", _ex)
             continue
         for it in d.get("open", {}).values():
             t0 = it.get("fill_ts") or it.get("created_ts") or 0
@@ -367,7 +368,8 @@ def _belajar_ledger(st, m):
     try:
         import qse_catat as CT
         cl = CT._baca()["closed"]
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:370", _ex)
         return False
     batas = st.get("cek_ledger", 0); ada = False; maks = batas
     for c in cl:
@@ -543,8 +545,8 @@ def daftar_spesialis():
         try:
             with open(F_BAWAAN) as f:
                 _DAFTAR.update(json.load(f).get("spesialis", {}))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_lalat.py:546", _ex)
     return _DAFTAR
 
 
@@ -557,8 +559,8 @@ def _boleh_ketat(p):
         try:
             with open(F_BAWAAN) as f:
                 _KETAT.update(json.load(f).get("ketat_daftar", {}))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_lalat.py:560", _ex)
     if _KETAT:
         return _KETAT.get(p["sym"]) == p["arah"]
     d = daftar_spesialis().get(p["sym"])
@@ -809,8 +811,8 @@ def kartu(it, baru=False):
             risk = abs(it["entry"] - it["sl"]) or 1e-12
             rr = (px - it["entry"]) / risk * (1 if it["arah"] == "LONG" else -1)
             r_now = f"\n📍 Harga {SY.fp(px, t)}  ·  sekarang <b>{(0.5 * abs(it['tp1'] - it['entry']) / risk + 0.5 * rr) if it.get('tp1k') else rr:+.2f}R</b>  ·  SL {SY.fp(harga_kunci(it) if it.get('tp1k') else it['sl'], t)}"
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("qse_lalat.py:812", _ex)
     return ((f"🪰 <b>{'PILIHAN BARU' if baru else 'PILIHAN'} LALAT ABDUL: {it['sym']} {it['arah']} {jenis_o}</b>  ·  {st_}\n")
             + f"{asal}" + (f"  ·  tingkat lapar {it['tingkat']} ({lab})" if it.get("tingkat") else "")
             + f"  ·  nilai pola {it.get('nilai', 0):+.3f}  ·  valensi otak asli {valensi_mb(it.get('tokens', [])):+.3f}"
@@ -1180,7 +1182,8 @@ def _k1m(sym):
         rows = requests.get(BYBIT_URL + "/v5/market/kline", params={"category": "linear", "symbol": sym, "interval": "1", "limit": 40},
                             timeout=10).json().get("result", {}).get("list", [])
         return sorted((int(x[0]), float(x[2]), float(x[3]), float(x[4]), float(x[1]), float(x[5])) for x in rows)
-    except Exception:
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:1183", _ex)
         return []
 
 
@@ -1223,8 +1226,8 @@ def hidung(data=None, now=None):
     try:
         with open(os.path.join(STATE_DIR, "hidung.json"), "w") as f:
             json.dump(hs, f)
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:1226", _ex)
     b = meledak["BTCUSDT"]
     return (f"👃 <b>ABDUL MENCIUM BERITA BESAR / AKSI BANDAR: {'NAIK 🚀' if ab > 0 else 'TURUN 💥'}</b>\n"
             f"Candle 1 menit BTC {b[3]:+.2f}%, rentang {b[1]:.1f}x rata-rata" + (f", volume {b[2]:.1f}x" if b[2] else "")

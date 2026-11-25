@@ -35,8 +35,8 @@ def _sesi_baru():
     global _S
     try:
         _S.close()
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("bybit_fetch.py:38", _ex)
     _S = requests.Session()
     _S.headers.update({"User-Agent": "qse-bot/170"})
 
@@ -61,16 +61,16 @@ def futures(paksa=False):
                 with open(path + ".tmp", "w") as f:
                     json.dump(sorted(s), f)
                 os.replace(path + ".tmp", path)
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("bybit_fetch.py:64", _ex)
             return s
     except Exception as ex:
         print("[WARN] daftar futures Bybit", ex)
     try:
         with open(path) as f:
             _fut.update(t=now - 18000, s=set(json.load(f)))          # salinan lama: dicoba lagi 1 jam kemudian
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("bybit_fetch.py:72", _ex)
     return _fut["s"]
 
 
@@ -102,8 +102,8 @@ def sumber(symbol):
         try:
             with open(_sumber_path()) as f:
                 _sumber.update(json.load(f))
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("bybit_fetch.py:105", _ex)
     v = _sumber.get(symbol)
     if not v:
         return None
@@ -121,8 +121,8 @@ def _ingat_sumber(symbol, src):
         with open(_sumber_path() + ".tmp", "w") as f:
             json.dump(_sumber, f)
         os.replace(_sumber_path() + ".tmp", _sumber_path())
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("bybit_fetch.py:124", _ex)
 
 
 def status():
@@ -216,8 +216,8 @@ def get_tickers():
                 with open(path + ".tmp", "w") as f:
                     json.dump(dict(t=time.time(), tk=t), f)
                 os.replace(path + ".tmp", path)
-            except Exception:
-                pass
+            except Exception as _ex:
+                __import__("config").diam("bybit_fetch.py:219", _ex)
             return t
         raise RuntimeError("ticker kosong")
     except Exception:
@@ -228,8 +228,8 @@ def get_tickers():
                 STAT["salinan_ticker"] += 1
                 print(f"[WARN] ticker Bybit gagal, pakai salinan {int(time.time() - d['t'])} detik lalu")
                 return d["tk"]
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("bybit_fetch.py:231", _ex)
         raise
 
 
@@ -282,8 +282,8 @@ def harga(symbol):
             lst = _get("/v5/market/tickers", {"category": "linear", "symbol": symbol}, tries=2).get("list", [])
             if lst and float(lst[0].get("lastPrice") or 0) > 0:
                 return float(lst[0]["lastPrice"])
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("bybit_fetch.py:285", _ex)
     try:
         return float(ticker_multi([symbol]).get(symbol, {}).get("last", 0.0))
     except Exception:
@@ -334,8 +334,8 @@ def _raw(symbol, interval, bars):
                 os.makedirs(CACHE, exist_ok=True)
                 df.to_pickle(path + ".tmp")
                 os.replace(path + ".tmp", path)
-        except Exception:
-            pass
+        except Exception as _ex:
+            __import__("config").diam("bybit_fetch.py:337", _ex)
         return df.copy()
     try:          # API gagal atau kosong: salinan terakhir yang baik
         if os.path.exists(path) and now - os.path.getmtime(path) <= _umur_salinan_maks(interval):
@@ -346,8 +346,8 @@ def _raw(symbol, interval, bars):
                 old = old.iloc[-int(bars):] if bars else old
                 old.attrs["salinan"] = True
                 return old
-    except Exception:
-        pass
+    except Exception as _ex:
+        __import__("config").diam("bybit_fetch.py:349", _ex)
     if err is not None:
         raise err
     return df
