@@ -54,7 +54,9 @@ RISK_PCT = 0.25          # persen modal per 1R (saran risiko per trade, lot 1x)
 # v150 (permintaan user 2 Nov 2026): maks 4 posisi jalan per orang, termasuk yang sudah aman. Uji 2023-2026 (hasil_g19c.txt):
 # total turun dari +285R ke +185R (sinyal yang tidak bisa diambil), DD 35R -> 31R, rugi beruntun terpanjang 11 -> 9.
 # Digabung profil koin (qse_otak.profil) total kembali +203R dengan PF 1.35 dan DD 26R.
-MAKS_POSISI = 4          # posisi berisiko per orang
+# QC 148 (run_v267_celah.py): mode elit memakai 6 posisi berisiko, batas searah 6, risiko terbuka 6R. Lihat qse_elit.py.
+_ELIT = os.environ.get("QSE_MODE_ELIT", "1") != "0"
+MAKS_POSISI = 6 if _ELIT else 4          # posisi berisiko per orang
 MAKS_AMAN = int(os.environ.get("QSE_MAKS_AMAN", "2"))   # batas atas posisi aman (sudah TPawal, SL di entry) di luar batas 4
 # v150 (3 Nov malam): slot aman DINAMIS. Uji riset/upgrade/hasil_v152.txt (dipilih di 2023-24): +2 slot aman hanya saat trade kertas robot
 # 7 hari terakhir positif dan efisiensi tren BTC 20 candle 4J >= 0.1. Lawan selalu +2: 2023-24 total +73R jadi +91R, DD 39R jadi 32R,
@@ -84,10 +86,10 @@ def maks_aman_sekarang(maks_umur=900):
         print("[WARN] slot dinamis", ex)
     _SD.update(t=now, v=v)
     return v
-MAKS_SEARAH = 4          # posisi berisiko searah (LONG atau SHORT) per orang. Uji walk-forward 2023-2026 dengan otak + rem harian
+MAKS_SEARAH = 6 if _ELIT else 4          # posisi berisiko searah (LONG atau SHORT) per orang. Uji walk-forward 2023-2026 dengan otak + rem harian
                          # (riset/upgrade/hasil_g10c.txt): sinyal NILAI 8 ke atas DD 56R ke 45R, total +250R ke +270R, PF 1.30 ke 1.33,
                          # DD per tahun turun atau sama. Semua sinyal netral (DD 43 ke 42R, total +264 ke +266R). Maks 3: total turun.
-RISIKO_BUKA = 5.0        # R, rugi kalau semua SL kena
+RISIKO_BUKA = 6.0 if _ELIT else 5.0        # R, rugi kalau semua SL kena (dihitung per posisi, QC 148)
 REM_HARIAN = 3.0         # R
 WAKTU_JAM = 30.0         # batas waktu posisi yang belum kena TP 20% (v150: 36 -> 30 jam, riset/upgrade/hasil_g13c.txt)
 JAM = 3600 * 1000
@@ -591,6 +593,33 @@ def baris_lot(entry, sl, kali=1.0, lev=None, kelas=None, konf=None, arah=None, b
         return "\n".join(baris)
     except Exception:
         return _baris_lot_netral(sl_pct, kelas, lev)
+
+
+def baris_lot_kali(entry, sl, kali):
+    """QC 148: baris lot UTAMA dengan pengali tetap (ELIT 2x, LAPIS 2 1x) untuk semua anggota. Kosong kalau level tidak sah."""
+    if entry <= 0 or abs(entry - sl) <= 0:
+        return ""
+    sl_pct = abs(entry - sl) / entry * 100
+    try:
+        import html
+        import qse_saya as SY
+        aktif = SY.uid_aktif()
+        orang = [aktif] if aktif is not None else SY.daftar_pengguna()
+        if aktif is None:
+            orang += [u for u in _baca_profil() if u not in orang and (_baca_profil().get(u) or {}).get("modal")]
+        baris, netral = [], False
+        for u in orang:
+            p = profil(u)
+            if p:
+                baris.append(_baris_lot_dolar(html.escape(str(SY.nama_pengguna(u))), p, sl_pct, "UTAMA", None, "", kali))
+            else:
+                netral = True
+        if netral or not baris:
+            baris.append(_baris_lot_netral(sl_pct, "UTAMA", None, kali))
+        return "\n".join(baris)
+    except Exception as _ex:
+        __import__("config").diam("qse_modal.py:baris_lot_kali", _ex)
+        return _baris_lot_netral(sl_pct, "UTAMA", None, kali)
 
 
 def teks_kelas(x):

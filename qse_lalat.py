@@ -1232,5 +1232,127 @@ def hidung(data=None, now=None):
     return (f"👃 <b>ABDUL MENCIUM BERITA BESAR / AKSI BANDAR: {'NAIK 🚀' if ab > 0 else 'TURUN 💥'}</b>\n"
             f"Candle 1 menit BTC {b[3]:+.2f}%, rentang {b[1]:.1f}x rata-rata" + (f", volume {b[2]:.1f}x" if b[2] else "")
             + f". Serentak di {len(alt)} altcoin besar ({', '.join(s.replace('USDT', '') for s in alt)}).\n"
-            "Uang sedang bergerak sebelum berita ditulis situs. Jangan kejar candle ini. Cek posisi kamu dan SL.\n"
-            "Info kilat saja, Abdul tidak membuka posisi otomatis dari ini (belum ada data 1 menit untuk menguji).")
+            "Uang sedang bergerak sebelum berita ditulis situs. Jangan kejar candle ini.\n"
+            + konteks_btc() + "\n\n🔎 <b>Dampak ke posisi kamu</b>\n"
+            + ("\n".join(dampak_posisi(ab)) or "Tidak ada posisi jalan yang tercatat.")
+            + "\n\nInfo kilat. Keputusan tutup hanya dari candle 1 jam yang teruji (HIDUNG ABDUL 1 JAM).")
+
+
+# ---------- QC 149 HIDUNG ABDUL DIPERKUAT: analisa BTC dan dampak ke tiap posisi ----------
+# Riset riset/upgrade/run_v268_hidung_gurita.py (hasil_v268_hidung_gurita.txt). Data 1 menit 2022-2026 tidak ada, jadi ledakan diukur di
+# candle BTC 1 jam yang sudah tutup: rentang >= 4x rata 30 jam sebelumnya (393 kejadian 2022-2026). Posisi siaran yang sedang jalan,
+# keluar QC 127, biaya 0.15%, beda lawan tahan:
+#   MELAWAN arah ledakan, untung >= 0R ditutup : latih +44.3R, uji +139.5R, 12 bulan +67.3R, 6 bulan +28.4R (lolos 4 periode, dipilih di latih).
+#   MELAWAN, semua ditutup termasuk yang minus : +36.0 / +157.0 / +69.2 / +24.6R. Memotong yang minus saja: latih -8.3R, 6 bulan -3.8R, DITOLAK.
+#   SEARAH ledakan, ditutup                     : uji -190R sampai -245R, DITOLAK (tahan).
+#   Ambang 3x                                   : MELAWAN latih -70R sampai -93R, DITOLAK.
+HJ_AMBANG, HJ_JEDA = 4.0, 4 * 3600
+
+
+def konteks_btc():
+    """Satu baris arah BTC: vonis, jarak ke EMA 50 4J, gerak 1 jam dan 24 jam."""
+    bag = []
+    try:
+        import qse_vonis as QV
+        v = QV.arah_kini()
+        bag.append(f"vonis {v}" if v else "vonis TUNGGU")
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:hj_vonis", _ex)
+    try:
+        import qse_strat as ST
+        bj = ST.btc_jarak()
+        if bj is not None:
+            bag.append(f"BTC 4J {bj:+.1f}% dari EMA 50 ({'tren naik' if bj > 0 else 'tren turun'})")
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:hj_ema", _ex)
+    try:
+        import bybit_fetch as B
+        df = B._raw("BTCUSDT", "60", 26)
+        c = df["close"].values.astype(float)
+        bag.append(f"1 jam {(c[-1] / c[-2] - 1) * 100:+.2f}%, 24 jam {(c[-1] / c[-25] - 1) * 100:+.2f}%")
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:hj_gerak", _ex)
+    return "🧭 Arah BTC: " + (", ".join(bag) if bag else "data belum terbaca") + "."
+
+
+def dampak_posisi(arah_ledak, putus=False, harga=None):
+    """Baris per orang: tiap posisi jalan dinilai terhadap arah ledakan. putus=True memakai aturan teruji (ledakan 1 jam):
+    melawan dan untung >= 0R TUTUP, melawan minus TAHAN, searah TAHAN. putus=False (ledakan 1 menit, belum teruji) hanya menilai."""
+    import qse_saya as SY
+
+    @SY.per_orang
+    def _isi():
+        d = SY._load()
+        hp = harga or SY.harga_live
+        rows = []
+        for it in d["open"].values():
+            if it["status"] not in ("TERISI", "TP1"):
+                continue
+            px = hp(it["sym"])
+            fl = SY.floating(it, px) if px else None
+            r = fl["r"] if fl else None
+            lawan = (it["arah"] == "LONG") != (arah_ledak > 0)
+            jarak_sl = abs(px - it["sl"]) / px * 100 if px and it.get("sl") else None
+            info = (f"{r:+.2f}R" if r is not None else "harga belum terbaca") + (f", SL {jarak_sl:.1f}% lagi" if jarak_sl else "")
+            if not lawan:
+                rows.append(f"🟢 <b>{it['sym']} {it['arah']}</b> searah ledakan ({info}). TAHAN, ikuti SL dan TP.")
+            elif not putus:
+                rows.append(f"🟠 <b>{it['sym']} {it['arah']}</b> MELAWAN ledakan ({info}). Pantau. Kalau candle 1 jam BTC tutup dengan "
+                            f"rentang 4x rata-rata, robot kirim keputusan.")
+            elif r is not None and r >= 0:
+                rows.append(f"🔴 <b>{it['sym']} {it['arah']}</b> MELAWAN ledakan, untung {info}. <b>TUTUP SEKARANG</b> dengan MARKET, "
+                            f"lalu /tutup {it['sym'].replace('USDT', '')} HARGA")
+            else:
+                rows.append(f"🟠 <b>{it['sym']} {it['arah']}</b> MELAWAN ledakan, minus ({info}). TAHAN, biarkan SL bekerja. "
+                            "Uji: memotong posisi minus di sini menurunkan profit latih dan 6 bulan.")
+        return rows
+    return _isi()
+
+
+def hidung_jam(now=None, df=None, harga=None):
+    """Dipanggil tiap menit. Sekali per candle BTC 1 jam yang baru tutup: rentang >= 4x rata 30 jam = ledakan. Return teks atau ''."""
+    now = now or time.time()
+    if os.environ.get("QSE_HIDUNG_JAM", "1") == "0":
+        return ""
+    p = os.path.join(STATE_DIR, "hidung_jam.json")
+    try:
+        with open(p) as f:
+            hs = json.load(f)
+    except Exception:
+        hs = {}
+    jam = int(now // 3600)
+    if df is None and (hs.get("jam") == jam or now % 3600 < 90):
+        return ""
+    hs["jam"] = jam
+    try:
+        if df is None:
+            import bybit_fetch as B
+            df = B._raw("BTCUSDT", "60", 40)
+        df = df[df.index + 3600000 <= now * 1000]
+        h, l, c, o = (df[k].values.astype(float) for k in ("high", "low", "close", "open"))
+        if len(c) < 32:
+            raise ValueError("candle BTC 1 jam kurang")
+        rg = h - l
+        x = rg[-1] / max(rg[-31:-1].mean(), 1e-12)
+        ab = 1 if c[-1] >= o[-1] else -1
+        gerak = (c[-1] / c[-2] - 1) * 100
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:hidung_jam", _ex)
+        x = 0
+    nyala = x >= HJ_AMBANG and now - hs.get("t", 0) >= HJ_JEDA
+    if nyala:
+        hs["t"] = now
+    try:
+        with open(p + ".tmp", "w") as f:
+            json.dump(hs, f)
+        os.replace(p + ".tmp", p)
+    except Exception as _ex:
+        __import__("config").diam("qse_lalat.py:hidung_jam_tulis", _ex)
+    if not nyala:
+        return ""
+    ps = dampak_posisi(ab, putus=True, harga=harga)
+    return (f"👃 <b>HIDUNG ABDUL 1 JAM: BTC MELEDAK {'NAIK 🚀' if ab > 0 else 'TURUN 💥'}</b>\n"
+            f"Candle 1 jam BTC {gerak:+.2f}%, rentang {x:.1f}x rata 30 jam (batas {HJ_AMBANG:g}x).\n" + konteks_btc() + "\n"
+            "📊 Uji 2022-2026 (393 ledakan): posisi yang MELAWAN ledakan dan masih untung lebih baik ditutup "
+            "(latih +44R, uji +140R, 12 bulan +67R, 6 bulan +28R). Posisi searah dan posisi minus ditahan.\n\n"
+            + ("\n".join(ps) if ps else "Tidak ada posisi jalan yang tercatat."))

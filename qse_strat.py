@@ -2068,6 +2068,13 @@ def kartu(k, no, it, a):
             kp_teks = (kp_teks + "\n" if kp_teks else "") + lb_
     except Exception as ex:
         print("[WARN] tanda liar", ex)
+    try:          # QC 150: koin andalan (PF koin backtest >= 1.5)
+        import qse_andalan as AN
+        for ab_ in (AN.baris(it["sym"]), AN.baris_wangi(it["sym"], k, it["arah"])):          # QC 151 pasangan wangi
+            if ab_:
+                kp_teks = (kp_teks + "\n" if kp_teks else "") + ab_
+    except Exception as _ex:
+        __import__("config").diam("qse_strat.py:andalan", _ex)
     jg, ju = [], False
     try:
         import qse_jagoan as JG          # QC 60/61: label koin jagoan, KELAS UTAMA otomatis untuk jagoan sejati

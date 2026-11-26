@@ -37,7 +37,10 @@ def anggota():
     return out
 
 
-def tombol(kunci):
+def tombol(kunci, jenis="dca"):
+    if jenis == "tidur":          # QC 152 ceklis siap tidur
+        return {"inline_keyboard": [[{"text": "✅ SL saya sudah di Bybit", "callback_data": f"d:ok:{kunci}"[:64]},
+                                     {"text": "✅ Semua sudah", "callback_data": f"d:all:{kunci}"[:64]}]]}
     return {"inline_keyboard": [[{"text": "✅ Saya sudah beli", "callback_data": f"d:ok:{kunci}"[:64]},
                                  {"text": "✅ Semua sudah beli", "callback_data": f"d:all:{kunci}"[:64]}]]}
 
@@ -46,19 +49,20 @@ def _isi(p):
     sudah = p.get("sudah", {})
     ang = anggota()
     belum = [nm for u, nm in ang if u not in sudah]
-    baris = ("\n\n✅ <b>Sudah beli:</b> " + ", ".join(sudah.values())) if sudah else "\n\n⬜ Belum ada yang ceklis."
+    kata = "Sudah pasang SL" if p.get("jenis") == "tidur" else "Sudah beli"
+    baris = (f"\n\n✅ <b>{kata}:</b> " + ", ".join(sudah.values())) if sudah else "\n\n⬜ Belum ada yang ceklis."
     if sudah and belum:
         baris += "\n⬜ <b>Belum:</b> " + ", ".join(belum)
     elif sudah and not belum:
-        baris += "\n🎉 Semua sudah beli minggu ini."
+        baris += "\n🎉 Semua sudah pasang, aman ditinggal tidur." if p.get("jenis") == "tidur" else "\n🎉 Semua sudah beli minggu ini."
     return p["teks"] + baris
 
 
-def kirim(teks, kunci):
-    """Kirim pesan jadwal beli dengan tombol ceklis, sematkan. Return id pesan atau None."""
+def kirim(teks, kunci, jenis="dca"):
+    """Kirim pesan dengan tombol ceklis, sematkan. jenis dca (beli BTC) atau tidur (QC 152 siap tidur). Return id pesan atau None."""
     d = _baca()
-    p = dict(teks=teks, sudah={}, t=time.time(), ingat=False)
-    ids = TG.send([_isi(p)], markup=tombol(kunci)) or []
+    p = dict(teks=teks, sudah={}, t=time.time(), ingat=False, jenis=jenis)
+    ids = TG.send([_isi(p)], markup=tombol(kunci, jenis)) or []
     p["mid"] = ids[0] if ids else None
     if p["mid"]:
         try:
@@ -77,7 +81,7 @@ def _segarkan(p, kunci):
         import qse_menu as QM
         selesai = all(u in p.get("sudah", {}) for u, _ in anggota())
         QM._api("editMessageText", message_id=p["mid"], text=_isi(p), parse_mode="HTML",
-                reply_markup=json.dumps({"inline_keyboard": []} if selesai else tombol(kunci)))
+                reply_markup=json.dumps({"inline_keyboard": []} if selesai else tombol(kunci, p.get("jenis", "dca"))))
         if selesai:
             TG.unpin(p["mid"])
     except Exception as ex:
@@ -94,7 +98,7 @@ def dari_update(cq, uid, nama):
     try:
         import qse_menu as QM
         QM._api("answerCallbackQuery", callback_query_id=cq.get("id"), chat_id=None,
-                text="Tercatat sudah beli" if jenis == "ok" else "Tercatat semua sudah beli")
+                text="Tercatat" if jenis == "ok" else "Tercatat semua")
     except Exception as _ex:
         __import__("config").diam("qse_dca.py:98", _ex)
     if not p:
@@ -112,6 +116,23 @@ def dari_update(cq, uid, nama):
     return True
 
 
+def ingat_tidur(now=None):
+    """QC 152: 45 menit sesudah kartu SIAP TIDUR, anggota yang belum ceklis diingatkan sekali. Return list teks."""
+    now = now or time.time()
+    d = _baca(); out = []
+    for kunci, p in d["pesan"].items():
+        if p.get("jenis") != "tidur" or p.get("ingat") or not (2700 <= now - p.get("t", 0) <= 4 * 3600):
+            continue
+        belum = [nm for u, nm in anggota() if u not in p.get("sudah", {})]
+        p["ingat"] = True
+        if belum:
+            out.append(f"😴 <b>PENGINGAT SIAP TIDUR</b>: {', '.join(belum)} belum ceklis SL di Bybit. Posisi yang SL-nya belum digeser "
+                       "bisa balik ke SL saat kamu tidur. Samakan SL di Bybit dengan kartu yang disematkan, lalu tekan ✅.")
+    if out or any(p.get("jenis") == "tidur" for p in d["pesan"].values()):
+        _tulis(d)
+    return out
+
+
 def ingat(now=None):
     """20:00 WIB: pesan beli hari ini yang belum diceklis semua anggota diingatkan sekali. Return list teks."""
     now = now or time.time()
@@ -119,7 +140,7 @@ def ingat(now=None):
         return []
     d = _baca(); out = []
     for kunci, p in d["pesan"].items():
-        if p.get("ingat") or now - p.get("t", 0) > 20 * 3600:
+        if p.get("ingat") or now - p.get("t", 0) > 20 * 3600 or p.get("jenis") == "tidur":
             continue
         belum = [nm for u, nm in anggota() if u not in p.get("sudah", {})]
         if belum:

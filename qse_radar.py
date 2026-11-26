@@ -268,6 +268,11 @@ def kartu(r, no=None, bj=None, paksa=False):
         tl_ = LI.tag(r["sym"], (r.get("df") if hasattr(r.get("df"), "columns") else None))
         if tl_:
             tek += f"  ·  {tl_} (menang 34-36%, PF lebih rendah, lot tetap)"
+        import qse_andalan as AN
+        if AN.wangi(r["sym"], r["k"], r["arah"])[0]:          # QC 151
+            tek += "  ·  🌹 PASANGAN WANGI (koin + teknik ini sering profit)"
+        if AN.andalan(r["sym"]):          # QC 150
+            tek += f"  ·  🏆 KOIN ANDALAN (PF koin {AN.profil()[r['sym']]['pf']:.2f}, {AN.teks_bulan(r['sym'])})"
     except Exception as ex:
         print("[WARN] tanda liar radar", ex)
     px, o = (r["entry_robot"], "LIMIT") if tunggu else (r["px"], "MARKET")

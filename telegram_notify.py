@@ -435,22 +435,75 @@ BANTUAN = ("Perintah QSE Bot:\n"
            "/bantuan = daftar perintah ini")
 
 
+GAMBAR_FILE = None
+
+
+def catat_gambar(jenis, alasan=""):
+    """QC 145: hitung gambar sinyal per hari (terkirim, gagal, tanpa gambar dan alasannya) supaya kelihatan di /status."""
+    try:
+        import json as _js
+        from config import STATE_DIR as _SD
+        p = os.path.join(_SD, "gambar.json")
+        try:
+            with open(p) as f:
+                d = _js.load(f)
+        except Exception:
+            d = {}
+        hari = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 3600))
+        if d.get("hari") != hari:
+            d = {"hari": hari, "kemarin": {k: v for k, v in d.items() if k != "kemarin"}}
+        d[jenis] = d.get(jenis, 0) + 1
+        if alasan:
+            d["alasan_" + jenis] = alasan[:160]
+        os.makedirs(_SD, exist_ok=True)
+        with open(p + ".tmp", "w") as f:
+            _js.dump(d, f)
+        os.replace(p + ".tmp", p)
+    except Exception:
+        return
+
+
+def baris_gambar():
+    """'🖼 Gambar sinyal hari ini: ...' untuk /status."""
+    try:
+        import json as _js
+        from config import STATE_DIR as _SD
+        with open(os.path.join(_SD, "gambar.json")) as f:
+            d = _js.load(f)
+    except Exception:
+        return "\n🖼 Gambar sinyal hari ini: belum ada kartu sinyal yang dikirim."
+    s = (f"\n🖼 Gambar sinyal hari ini: {d.get('terkirim', 0)} terkirim, {d.get('gagal', 0)} gagal, "
+         f"{d.get('teks_biasa', 0)} kartu biasa tanpa gambar (bukan NILAI 9/10 atau skor 80+)")
+    if d.get("gagal"):
+        s += f". Gagal terakhir: {e(d.get('alasan_gagal', '?'))}"
+    return s
+
+
 def kirim_foto(png, caption="", token=None, chat_id=None):
     """Kirim satu gambar PNG dengan caption HTML (maks 1024 karakter terlihat). Return message_id atau None."""
     token = token or os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id or not png:
+        catat_gambar("gagal", "token, chat, atau gambar kosong")
         return None
+    data = {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"}
     for k in range(3):
         try:
-            r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+            r = requests.post(f"https://api.telegram.org/bot{token}/sendPhoto", data=data,
                               files={"photo": ("sinyal.png", png, "image/png")}, timeout=30)
             if r.status_code == 200:
+                catat_gambar("terkirim")
                 return r.json().get("result", {}).get("message_id")
             if r.status_code == 429:
                 time.sleep(int(r.json().get("parameters", {}).get("retry_after", 5)) + 1)
                 continue
             print("[WARN] Telegram foto", r.status_code, r.text[:200])
+            if r.status_code == 400 and data.get("parse_mode"):          # QC 145: HTML caption ditolak, kirim ulang tanpa format
+                import re as _re
+                data = {"chat_id": chat_id, "caption": html.unescape(_re.sub(r"<[^>]+>", "", caption))[:1024]}
+                catat_gambar("caption_html", r.text[:120])
+                continue
+            catat_gambar("gagal", f"Telegram {r.status_code}: {r.text[:120]}")
             return None
         except Exception as ex:
             print("[WARN] Telegram foto", ex)

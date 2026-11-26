@@ -14,7 +14,7 @@ LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 
 
-VERSI_QC = "QC 144 (25 Nov 2026)"
+VERSI_QC = "QC 152 (26 Nov 2026)"
 
 
 def _scan_baris():
@@ -24,7 +24,7 @@ def _scan_baris():
     except Exception as _ex:
         __import__("config").diam("qse_perintah.py:_scan_baris", _ex)
         b_ = ""          # tampil di /status dan /bantuan, naikkan tiap QC
-    return b_ + baris_kesehatan()
+    return b_ + baris_kesehatan() + TG.baris_gambar()
 
 
 def baris_kesehatan():
@@ -389,6 +389,20 @@ def balas(cmd, args, dari_main=False):
     if cmd in ("/kebelet", "/spot"):          # QC 92 rapor jalur Kebelet Spot
         import qse_kebelet as KB
         return KB.rapor()
+    if cmd in ("/tesgambar", "/gambar"):      # QC 145 kirim satu gambar chart sekarang untuk cek di VPS
+        import qse_gambar as GB
+        sym = ((args[0] if args else "BTC").upper().replace("USDT", "")) + "USDT"
+        try:
+            import qse_strat as ST
+            df = ST._k4(sym, 120)
+            px = float(df["close"].iloc[-1])
+            png = GB.chart_sinyal(sym, "LONG", px, px * 0.97, px * 1.015, px * 1.06, df=df, teknik="tes gambar")
+        except Exception as ex:
+            return f"🖼 Tes gambar {sym} GAGAL membuat chart: {TG.e(str(ex)[:200])}"
+        if not png:
+            return f"🖼 Tes gambar {sym} GAGAL: chart kosong (data candle 4J tidak terbaca)."
+        mid = TG.kirim_foto(png, f"🖼 <b>TES GAMBAR {sym}</b>\nContoh level saja, bukan sinyal.")
+        return f"🖼 Tes gambar {sym}: " + ("terkirim." if mid else "chart jadi, tapi Telegram menolak. Lihat baris Gambar di /status.")
     if cmd in ("/diam", "/kesehatan"):        # QC 144 semua tempat error diam 24 jam
         import config as _C
         d_ = _C.daftar_diam()
@@ -488,7 +502,7 @@ def balas(cmd, args, dari_main=False):
 
 
 JUDUL = {"/status": "STATUS", "/sinyal4j": "SINYAL 4J", "/cek": "CEK KOIN", "/berita": "BERITA", "/kabar": "BERITA",
-         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/ict": "JALUR ICT", "/pikir": "OTAK UMUM", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/liar": "KOIN LIAR", "/diam": "KESEHATAN KODE", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
+         "/viral": "BERITA", "/modal": "MODAL", "/lalat": "LALAT ABDUL", "/gurita": "OTAK GURITA", "/rencana": "RENCANA SNIPER", "/kebelet": "KEBELET SPOT", "/cfd": "CFD HARIAN", "/ict": "JALUR ICT", "/pikir": "OTAK UMUM", "/himbauan": "HIMBAUAN BTC", "/otopsi": "OTOPSI RUGI", "/liar": "KOIN LIAR", "/diam": "KESEHATAN KODE", "/tesgambar": "TES GAMBAR", "/pasar": "VONIS PASAR", "/vonis": "VONIS PASAR", "/arahpasar": "VONIS PASAR", "/bantuan": "INFO"}
 
 
 def _sisa_posisi():

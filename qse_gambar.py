@@ -242,6 +242,12 @@ def terbukti(teks, paksa=False):
     t = teks or ""
     if "KOIN LIAR" in t:
         return False
+    try:          # QC 147: mode elit aktif, gambar hanya untuk sinyal ELIT
+        import qse_elit as QE
+        if QE.aktif():
+            return "SINYAL ELIT</b>" in t or QE.elit(t)[0]
+    except Exception as _ex:
+        __import__("config").diam("qse_gambar.py:elit", _ex)
     s = _re.search(r"SKOR SINYAL (\d+)/100", t)
     bagus = paksa or "NILAI 9" in t or "NILAI 10" in t or bool(s and int(s.group(1)) >= 80)
     if not bagus:
@@ -263,6 +269,8 @@ def kirim_kartu(teks, teknik="", kirim_foto=None, kirim=None, buat=None, paksa=F
     buat = buat or chart_sinyal
     sym, arah = _sym_arah(teks)
     if not sym or not terbukti(teks, paksa) or os.environ.get("QSE_GAMBAR_WAJIB", "1") == "0":
+        if sym and _re.search(r"\nSL\s+[\d.]", teks or ""):
+            TG.catat_gambar("teks_biasa")
         return kirim([teks]) or []
     try:
         import qse_btcmap as BM
@@ -282,14 +290,15 @@ def kirim_kartu(teks, teknik="", kirim_foto=None, kirim=None, buat=None, paksa=F
         if png:
             break
     if not png:
+        TG.catat_gambar("gagal", f"chart {sym} tidak terbuat (data candle 4J gagal diambil)")
         return kirim([teks]) or []
     try:
         import qse_btcmap as BM
         cap = BM.caption_sinyal(teks)
     except Exception:
         cap = None
-    if cap:
-        mid = kirim_foto(png, cap)
+    if cap and TG.panjang_terlihat("✅ TERBUKTI · " + cap) <= 1024:
+        mid = kirim_foto(png, "✅ <b>TERBUKTI</b> · " + cap)
         return [mid] if mid else (kirim([teks]) or [])
-    mid = kirim_foto(png, f"📈 <b>{sym} {arah}</b>  ·  sinyal terbukti, kartu lengkap di bawah")
+    mid = kirim_foto(png, f"✅ <b>TERBUKTI · {sym} {arah}</b>  ·  kartu lengkap di bawah")
     return ([mid] if mid else []) + (kirim([teks]) or [])

@@ -446,6 +446,55 @@ def _buku(k):
         return {"open": {}, "closed": []}
 
 
+def _candle1j(sym, t0):
+    try:
+        import bybit_fetch as B
+        n = int(min(900, (time.time() - t0) / 3600 + 3))
+        df = B._raw(sym, "60", max(n, 3))
+        return df[df.index + 3600000 > t0 * 1000]
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:candle", _ex)
+        return None
+
+
+def cek_sl_sendiri(p, ambil=None):
+    """QC 149: SL gurita kena sebelum TPawal tersentuh = -1R dikurangi biaya. TPawal tersentuh duluan = biarkan buku jalur
+    yang menentukan (TP sebagian dan SL berjalan). Return R atau None."""
+    try:
+        df = (ambil or _candle1j)(p["sym"], p["t"])
+        if df is None or not len(df):
+            return None
+        L = p["arah"] == "LONG"; e = float(p["entry"]); sl = float(p["sl"]); r0 = abs(e - sl)
+        if r0 <= 0:
+            return None
+        try:
+            import qse_strat as ST
+            rt = ST.tps_r(p["arah"])
+        except Exception:
+            rt = 1.0 if L else 0.5
+        tps = e + (rt if L else -rt) * r0
+        for h, l in zip(df["high"].values.astype(float), df["low"].values.astype(float)):
+            if (L and h >= tps) or (not L and l <= tps):
+                return None
+            if (L and l <= sl) or (not L and h >= sl):
+                return round(-1.0 - 0.0015 * e / r0, 3)
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:sl_sendiri", _ex)
+    return None
+
+
+def r_sekarang(p):
+    try:
+        import qse_saya as SY
+        px = SY.harga_live(p["sym"])
+        e = float(p["entry"]); r0 = abs(e - float(p["sl"]))
+        if px and r0 > 0:
+            return round(max(-1.0, (px - e) / r0 * (1 if p["arah"] == "LONG" else -1)), 3)
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:r_sekarang", _ex)
+    return 0.0
+
+
 def modal_kelola(d):
     """Posisi gurita modal selesai saat posisi robot di jalur yang sama selesai. Saldo naik turun R x risiko dolar saat masuk."""
     m = _modal(d); out = []; sisa = []
@@ -454,8 +503,10 @@ def modal_kelola(d):
         for c in reversed(b.get("closed", [])):
             if c.get("sym") == p["sym"] and int(c.get("t", 0)) == p["tk"] and c.get("R") is not None:
                 R = float(c["R"]); break
+        if R is None:          # QC 149: SL gurita dicek sendiri dari candle 1 jam, tidak menunggu buku jalur (kasus HMSTR tidak tercatat)
+            R = cek_sl_sendiri(p)
         if R is None and f"{p['sym']}|{p['tk']}" not in b.get("open", {}) and time.time() - p["t"] > 3 * 86400:
-            R = 0.0          # catatan robot hilang: ditutup impas supaya slot tidak terkunci
+            R = r_sekarang(p)          # catatan robot hilang: ditutup di harga sekarang, bukan impas
         if R is None:
             sisa.append(p); continue
         usd = R * p["usd"]; m["saldo"] = round(m["saldo"] + usd, 2); m["puncak"] = max(m["puncak"], m["saldo"])
@@ -554,6 +605,35 @@ def modal_proteksi_cek(d, now=None, kal=None, him=None, harga=None):
     return out
 
 
+# QC 149 GURITA ELIT (riset/upgrade/run_v268_hidung_gurita.py, hasil_v268_hidung_gurita.txt). Buku 12 slot dari 150 USDT, keluar QC 127:
+#   GURITA lama (2+ teknik, BTC searah, 1.5%)       : saldo 1232 / 2058 / 213 / 240, DD 52 / 49 / 49 / 34%, PF 1.60 / 1.87 / 1.23 / 1.32, WR 34-38%.
+#   GURITA ELIT 3% + LAPIS 2 1.5% (dipasang)        : saldo 18551 / 2257 / 390 / 368, DD 16 / 37 / 37 / 20%, WR 57 / 47 / 41 / 43%.
+#   Menang saldo dan DD lebih kecil di latih, uji, 12 bulan, 6 bulan. WR 100% tidak mungkin: tiap varian masih punya trade rugi.
+# Saklar QSE_GURITA_ELIT=0 kembali ke gurita lama.
+GURITA_ELIT = os.environ.get("QSE_GURITA_ELIT", "1") != "0"
+GURITA_ELIT_RISIKO = float(os.environ.get("QSE_GURITA_ELIT_RISIKO", "3.0"))
+GURITA_LAPIS2_KALI = 0.5
+
+
+def gurita_lapis(sym, arah, sk, now=None):
+    """1 ELIT (skor 80+), 2 LAPIS 2 (70-79), 0 tidak diambil, -1 mode elit mati (pakai aturan lama)."""
+    if not GURITA_ELIT:
+        return -1
+    if sk is None or sk < 70:
+        return 0
+    try:
+        import qse_liar as LI
+        if LI.liar(sym)[0]:
+            return 0
+        import qse_vonis as QV
+        if QV.lot_vonis_baru(arah, now)[0] <= 1:
+            return 0
+    except Exception as _ex:
+        __import__("config").diam("qse_gurita.py:lapis", _ex)
+        return 0
+    return 1 if sk >= 80 else 2
+
+
 def modal_buru(d):
     """Pilih sinyal 2+ teknik searah yang searah BTC, paling banyak MODAL_SLOT posisi, satu per koin. Return kartu baru."""
     import qse_saya as SY
@@ -631,6 +711,16 @@ def modal_buru(d):
             dg["geser"] += 1
             m.get("diag_total", {})["geser"] = m.get("diag_total", {}).get("geser", 0) + 1
             continue
+        try:
+            import qse_skor as SKR
+            sk_s, sk_k, _ = SKR.skor(k, it)
+        except Exception:
+            sk_s, sk_k = None, 1.0
+        lapis_ = gurita_lapis(it["sym"], it["arah"], sk_s)
+        if lapis_ == 0:          # QC 149 GURITA ELIT: hanya sinyal ELIT (skor 80+) dan LAPIS 2 (70-79), bukan koin liar, searah vonis baru
+            dg["bukan_elit"] = dg.get("bukan_elit", 0) + 1
+            m.get("diag_total", {})["bukan_elit"] = m.get("diag_total", {}).get("bukan_elit", 0) + 1
+            continue
         dg["lolos"] += 1
         m.get("diag_total", {})["lolos"] = m.get("diag_total", {}).get("lolos", 0) + 1
         risk = abs(px - sl); sl_pct = risk / px * 100
@@ -639,14 +729,14 @@ def modal_buru(d):
             rs_ = QV.rsi4j(it["sym"]) if it["arah"] == "LONG" else None
         except Exception:
             rs_ = None
-        try:
-            import qse_skor as SKR
-            sk_s, sk_k, _ = SKR.skor(k, it)
-        except Exception:
-            sk_s, sk_k = None, 1.0
-        rp, rcat = modal_risiko(m, konf, it["arah"], rsi=rs_, kali_skor=sk_k)
+        if lapis_ in (1, 2):
+            rp = GURITA_ELIT_RISIKO * (1.0 if lapis_ == 1 else GURITA_LAPIS2_KALI)
+            rcat = ("💎 ELIT" if lapis_ == 1 else "🔷 LAPIS 2") + f" skor {sk_s:.0f}, risiko {rp:g}%"
+        else:
+            rp, rcat = modal_risiko(m, konf, it["arah"], rsi=rs_, kali_skor=sk_k)
         usd = round(m["saldo"] * rp / 100, 2); nilai = usd / (sl_pct / 100); lev = MD.lev_saran(sl_pct)
-        p = dict(key=key, jalur=k, sym=it["sym"], arah=it["arah"], entry=px, sl=sl, t=now, tk=int(it.get("t", 0)), usd=usd, konf=konf)
+        p = dict(key=key, jalur=k, sym=it["sym"], arah=it["arah"], entry=px, sl=sl, t=now, tk=int(it.get("t", 0)), usd=usd, konf=konf,
+                 lapis=lapis_)
         m["buka"].append(p); pakai.add(it["sym"])
         t = it.get("tick"); kawan = ", ".join(str(x) for x in (it.get("combo") or [])[:4])
         if k == "ema_short":

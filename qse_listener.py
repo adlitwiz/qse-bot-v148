@@ -76,6 +76,11 @@ def _scan_abdul(arah, sumber):
 def _kirim_kartu(b_, teknik="", paksa=False):
     """QC 143: kartu sinyal terbukti bagus (NILAI 9/10 atau skor 80+) dan bukan koin liar wajib bergambar. Lainnya teks seperti dulu."""
     try:
+        import qse_elit as QE_
+        b_ = QE_.olah(b_)          # QC 147 mode elit
+    except Exception as ex:
+        __import__("config").diam("qse_listener.py:elit", ex)
+    try:
         import qse_gambar as GB
         return GB.kirim_kartu(b_, teknik, paksa=paksa)
     except Exception as ex:
@@ -212,7 +217,7 @@ def _tugas_berkala():
                 if lain:
                     TG.send([f"📈 <b>QSE v150 | {nama}</b>\n\n" + "\n\n".join(lain)])
                 kumpul += [(ST.prioritas_teks(k, m), f"pin_{k}", nama, m) for m in pesan if "BISA DIIKUTI" in m]
-            if ST.TAMBAHAN:          # QC 139: LONG tambahan saat vonis LONG baru, pesan sendiri, tidak memakan 12 slot
+            if ST.TAMBAHAN and os.environ.get("QSE_MODE_ELIT", "1") == "0":          # QC 139 (QC 147: mati saat mode elit, PF 1.61-2.07 < syarat): LONG tambahan saat vonis LONG baru, pesan sendiri, tidak memakan 12 slot
                 TG.send(["🚀 <b>QSE v150 | SINYAL TAMBAHAN SEARAH VONIS LONG</b>\nVonis LONG masih baru (12 jam pertama). Sinyal LONG "
                          "teknik tunggal di bawah biasanya hanya uji live, tapi saat vonis LONG baru hasil ujinya bagus: PF 1.70 / 1.74 / "
                          "1.61 / 2.07 (latih, uji, 12 bulan, 6 bulan). Pakai modal terpisah atau lot setengah, tidak memakan 12 slot."])
@@ -269,6 +274,9 @@ def _tugas_berkala():
                 lb = ST.label_nama_teks(m)
                 try:
                     rk = BM.kartu_ringkas(m, pr, nama) if BM else None          # v150: kartu ringkas dan rapi
+                    if rk:          # QC 147 mode elit: tandai ELIT atau PANTAU SAJA
+                        import qse_elit as QE_
+                        rk = QE_.olah(rk, m)
                 except Exception as ex:
                     print("[WARN] kartu ringkas", ex)
                     rk = None
@@ -289,12 +297,25 @@ def _tugas_berkala():
                         import qse_gambar as GB
                         lv = BM.level_dari_kartu(rk)
                         cap = BM.caption_sinyal(f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk)
-                        png = GB.chart_sinyal(*__import__("re").search(r"<b>([A-Z0-9]+USDT) (LONG|SHORT)</b>", rk).groups(),
-                                              lv["entry"], lv["sl"], lv["tps"], lv["tp"], lv["sup"], lv["res"], teknik=nama) if cap else None
-                        if png:
-                            mid = TG.kirim_foto(png, cap)
+                        sa_ = __import__("re").search(r"<b>([A-Z0-9]+USDT) (LONG|SHORT)</b>", rk).groups()
+                        if not GB.terbukti(rk + "\n" + m) and os.environ.get("QSE_GAMBAR_SEMUA", "0") != "1":
+                            # QC 146: GAMBAR = SINYAL BENAR-BENAR BAGUS. Kartu 4J biasa dan koin liar dikirim teks saja.
+                            # run_v265: skor 80+ bukan koin liar PF 2.03 / 1.54 / 1.68 (uji, 12 bln, 6 bln), skor 80+ koin liar 0.94 / 0.86 / 0.32.
+                            raise StopIteration
+                        png = GB.chart_sinyal(*sa_, lv["entry"], lv["sl"], lv["tps"], lv["tp"], lv["sup"], lv["res"], teknik=nama)
+                        if not png:
+                            TG.catat_gambar("gagal", f"chart {sa_[0]} tidak terbuat (data candle 4J gagal diambil)")
+                        elif cap and TG.panjang_terlihat("✅ TERBUKTI · " + cap) <= 1024:
+                            mid = TG.kirim_foto(png, "✅ <b>TERBUKTI</b> · " + cap)
+                        else:          # QC 145: kartu terlalu panjang untuk caption, gambar tetap dikirim lalu kartu lengkap di bawahnya
+                            mid0 = TG.kirim_foto(png, f"✅ <b>TERBUKTI · SINYAL {no}/{len(kumpul)} · {sa_[0]} {sa_[1]}</b>  ·  kartu lengkap di bawah")
+                            if mid0:
+                                mid = (TG.send([f"📌 <b>SINYAL {no}/{len(kumpul)}</b>\n" + rk]) or [mid0])[0]
+                    except StopIteration:
+                        mid = None
                     except Exception as ex:
                         print("[WARN] gambar sinyal", ex)
+                        TG.catat_gambar("gagal", f"gambar 4J: {ex}")
                     if mid:
                         ids = [mid]
                     else:          # QC 143: caption kepanjangan atau gambar gagal, sinyal terbukti tetap bergambar
@@ -450,8 +471,11 @@ def _tugas_berkala():
         _st({"tidur_hari": hari})
         try:
             teks, _ = SY.kartu_sl(tidur=True)
-            if teks:
-                TG.send([teks])
+            if teks:          # QC 152: ceklis per orang, disematkan, pengingat 45 menit kalau belum
+                import qse_dca as _DT
+                _DT.kirim(teks + "\n\n📊 Uji v273-v274: menutup atau mengunci profit sebelum tidur, atau mengganti aturan dengan trailing Bybit, "
+                          "menurunkan profit sinyal ELIT. Yang menjaga profit adalah SL yang SUDAH digeser sesuai kartu ini.",
+                          f"tidur{hari}", "tidur")
         except Exception as ex:
             print("[WARN] kartu tidur", ex)
     if now - hari >= 900 and st.get("unlock_hari", 0) < hari and now - hari <= 6 * 3600:
@@ -970,7 +994,7 @@ def _tugas_menit():
         print("[WARN] ulang vonis", ex)
     try:          # QC 135: pengingat ceklis beli BTC 20:00 WIB
         import qse_dca as QD
-        for m_ in QD.ingat():
+        for m_ in QD.ingat() + QD.ingat_tidur():          # QC 152 pengingat siap tidur
             TG.send([m_])
     except Exception as ex:
         print("[WARN] ingat dca", ex)
@@ -1059,6 +1083,10 @@ def _tugas_menit():
         print("[WARN] advisor", ex)
     try:
         import qse_lalat as LT          # 9 Nov 2026: hidung berita lalat Abdul, ledakan volume 1 menit serentak
+        hj = LT.hidung_jam()          # QC 149: ledakan candle 1 jam teruji, keputusan per posisi
+        if hj:
+            TG.send(["👃 <b>QSE v150 | HIDUNG ABDUL</b>\n\n" + hj])
+            _scan_abdul(None, "HIDUNG ABDUL 1 JAM (ledakan BTC)")
         hb = LT.hidung()
         if hb and LT.siar():
             TG.send(["👃 <b>QSE v150 | HIDUNG ABDUL</b>\n\n" + hb])
