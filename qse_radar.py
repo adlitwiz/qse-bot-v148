@@ -269,6 +269,9 @@ def kartu(r, no=None, bj=None, paksa=False):
         if tl_:
             tek += f"  ·  {tl_} (menang 34-36%, PF lebih rendah, lot tetap)"
         import qse_andalan as AN
+        import qse_breakout as BK
+        if BK.ada(r["sym"], r["arah"]):          # QC 155
+            tek += f"  ·  🚀 BREAKOUT 20 + VOLUME searah (ELIT lot x{BK.LOT_BREAKOUT:g})"
         if AN.wangi(r["sym"], r["k"], r["arah"])[0]:          # QC 151
             tek += "  ·  🌹 PASANGAN WANGI (koin + teknik ini sering profit)"
         if AN.andalan(r["sym"]):          # QC 150
@@ -411,7 +414,21 @@ def otak_teks(sinyal=None, lewat=None, bj=None):
     # 5. keputusan
     ut = [r for r in sinyal if not r.get("ringan")]; rg = [r for r in sinyal if r.get("ringan")]
     maks = (ht or {}).get("maks", 2)
-    if ut:
+    try:
+        import qse_elit as QE_
+        elit_on = QE_.aktif()
+    except Exception:
+        elit_on = False
+    if elit_on:          # QC 153: keputusan hanya dari LAPIS 1 ELIT dan LAPIS 2, sama dengan kartu
+        lp_ = sorted([(QE_.lapis_r(r)[0], r) for r in sinyal], key=lambda z: z[0] if z[0] else 9)
+        pil = [(l_, r) for l_, r in lp_ if l_ in (1, 2)]
+        if pil:
+            kp = ", lalu ".join(f"ambil {r['sym'].replace('USDT', '')} {r['arah']} ({'💎 LAPIS 1 ELIT' if l_ == 1 else '🔷 LAPIS 2'})"
+                                for l_, r in pil[:2]) + ". Kartu lain PANTAU SAJA"
+        else:
+            kp = ("tahan modal. Tidak ada sinyal 💎 LAPIS 1 ELIT atau 🔷 LAPIS 2 jam ini, semua kartu PANTAU SAJA" if sinyal else
+                  "tahan modal. Belum ada pemicu yang lolos, jangan masuk tanpa sinyal. Kawal posisi yang sudah jalan")
+    elif ut:
         kp = (f"ambil {ut[0]['sym'].replace('USDT', '')} {ut[0]['arah']} sekarang dengan ukuran Kelas Utama"
               + (f", lalu {ut[1]['sym'].replace('USDT', '')} {ut[1]['arah']}" if len(ut) > 1 and maks > 1 else "")
               + f". Maksimal {maks} posisi baru di jam ini" + (". Kelas ringan dilewati dulu" if ht and ht["maks"] < 2 and rg else ""))

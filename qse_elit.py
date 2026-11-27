@@ -90,29 +90,84 @@ def _lot(teks, kali):
     return ""
 
 
+def _rapikan(teks, lp, kpt):
+    """QC 153: satu keputusan saja di kartu. Baris keputusan lama diganti. PANTAU: baris lot, LOT x1.5 vonis, dan saran entry dibuang."""
+    out = []
+    for b in teks.split("\n"):
+        if b.startswith("🧭 Keputusan:") or b.startswith("🧭 <b>Keputusan:"):
+            out.append(f"🧭 Keputusan: <b>{kpt}</b>")
+            continue
+        if lp == 0 and (b.startswith("🚀 <b>LOT x") or b.startswith("💰 Saran entry") or b.startswith("1 teknik: lot")
+                        or b.startswith("2+ teknik") or "Kalikan saran entry" in b):
+            continue
+        if lp == 0 and b.endswith(". Lot normal"):
+            b = b[: -len(". Lot normal")]
+        out.append(b)
+    return "\n".join(out)
+
+
 def olah(teks, rujukan=None, now=None):
-    """Tandai kartu sinyal: 💎 ELIT lot 2x, 🔷 LAPIS 2 lot 1x, lainnya ⚪ PANTAU SAJA tanpa lot. rujukan = kartu lengkap untuk menilai.
-    Bukan kartu sinyal, mode mati, atau sudah diproses: teks dikembalikan apa adanya."""
+    """Tandai kartu sinyal dengan LAPIS di baris paling atas dan satu keputusan:
+    💎 LAPIS 1 ELIT (lot 2x, x1.25 koin andalan, x1.5 pasangan wangi), 🔷 LAPIS 2 (lot 1x), ⚪ PANTAU SAJA (tanpa lot, jangan dibuka).
+    rujukan = kartu lengkap untuk menilai. Bukan kartu sinyal, mode mati, atau sudah diproses: teks dikembalikan apa adanya."""
     if not aktif() or not kartu_sinyal(teks) or "SINYAL ELIT</b>" in teks or "LAPIS 2</b>" in teks or "PANTAU SAJA</b> (" in teks:
         return teks
     lp, alasan = lapis((rujukan or "") + "\n" + teks, now)
     if lp == 1:
         kl = LOT_ELIT; sym_ = None; andal_ = False
-        try:          # QC 150: ELIT di koin andalan lot x1.25 (run_v269)
+        wangi_ = "PASANGAN WANGI" in (rujukan or "") + teks
+        try:          # QC 150/151: koin andalan x1.25, pasangan wangi x1.5
             import qse_andalan as AN
             sym_ = _sym_arah(teks)[0]
             andal_ = bool(sym_ and AN.andalan(sym_))
             if andal_:
-                kl = round(LOT_ELIT * AN.LOT_ANDALAN, 2)
-            if "PASANGAN WANGI" in (rujukan or "") + teks:          # QC 151 (run_v270)
+                kl = round(kl * AN.LOT_ANDALAN, 2)
+            if wangi_:
                 kl = round(kl * AN.LOT_WANGI, 2)
+            if "BREAKOUT 20 + VOLUME" in (rujukan or "") + teks:          # QC 155 (run_v279b)
+                import qse_breakout as BK
+                kl = round(kl * BK.LOT_BREAKOUT, 2)
         except Exception as _ex:
             __import__("config").diam("qse_elit.py:andalan", _ex)
-        return (f"💎 <b>SINYAL ELIT</b>: skor 80+, bukan koin liar, searah vonis baru"
-                + (" + 🌹 pasangan wangi" if "PASANGAN WANGI" in (rujukan or "") + teks else "")
-                + (" + 🏆 koin andalan" if andal_ else "") + f". Lot {kl:g}x. Uji {UJI}.\n"
-                + _ganti_lot(teks, _lot(teks, kl)))
+        badan = _rapikan(teks, 1, f"✅ AMBIL, 💎 LAPIS 1 ELIT lot {kl:g}x")
+        return (f"💎 <b>LAPIS 1 · SINYAL ELIT</b> · AMBIL lot {kl:g}x\nSkor 80+, bukan koin liar, searah vonis baru"
+                + (" + 🌹 pasangan wangi" if wangi_ else "") + (" + 🚀 breakout" if "BREAKOUT 20 + VOLUME" in (rujukan or "") + teks else "") + (" + 🏆 koin andalan" if andal_ else "") + f". Uji {UJI}.\n"
+                + _ganti_lot(badan, _lot(teks, kl)))
     if lp == 2:
-        return (f"🔷 <b>LAPIS 2</b>: skor 70-79, bukan koin liar, searah vonis baru. Lot {LOT_LAPIS2:g}x (setengah ELIT).\n"
-                + _ganti_lot(teks, _lot(teks, LOT_LAPIS2)))
-    return _ganti_lot(teks, f"⚪ <b>PANTAU SAJA</b> ({alasan}). Bukan sinyal ELIT atau LAPIS 2, jangan dibuka.")
+        badan = _rapikan(teks, 2, f"✅ AMBIL, 🔷 LAPIS 2 lot {LOT_LAPIS2:g}x")
+        return (f"🔷 <b>LAPIS 2</b> · AMBIL lot {LOT_LAPIS2:g}x\nSkor 70-79, bukan koin liar, searah vonis baru. Lot setengah ELIT.\n"
+                + _ganti_lot(badan, _lot(teks, LOT_LAPIS2)))
+    badan = _rapikan(teks, 0, "⚪ PANTAU SAJA, jangan dibuka")
+    return (f"⚪ <b>PANTAU SAJA</b> ({alasan}) · JANGAN DIBUKA\nHanya 💎 LAPIS 1 ELIT dan 🔷 LAPIS 2 yang memakai modal.\n"
+            + _ganti_lot(badan, ""))
+
+
+def lapis_r(r, now=None):
+    """QC 153: LAPIS untuk data sinyal radar (dict r) tanpa kartu. Dipakai baris Keputusan sekarang di analisa otak."""
+    sk = r.get("skor100")
+    if sk is None:
+        try:
+            import qse_skor as SKR
+            it = dict(sym=r["sym"], arah=r["arah"], entry=float(r.get("px") or 0), sl=float(r.get("sl") or 0), sl0=float(r.get("sl") or 0))
+            sk = SKR.skor(r.get("k") or "", it, btc_j=r.get("bj"))[0]
+        except Exception as _ex:
+            __import__("config").diam("qse_elit.py:lapis_r", _ex)
+            sk = None
+    if sk is None:
+        return 0, "skor tidak terbaca"
+    return lapis(f"<b>{r['sym']} {r['arah']}</b>\nSKOR SINYAL {int(sk)}/100", now)
+
+
+def koin_liar(teks):
+    """QC 155: kartu sinyal koin liar tidak disiarkan lagi (permintaan user, 4 ronde riset tanpa cara yang lolos). Uji live tetap jalan."""
+    if os.environ.get("QSE_SIAR_LIAR", "0") == "1" or not kartu_sinyal(teks):
+        return False
+    if "KOIN LIAR" in (teks or ""):
+        return True
+    try:
+        import qse_liar as LI
+        sym = _sym_arah(teks)[0]
+        return bool(sym and LI.liar(sym)[0])
+    except Exception as _ex:
+        __import__("config").diam("qse_elit.py:koin_liar", _ex)
+        return False

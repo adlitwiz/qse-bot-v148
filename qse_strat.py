@@ -1527,6 +1527,10 @@ def jalankan(baru_ok=True):
         try:          # QC 142: tiap scan 4J sekaligus mengukur koin liar di semua koin (data sudah ada, tanpa panggilan tambahan)
             import qse_liar as LI
             LI.atr_pct(sym, df)
+            import qse_liar_lab as LL          # QC 154 uji live koin liar
+            LL.kandidat(sym, df)
+            import qse_breakout as BK          # QC 155 konfluensi breakout 20 + volume
+            BK.catat(sym, df)
         except Exception as _ex:
             __import__("config").diam("qse_strat.py:liar_scan", _ex)
         return sym, sinyal(df, bn, netral_longgar(bj)), df, float((df["close"] * df["volume"]).iloc[-180:].sum())
@@ -2070,7 +2074,8 @@ def kartu(k, no, it, a):
         print("[WARN] tanda liar", ex)
     try:          # QC 150: koin andalan (PF koin backtest >= 1.5)
         import qse_andalan as AN
-        for ab_ in (AN.baris(it["sym"]), AN.baris_wangi(it["sym"], k, it["arah"])):          # QC 151 pasangan wangi
+        import qse_breakout as BK
+        for ab_ in (AN.baris(it["sym"]), AN.baris_wangi(it["sym"], k, it["arah"]), BK.baris(it["sym"], it["arah"])):          # QC 151, QC 155
             if ab_:
                 kp_teks = (kp_teks + "\n" if kp_teks else "") + ab_
     except Exception as _ex:

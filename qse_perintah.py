@@ -14,7 +14,7 @@ LOCK_BOT = os.path.join(STATE_DIR, ".lock")
 
 
 
-VERSI_QC = "QC 152 (26 Nov 2026)"
+VERSI_QC = "QC 155 (27 Nov 2026)"
 
 
 def _scan_baris():
@@ -24,6 +24,11 @@ def _scan_baris():
     except Exception as _ex:
         __import__("config").diam("qse_perintah.py:_scan_baris", _ex)
         b_ = ""          # tampil di /status dan /bantuan, naikkan tiap QC
+    try:
+        import qse_liar_lab as LL_
+        b_ += LL_.baris_status()
+    except Exception as _ex:
+        __import__("config").diam("qse_perintah.py:liar_lab", _ex)
     return b_ + baris_kesehatan() + TG.baris_gambar()
 
 
@@ -552,6 +557,12 @@ def proses(cmds, dari_main=False):
             except Exception as ex:
                 print("[WARN] tombol", ex)
                 mk = None
+            if cmd in ("/scan", "/pindai", "/sinyal", "/sinyal1j", "/sinyal1", "/sinyal4j", "/sinyal4", "/ict", "/smc", "/ob", "/ichimoku", "/ichi"):
+                try:          # QC 153: kartu sinyal dari perintah juga diberi LAPIS dan satu keputusan
+                    import qse_elit as QE_
+                    isi = TG.PISAH.join(QE_.olah(b_) for b_ in isi.split(TG.PISAH) if not QE_.koin_liar(b_))
+                except Exception as _ex:
+                    __import__("config").diam("qse_perintah.py:elit", _ex)
             if TG.PISAH.strip() in isi:          # QC 73: balasan berisi beberapa bubble (pasar, satu koin satu pesan, analisa otak)
                 ids = [i_ for g_ in TG.kirim_pisah([isi], markup=mk) for i_ in g_]
             else:

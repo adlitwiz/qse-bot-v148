@@ -77,6 +77,8 @@ def _kirim_kartu(b_, teknik="", paksa=False):
     """QC 143: kartu sinyal terbukti bagus (NILAI 9/10 atau skor 80+) dan bukan koin liar wajib bergambar. Lainnya teks seperti dulu."""
     try:
         import qse_elit as QE_
+        if QE_.koin_liar(b_):          # QC 155: koin liar tidak disiarkan
+            return []
         b_ = QE_.olah(b_)          # QC 147 mode elit
     except Exception as ex:
         __import__("config").diam("qse_listener.py:elit", ex)
@@ -185,6 +187,11 @@ def _tugas_berkala():
         try:          # QC 129 jalur ICT terpisah (sweep + MSS + FVG), dikirim sendiri, tidak ikut urutan dan slot jalur lain
             import qse_ict as ICT
             pesan = ICT.jalankan(baru_ok=True)
+            try:          # QC 153: kartu ICT juga diberi LAPIS (ICT bukan bagian riset ELIT, jadi PANTAU kecuali skornya lolos)
+                import qse_elit as QE_
+                pesan = [QE_.olah(m_) for m_ in pesan or [] if not QE_.koin_liar(m_)]
+            except Exception as _ex:
+                __import__("config").diam("qse_listener.py:ict_elit", _ex)
             if pesan:
                 TG.send(["🟪 <b>QSE v150 | SINYAL ICT 4J (JALUR TERPISAH)</b>\nLiquidity sweep + MSS + FVG. Modal terpisah atau lot setengah.\n\n"
                          + "\n\n".join(pesan)])
@@ -217,6 +224,11 @@ def _tugas_berkala():
                 if lain:
                     TG.send([f"📈 <b>QSE v150 | {nama}</b>\n\n" + "\n\n".join(lain)])
                 kumpul += [(ST.prioritas_teks(k, m), f"pin_{k}", nama, m) for m in pesan if "BISA DIIKUTI" in m]
+            try:          # QC 154: uji live koin liar S3 beli kapitulasi (tanpa pesan, hasil di /status)
+                import qse_liar_lab as LL_
+                LL_.proses()
+            except Exception as _ex:
+                __import__("config").diam("qse_listener.py:liar_lab", _ex)
             if ST.TAMBAHAN and os.environ.get("QSE_MODE_ELIT", "1") == "0":          # QC 139 (QC 147: mati saat mode elit, PF 1.61-2.07 < syarat): LONG tambahan saat vonis LONG baru, pesan sendiri, tidak memakan 12 slot
                 TG.send(["🚀 <b>QSE v150 | SINYAL TAMBAHAN SEARAH VONIS LONG</b>\nVonis LONG masih baru (12 jam pertama). Sinyal LONG "
                          "teknik tunggal di bawah biasanya hanya uji live, tapi saat vonis LONG baru hasil ujinya bagus: PF 1.70 / 1.74 / "
@@ -228,6 +240,11 @@ def _tugas_berkala():
         try:
             kumpul.sort(key=lambda z: z[0], reverse=True)
             kumpul = [z for z in kumpul if ST.lolos_mode(z[0])]          # mode profit: skor label rendah tidak dikirim
+            try:          # QC 155: kartu koin liar tidak disiarkan (uji live koin liar tetap jalan), nomor sinyal tetap urut
+                import qse_elit as QE0_
+                kumpul = [z for z in kumpul if not QE0_.koin_liar(z[3])]
+            except Exception as _ex:
+                __import__("config").diam("qse_listener.py:saring_liar", _ex)
             pilih_b = ""
             try:          # QC 131: Kelas Utama dan skor tinggi dikirim paling dulu, tidak ada sinyal yang dibuang
                 import qse_skor as SKR_
@@ -274,8 +291,8 @@ def _tugas_berkala():
                 lb = ST.label_nama_teks(m)
                 try:
                     rk = BM.kartu_ringkas(m, pr, nama) if BM else None          # v150: kartu ringkas dan rapi
+                    import qse_elit as QE_
                     if rk:          # QC 147 mode elit: tandai ELIT atau PANTAU SAJA
-                        import qse_elit as QE_
                         rk = QE_.olah(rk, m)
                 except Exception as ex:
                     print("[WARN] kartu ringkas", ex)
